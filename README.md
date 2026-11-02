@@ -91,7 +91,7 @@ When the number of traits is large, an unstructured `G` and `E` need $O(K^2)$ pa
 **Factor `G`.** `genetic_structure = "factor"` models the genetic covariance as
 
 $$
-G = \operatorname{diag}(s_G)(\Lambda\Lambda^\top + \Psi)\operatorname{diag}(s_G),
+G = \mathrm{diag}(s_G)(\Lambda\Lambda^\top + \Psi)\mathrm{diag}(s_G),
 $$
 
 with sparse loadings $\Lambda$ on the correlation scale and diagonal uniqueness $\Psi$. The loadings have regularized-horseshoe priors, and `column_decay` can favour factors in decreasing order. `n_factors` sets the number of factors; if omitted, a sublinear default is used.
@@ -105,9 +105,9 @@ fit$summary(c("loadings", "factor_magnitude"))
 **Shared factors for `G` and `E`.** `residual_structure = "shared_factor"` uses the same latent factors for genetic and residual covariance:
 
 $$
-G = \Lambda\operatorname{diag}(h^2_{\text{factor}})\Lambda^\top + \operatorname{diag}(\Psi_G),
+G = \Lambda\mathrm{diag}(h^2_{\text{factor}})\Lambda^\top + \mathrm{diag}(\Psi_G),
 \qquad
-E = \Lambda\operatorname{diag}(1-h^2_{\text{factor}})\Lambda^\top + \operatorname{diag}(\Psi_E),
+E = \Lambda\mathrm{diag}(1-h^2_{\text{factor}})\Lambda^\top + \mathrm{diag}(\Psi_E),
 $$
 
 so each factor has a heritability. This follows the sparse factor model of [Runcie and Mukherjee (2013)](https://doi.org/10.1534/genetics.113.151217) (“Bayesian Sparse Factor Analysis of Genetic Covariance Matrices”, *Genetics*; [arXiv:1211.3706](https://arxiv.org/abs/1211.3706)). It requires `genetic_structure = "factor"`:

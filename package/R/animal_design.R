@@ -23,6 +23,11 @@
 #'   relationship matrix (see \code{\link{genomic_relationship}}): individuals
 #'   in rows, with their IDs as row names, and biallelic markers in columns,
 #'   coded 0, 1, 2.
+#' @param Gamma Optional relationship matrix among pedigree founders, or among
+#'   founder groups when \code{groups} is given; passed to \code{\link{makeA}}.
+#'   Only used with \code{pedigree}.
+#' @param groups Optional founder-to-group assignment passed to
+#'   \code{\link{makeA}}; only used with \code{pedigree} and \code{Gamma}.
 #' @param ... Further arguments passed to \code{\link{genomic_relationship}},
 #'   such as \code{p}, \code{maf} or \code{blend}.
 #' @return A list with
@@ -55,7 +60,9 @@
 #'   all individuals in the pedigree or genotype matrix and then subset to the
 #'   rows of \code{Y}, so ancestors without records and individuals with missing
 #'   phenotypes are handled: every row of \code{Y} must appear in the pedigree
-#'   or in the row names of the genotype matrix.
+#'   or in the row names of the genotype matrix. With \code{pedigree},
+#'   \code{Gamma} and \code{groups} allow related founders or metafounder
+#'   groups; see \code{\link{makeA}}.
 #'
 #'   If the response has three or more traits and its first principal component
 #'   explains at least 80\% of the variance, a warning suggests fitting size and
@@ -80,6 +87,12 @@
 #' design <- animal_design(trait ~ sex, dat, pedigree = ped)
 #' round(design$A, 2)
 #'
+#' # related founders: pass their relationship matrix as Gamma
+#' Gamma <- matrix(c(1, 0.5, 0.5, 1), 2,
+#'                 dimnames = list(c("1", "2"), c("1", "2")))
+#' design <- animal_design(trait ~ sex, dat, pedigree = ped, Gamma = Gamma)
+#' round(design$A, 2)
+#'
 #' # relatedness from genotypes (individuals in rows, markers in columns)
 #' M <- matrix(rbinom(6 * 40, 2, 0.3), 6,
 #'             dimnames = list(as.character(1:6), NULL))
@@ -87,7 +100,8 @@
 #' dim(design$A)
 #' @export
 animal_design <- function(formula, data, na.action = stats::na.omit,
-                          pedigree = NULL, genotypes = NULL, ...) {
+                          pedigree = NULL, genotypes = NULL,
+                          Gamma = NULL, groups = NULL, ...) {
   if (!inherits(formula, "formula"))
     stop("`formula` must be a model formula, such as `y ~ sex + age`.",
          call. = FALSE)
@@ -99,6 +113,12 @@ animal_design <- function(formula, data, na.action = stats::na.omit,
          call. = FALSE)
   if (!is.null(pedigree) && !is.null(genotypes))
     stop("pass either pedigree or genotypes, not both.", call. = FALSE)
+  if (is.null(pedigree) && (!is.null(Gamma) || !is.null(groups)))
+    stop("`Gamma` and `groups` are only used with `pedigree`.",
+         call. = FALSE)
+  if (!is.null(genotypes) && (!is.null(Gamma) || !is.null(groups)))
+    stop("`Gamma` and `groups` are only used with `pedigree`.",
+         call. = FALSE)
 
   formula <- .drop_random_terms(formula)
   frame <- stats::model.frame(formula, data = data, na.action = na.action,
@@ -152,7 +172,7 @@ animal_design <- function(formula, data, na.action = stats::na.omit,
       stop("with pedigree or genotypes, the rows of data must be named with ",
            "the individual IDs.", call. = FALSE)
     if (!is.null(pedigree)) {
-      A <- makeA(pedigree)
+      A <- makeA(pedigree, Gamma = Gamma, groups = groups)
       source <- "pedigree"
     } else {
       A <- genomic_relationship(genotypes, ...)

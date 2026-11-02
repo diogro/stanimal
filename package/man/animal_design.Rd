@@ -10,6 +10,8 @@ animal_design(
   na.action = stats::na.omit,
   pedigree = NULL,
   genotypes = NULL,
+  Gamma = NULL,
+  groups = NULL,
   ...
 )
 }
@@ -35,6 +37,13 @@ contain ancestors that are not in \code{data}.}
 relationship matrix (see \code{\link{genomic_relationship}}): individuals
 in rows, with their IDs as row names, and biallelic markers in columns,
 coded 0, 1, 2.}
+
+\item{Gamma}{Optional relationship matrix among pedigree founders, or among
+founder groups when \code{groups} is given; passed to \code{\link{makeA}}.
+Only used with \code{pedigree}.}
+
+\item{groups}{Optional founder-to-group assignment passed to
+\code{\link{makeA}}; only used with \code{pedigree} and \code{Gamma}.}
 
 \item{...}{Further arguments passed to \code{\link{genomic_relationship}},
 such as \code{p}, \code{maf} or \code{blend}.}
@@ -79,7 +88,9 @@ Random-effect terms such as \code{(1 | animal)} are ignored, so
   all individuals in the pedigree or genotype matrix and then subset to the
   rows of \code{Y}, so ancestors without records and individuals with missing
   phenotypes are handled: every row of \code{Y} must appear in the pedigree
-  or in the row names of the genotype matrix.
+  or in the row names of the genotype matrix. With \code{pedigree},
+  \code{Gamma} and \code{groups} allow related founders or metafounder
+  groups; see \code{\link{makeA}}.
 
   If the response has three or more traits and its first principal component
   explains at least 80\% of the variance, a warning suggests fitting size and
@@ -101,6 +112,12 @@ animal_design(trait ~ sex + (1 | id), dat)
 ped <- data.frame(id = 1:6, sire = c(0, 0, 1, 1, 4, 4),
                   dam = c(0, 0, 2, 2, 3, 5))
 design <- animal_design(trait ~ sex, dat, pedigree = ped)
+round(design$A, 2)
+
+# related founders: pass their relationship matrix as Gamma
+Gamma <- matrix(c(1, 0.5, 0.5, 1), 2,
+                dimnames = list(c("1", "2"), c("1", "2")))
+design <- animal_design(trait ~ sex, dat, pedigree = ped, Gamma = Gamma)
 round(design$A, 2)
 
 # relatedness from genotypes (individuals in rows, markers in columns)

@@ -13,6 +13,12 @@
 
 ## New features
 
+* `makeA()` and `animal_design()` accept `Gamma`, a relationship matrix among
+  founders, and `groups`, an optional founder-to-group assignment. This builds
+  the `A^Gamma` relationship matrix for related founders and metafounders
+  (Legarra et al. 2015): the founder block is initialized from `Gamma` instead
+  of the identity, and the tabular recursion propagates those relationships.
+  The default remains the standard pedigree with unrelated founders.
 * `random_covariance()` draws random covariance matrices for simulations, either
   from the LKJ distribution used as a prior by `lmm_animal()` (default), from
   the partial-correlation construction of `evolqg::RandomMatrix()`, or from a

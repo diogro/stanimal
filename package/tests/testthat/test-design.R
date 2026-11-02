@@ -86,6 +86,16 @@ test_that("animal_design builds A from a pedigree", {
   expect_equal(unname(diag(d$A)), c(1, 1, 1, 1, 1.25, 1.375))
 })
 
+test_that("animal_design passes founder relationships to makeA", {
+  Gamma <- matrix(c(1, 0.5, 0.5, 1), 2,
+                  dimnames = list(c("1", "2"), c("1", "2")))
+  d <- animal_design(trait ~ x, named_dat(), pedigree = ped6, Gamma = Gamma)
+  expected <- makeA(ped6, Gamma = Gamma)
+  expect_equal(d$A, expected[rownames(d$A), colnames(d$A)])
+  expect_error(animal_design(trait ~ x, named_dat(), Gamma = Gamma),
+               "only used with `pedigree`")
+})
+
 test_that("the pedigree may contain ancestors without records", {
   ped <- data.frame(id = 1:8,
                     sire = c(0, 0, 0, 0, 1, 3, 5, 5),

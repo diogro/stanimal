@@ -4,13 +4,29 @@
 \alias{makeA}
 \title{Additive relationship matrix from a pedigree}
 \usage{
-makeA(pedigree)
+makeA(pedigree, Gamma = NULL, groups = NULL)
 }
 \arguments{
 \item{pedigree}{Data frame whose first three columns are the individual, its
 sire and its dam, with \code{0}, \code{NA} or \code{""} for unknown
 parents. Individuals can be in any order, and the pedigree can contain
 ancestors that have no records.}
+
+\item{Gamma}{Optional relationship matrix among the founders, or among
+founder groups when \code{groups} is given. Founders are the individuals
+with both parents unknown, including parents that were added because they
+were missing from the pedigree. The default \code{NULL} leaves founders
+unrelated, as in a standard pedigree. With \code{groups = NULL},
+\code{Gamma} must have one row and column per founder, or founder IDs as
+row and column names; with \code{groups}, it must have one row and column
+per group, or the group labels as row and column names.}
+
+\item{groups}{Optional vector assigning each founder to a row and column of
+\code{Gamma}, for a metafounder or genetic-group model. It can be named
+with founder IDs, or unnamed with one entry per founder in pedigree order
+(individuals with both parents unknown, then any parents added as
+founders). When \code{Gamma} has no dimnames, groups are used in
+\code{sort(unique(groups))} order.}
 }
 \value{
 A symmetric positive-definite matrix with the individuals' IDs on both
@@ -39,6 +55,26 @@ The additive relationship is computed with the tabular method: with
 
   \code{\link{animal_design}} calls this function when it is given
   \code{pedigree} and no genotypes.
+
+  With \code{Gamma}, the founder block of \code{A} is initialized with the
+  founder relationships instead of the identity, and the same recursion
+  propagates them. This is the \eqn{A^\Gamma} construction for related
+  founders and metafounders (Legarra et al. 2015): \eqn{\Gamma_{ii}} is the
+  relationship of founder \eqn{i} with itself and \eqn{\Gamma_{ij}} its
+  relationship with founder \eqn{j}, so a founder no longer has to have
+  \eqn{A_{ii} = 1}. When \code{groups} is given, founders in the same group
+  share the diagonal of \code{Gamma} and different groups use its
+  off-diagonals. A genomic relationship matrix among the founders, for
+  example from \code{\link{genomic_relationship}}, can be used as
+  \code{Gamma}, but it estimates realized relationships and is not the same
+  as the base-population \eqn{\Gamma}; shrinkage, such as the \code{blend}
+  argument of \code{genomic_relationship}, is advisable.
+
+  Only founders with both parents unknown are given founder relationships.
+  An unknown parent of an individual that has one known parent is still
+  treated as an unrelated founder, as in the standard tabular method; to
+  model those unknown parents as part of the related base population, add
+  them explicitly to the pedigree and assign them to a group.
 }
 \examples{
 ped <- data.frame(id = 1:6, sire = c(0, 0, 1, 1, 4, 4),
@@ -49,6 +85,27 @@ round(A, 3)
 ped2 <- data.frame(id = 1:6, sire = c(NA, NA, NA, 1, 1, 4),
                    dam = c(NA, NA, NA, 2, 2, 5))
 diag(makeA(ped2))   # 1.25 for the inbred individual
+
+# related founders: founders 1 and 2 have relationship 0.5
+Gamma <- matrix(c(1, 0.5, 0.5, 1), 2,
+                dimnames = list(c("1", "2"), c("1", "2")))
+ped3 <- data.frame(id = 1:4, sire = c(NA, NA, 1, 1),
+                   dam = c(NA, NA, 2, 2))
+A3 <- makeA(ped3, Gamma = Gamma)
+round(A3, 3)
+
+# founder groups: 1 and 2 in group A, 3 in group B
+Gamma_groups <- matrix(c(1, 0.2, 0.2, 1), 2,
+                       dimnames = list(c("A", "B"), c("A", "B")))
+ped4 <- data.frame(id = 1:5, sire = c(NA, NA, NA, 1, 1),
+                   dam = c(NA, NA, NA, 2, 3))
+round(makeA(ped4, Gamma = Gamma_groups, groups = c("A", "A", "B")), 3)
+}
+\references{
+Legarra, A., Christensen, O. F., Vitezica, Z. G., Aguilar, I.,
+  & Misztal, I. (2015). Ancestral relationships using metafounders: finite
+  ancestral populations and across population relationships. Genetics,
+  200(2), 455-468. \doi{10.1534/genetics.115.177014}
 }
 \seealso{
 \code{\link{genomic_relationship}}, \code{\link{animal_design}}

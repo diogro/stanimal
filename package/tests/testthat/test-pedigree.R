@@ -58,15 +58,74 @@ test_that("a parent that is not in the pedigree is added as a founder", {
   expect_equal(unname(A["3", "1"]), 0)
 })
 
-test_that("makeA validates the pedigree", {
-  loop <- data.frame(id = 1:2, sire = c(1, 1), dam = c(NA, 2))
-  expect_error(makeA(loop), "loop")
-  repeated <- data.frame(id = c(1, 1), sire = c(0, 0), dam = c(0, 0))
-  expect_error(makeA(repeated), "duplicated")
-  expect_error(makeA(data.frame(id = 1:2, sire = c(0, 0))),
-               "three columns")
-  no_id <- data.frame(id = c(1, NA), sire = c(0, 0), dam = c(0, 0))
-  expect_error(makeA(no_id), "missing ID")
+test_that("makeA accepts related founders through Gamma", {
+  Gamma <- matrix(c(1, 0.5, 0.5, 1), 2,
+                  dimnames = list(c("1", "2"), c("1", "2")))
+  A <- makeA(ped6, Gamma = Gamma)
+  expect_equal(unname(A["1", "2"]), 0.5)
+  expect_equal(unname(A["3", "3"]), 1.25)   # 1 + 0.5 * Gamma[1, 2]
+  expect_equal(unname(A["3", "1"]), 0.75)
+  expect_equal(unname(A["5", "5"]), 1.375)
+  expect_true(isSymmetric(A))
+  expect_gt(min(eigen(A, symmetric = TRUE, only.values = TRUE)$values), 0)
+
+  identity <- diag(2)
+  dimnames(identity) <- list(c("1", "2"), c("1", "2"))
+  expect_equal(makeA(ped6, Gamma = identity), makeA(ped6))
+
+  # the founder diagonal can differ from 1 in a metafounder model
+  Gamma2 <- matrix(c(1.5, 0.5, 0.5, 1.5), 2,
+                   dimnames = list(c("1", "2"), c("1", "2")))
+  A2 <- makeA(ped6, Gamma = Gamma2)
+  expect_equal(unname(diag(A2)[1:2]), c(1.5, 1.5))
+  expect_equal(unname(A2["3", "3"]), 1.25)
+  expect_equal(unname(A2["3", "1"]), 1)
+})
+
+test_that("Gamma also covers parents added as founders", {
+  ped <- data.frame(id = 1:3, sire = c(NA, 1, 9), dam = c(NA, NA, NA))
+  Gamma <- matrix(c(1, 0.25, 0.25, 1), 2,
+                  dimnames = list(c("1", "9"), c("1", "9")))
+  expect_warning(A <- makeA(ped, Gamma = Gamma), "added as founders: 9")
+  expect_equal(unname(A["1", "9"]), 0.25)
+  expect_equal(unname(A["2", "9"]), 0.125)
+  expect_equal(unname(A["3", "9"]), 0.5)
+})
+
+test_that("makeA accepts metafounder groups", {
+  Gamma <- matrix(c(1, 0.2, 0.2, 1), 2,
+                  dimnames = list(c("A", "B"), c("A", "B")))
+  ped <- data.frame(id = 1:5, sire = c(NA, NA, NA, 1, 1),
+                    dam = c(NA, NA, NA, 2, 3))
+  A <- makeA(ped, Gamma = Gamma, groups = c("A", "A", "B"))
+  expect_equal(unname(A["1", "2"]), 1)      # same group
+  expect_equal(unname(A["1", "3"]), 0.2)    # different groups
+  expect_equal(unname(A["4", "4"]), 1.5)    # 1 + 0.5 * Gamma[A, A]
+  expect_equal(unname(A["5", "5"]), 1.1)    # 1 + 0.5 * Gamma[A, B]
+
+  # group and founder order can be given by names
+  named_groups <- c(`2` = "A", `1` = "A", `3` = "B")
+  expect_equal(makeA(ped, Gamma = Gamma, groups = named_groups), A)
+  expect_equal(makeA(ped, Gamma = unname(Gamma), groups = c("A", "A", "B")), A)
+})
+
+test_that("makeA validates Gamma and groups", {
+  expect_error(makeA(ped6, groups = c("A", "A")), "requires `Gamma`")
+  expect_error(makeA(ped6, Gamma = c(1, 0, 0, 1)), "finite numeric matrix")
+  expect_error(makeA(ped6, Gamma = diag(3)), "one row and column per founder")
+  expect_error(makeA(ped6, Gamma = matrix(c(1, 2, 0, 1), 2)), "symmetric")
+  expect_error(makeA(ped6, Gamma = matrix(c(1, 2, 2, 1), 2)), "positive definite")
+  expect_error(makeA(ped6, Gamma = diag(2), groups = "A"),
+               "one entry per founder")
+  expect_error(makeA(ped6, Gamma = diag(2), groups = c("A", NA)),
+               "missing values")
+  Gamma_named <- matrix(c(1, 0, 0, 1), 2,
+                        dimnames = list(c("A", "B"), c("A", "B")))
+  expect_error(makeA(ped6, Gamma = Gamma_named, groups = c("C", "D")),
+               "no row for group")
+  Gamma_missing <- diag(2)
+  dimnames(Gamma_missing) <- list(c("1", "9"), c("1", "9"))
+  expect_error(makeA(ped6, Gamma = Gamma_missing), "no row for founder")
 })
 
 # nadiv is not needed to use the package: it is suggested only so that

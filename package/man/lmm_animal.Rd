@@ -71,6 +71,46 @@ lmm_animal(
 }
 \value{
 With \code{cmd_stan = TRUE}, a \code{CmdStanMCMC} object from cmdstanr: use \code{fit$draws()} (a \code{posterior} draws array) and \code{fit$summary()}, and pass these, or the fit itself, to bayesplot (e.g. \code{bayesplot::mcmc_trace(fit$draws("h2"))}, \code{bayesplot::nuts_params(fit)}). Fixed effects are \code{beta[j]} (univariate) or \code{beta[trait,j]} for column \code{j} of \code{X}; use \code{\link{rename_beta}} to get draws named after the columns of \code{X}. Use \code{\link{fit_draws}} to reshape the draws into trait by trait by draw arrays, and \code{\link{draws_mean}} or \code{\link{draws_quantile}} for posterior summaries that are already matrices. Factor fits also expose \code{loadings}, \code{factor_magnitude}, \code{uniqueness} and \code{communality}; shared-factor fits add \code{factor_heritability}, \code{genetic_uniqueness} and \code{residual_uniqueness}. With \code{cmd_stan = FALSE}, a \code{stanfit} object whose \code{beta} draws are named after the columns of \code{X}.
+Multivariate fits report \code{G}, \code{E}, \code{P = G + E}, \code{corrG},
+\code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}, plus the
+fixed effects \code{beta[trait, j]}.
+
+Factor fits add quantities that describe the factor decomposition:
+\itemize{
+  \item \code{loadings}: the trait by factor loading matrix \eqn{\Lambda}.
+    For the ordinary factor model these are on the correlation scale; for
+    shared-factor fits they are on the standardized phenotype scale.
+  \item \code{communality}: for trait \eqn{k},
+    \eqn{c_k = \sum_m \lambda_{km}^2}. This is the part of the trait's
+    variance explained by the common factors. In the ordinary factor model
+    it is on the correlation scale, so \eqn{c_k + u_k = 1}; multiplying by
+    \eqn{s_{Gk}^2} gives the common genetic variance of trait \eqn{k}. In
+    shared-factor fits it is the common phenotypic variance, and
+    \eqn{c_k + u_k} equals the trait's standardized phenotypic variance.
+  \item \code{uniqueness}: for trait \eqn{k}, the trait-specific variance
+    left after the factors. In the ordinary factor model
+    \eqn{u_k = 1 - c_k} is the unique genetic variance on the correlation
+    scale; multiply by \eqn{s_{Gk}^2} for the unique genetic variance. In
+    shared-factor fits \eqn{u_k = \psi_{Gk} + \psi_{Ek}}, with
+    \code{genetic_uniqueness} \eqn{\psi_{Gk}} and
+    \code{residual_uniqueness} \eqn{\psi_{Ek}} giving the two parts.
+  \item \code{factor_magnitude}: for factor \eqn{m},
+    \eqn{\sum_k \lambda_{km}^2}, the variance the factor contributes across
+    traits. It is a factor-level summary, not a per-trait quantity, and is
+    useful for comparing or ranking the columns.
+  \item \code{factor_heritability}: shared-factor fits only. For factor
+    \eqn{m}, \eqn{h^2_m} is the fraction of that factor's variance that is
+    genetic: the genetic part is multiplied by \eqn{h^2_m} and the residual
+    part by \eqn{1-h^2_m}.
+  \item \code{s_G}: ordinary factor model only, the genetic standard
+    deviations used to move the correlation-scale decomposition to the
+    original scale. Shared-factor fits do not estimate \code{s_G}.
+}
+These are available from \code{fit$summary()} and from
+\code{\link{fit_draws}}. The latter returns \code{loadings} as a trait by
+factor by draw array, \code{factor_heritability} and
+\code{factor_magnitude} as factor by draw matrices, and the uniqueness and
+communality vectors as trait by draw matrices.
 }
 \description{
 Fits a univariate or multivariate linear mixed animal model using a known relatedness matrix
@@ -85,6 +125,51 @@ The cost that grows with the number of individuals is the dense relationship mat
 The LKJ shape \code{lkj_prior} (default 2) deliberately shrinks correlations toward zero. With many traits, an unstructured correlation matrix fit under a flat prior tends to overestimate the magnitude of correlations, especially genetic correlations between traits with limited information, so a shape above 1 acts as a mild regularizer; increase it for stronger shrinkage. Note that fitting many traits remains expensive: the likelihood is cheap, but an unstructured \code{G} for \code{K = 40} traits has on the order of 1700 parameters and NUTS needs many leapfrog steps, so a single fit can take an hour or more. Fewer iterations, a larger \code{lkj_prior}, or \code{residual_structure = "diagonal"} all make fits faster.
 
 Continuous predictors are centered and divided by their sample standard deviation inside Stan. Constant and 0/1 indicator columns are not centered or scaled. Standardized slopes have \code{normal(0, 1)} priors; the intercept contribution has a wider \code{normal(0, 2.5)} prior. Returned \code{beta} coefficients are backtransformed to original predictor and response units, including restoring the response mean to the intercept; \code{beta_scaled} draws are also available.
+}
+\examples{
+\dontrun{
+set.seed(1)
+n <- 40
+ped <- data.frame(
+  id = 1:n,
+  sire = c(rep(NA, 20), sample(1:10, 20, replace = TRUE)),
+  dam = c(rep(NA, 20), sample(11:20, 20, replace = TRUE))
+)
+A <- makeA(ped)
+X <- cbind(Intercept = 1, sex = rbinom(n, 1, 0.5))
+G <- random_covariance(2, min_var = 0.8, max_var = 1.2,
+                       trait_names = c("t1", "t2"))
+E <- random_covariance(2, min_var = 0.8, max_var = 1.2,
+                       trait_names = c("t1", "t2"))
+Y <- X \%*\% rbind(c(10, 9), c(1, -0.5)) +
+  t(chol(A)) \%*\% matrix(rnorm(n * 2), n) \%*\% chol(G) +
+  matrix(rnorm(n * 2), n) \%*\% chol(E)
+colnames(Y) <- c("t1", "t2")
+
+fit <- lmm_animal(Y, X, A, iter = 1000, warmup = 500,
+                  chains = 2, cores = 2, refresh = 0)
+fit$summary(c("G", "E", "h2"))
+round(draws_mean(fit, "G"), 2)
+
+# Univariate model with the h2 parametrization
+fit_h2 <- lmm_animal(Y[, 1], X, A, parametrization = "h2",
+                     iter = 1000, warmup = 500,
+                     chains = 2, cores = 2)
+
+# Sparse factor G
+factor_fit <- lmm_animal(Y, X, A, genetic_structure = "factor",
+                         n_factors = 1, iter = 1000, warmup = 500,
+                         chains = 2, cores = 2)
+factor_fit$summary(c("loadings", "factor_magnitude"))
+dim(fit_draws(factor_fit)$loadings)
+
+# Shared factors for G and E
+shared_fit <- lmm_animal(Y, X, A, genetic_structure = "factor",
+                         residual_structure = "shared_factor",
+                         n_factors = 1, iter = 1000, warmup = 500,
+                         chains = 2, cores = 2)
+shared_fit$summary(c("factor_heritability", "genetic_uniqueness"))
+}
 }
 \author{
 Diogo Melo

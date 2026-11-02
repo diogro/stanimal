@@ -163,8 +163,6 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
                 data = stan_data,
                 iter = iter, warmup = warmup, chains = chains, cores = cores,
                 control = control, ...)
-    attr(fit, "x_names") <- colnames(X)
-    attr(fit, "y_names") <- colnames(Y)
   } else {
     model_name <- if (factor_model) "phenotypicModelFactor" else "phenotypicModel"
     model <- .get_rstan_model(
@@ -175,6 +173,10 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
     fit = .rstan_sample(model, stan_data, iter, warmup, chains, control, ...)
     fit <- .rename_fixed_effect_draws(fit, X, ncol(Y))
   }
+  # the names are what fit_draws() labels its arrays with, so they have to be
+  # recorded for both backends, not just the cmdstanr path
+  attr(fit, "x_names") <- colnames(X)
+  attr(fit, "y_names") <- colnames(Y)
   attr(fit, "covariance_structure") <- covariance_structure
   if (factor_model) attr(fit, "n_factors") <- n_factors
   attr(fit, "lkj_prior") <- lkj_prior

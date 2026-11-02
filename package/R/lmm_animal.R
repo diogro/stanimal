@@ -265,8 +265,6 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                   data = stan_data,
                   iter = iter, warmup = warmup, chains = chains, cores = cores,
                   control = control, ...)
-      attr(fit, "x_names") <- colnames(X)
-      attr(fit, "y_names") <- colnames(Y)
     }
     else {
       model <- .get_rstan_model(
@@ -317,8 +315,6 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                   data = stan_data,
                   iter = iter, warmup = warmup, chains = chains , cores = cores,
                   control=control , ...)
-      attr(fit, "x_names") <- colnames(X)
-      attr(fit, "y_names") <- colnames(Y)
     } else {
       model_name <- if (shared_factor_model) {
         "animalModelGSharedFactor"
@@ -336,6 +332,10 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
       fit <- .rename_fixed_effect_draws(fit, X, ncol(Y))
     }
   }
+  # the names are what fit_draws() labels its arrays with, so they have to be
+  # recorded for both backends, not just the cmdstanr path
+  attr(fit, "x_names") <- colnames(X)
+  attr(fit, "y_names") <- colnames(Y)
   attr(fit, "genetic_structure") <- genetic_structure
   attr(fit, "residual_structure") <- residual_structure
   # the parametrization only means something for a single trait, so record what

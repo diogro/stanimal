@@ -55,6 +55,10 @@
 
 ## Bug fixes
 
+* Fits from the `rstan` backend now keep the trait and term names, so
+  `fit_draws()` labels its arrays with the columns of `Y` and `rename_beta()`
+  with the columns of `X`. Those attributes were only attached on the cmdstanr
+  path, which left `rstan` fits with generic `trait1`, `trait2` labels.
 * `plot_prior_posterior()` and `plot_forest()` compare against the prior the fit
   actually used instead of always drawing the unstructured one. `lmm_animal()`
   now records `lkj_prior`, `beta_prior` and `parametrization` on the fit, so an

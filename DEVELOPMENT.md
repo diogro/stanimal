@@ -38,7 +38,7 @@ Rscript -e 'testthat::test_local("package", filter="model-P", reporter="summary"
 # documentation
 cd package && Rscript -e 'roxygen2::roxygenise(".")'
 # build then check; checking the directory directly fails, see below
-R CMD build package && R CMD check --no-tests --no-manual --no-build-vignettes stanimal_0.6.0.tar.gz
+R CMD build package && R CMD check --no-tests --no-manual --no-build-vignettes $(ls -t stanimal_*.tar.gz | head -1)
 # examples call library(stanimal), so reinstall after changing R/ or inst/stan
 R CMD INSTALL package
 ```

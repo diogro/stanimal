@@ -1,5 +1,5 @@
 <p align="left">
-  <img src="package/man/figures/logo.png" width="200" alt="stanimal logo: a lamb with a halo inside a hexagon">
+  <img src="package/man/figures/logo.png" width="200" alt="stanimal logo: a lamb with a halo inside a hexagon (saint animal)">
 </p>
 
 # Stanimal

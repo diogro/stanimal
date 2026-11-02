@@ -46,14 +46,18 @@ cstan <- function(model_code, data = list(), chains = 1, cores = 1, iter = 1000,
 
   control <- .check_control(control)
 
+  # No `init` is set, so each chain starts from its own draw in U(-2, 2) on the
+  # unconstrained scale (the default in both CmdStan and rstan). Starting every
+  # chain from the same point would make them agree by construction, and Rhat
+  # cannot detect a mode that no chain visited. Pass `init` through `...` to
+  # pin the start for a run that is hard to initialize.
   args <- list(data = data,
                chains = chains,
                parallel_chains = cores,
                iter_warmup = warmup,
                iter_sampling = iter - warmup,
                adapt_delta = 0.95,
-               max_treedepth = 11,
-               init = 0)
+               max_treedepth = 11)
   if (threads > 1) args$threads_per_chain <- threads
   args <- utils::modifyList(args, control)
   args <- utils::modifyList(args, list(...))

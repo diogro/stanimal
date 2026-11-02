@@ -29,7 +29,9 @@
   correlation scale. It uses the same regularized-horseshoe loadings,
   `n_factors` default, `hs_global_scale`, `hs_slab_scale` and `column_decay` as
   the animal factor model, and reports `loadings`, `factor_magnitude`,
-  `uniqueness` and `communality`.
+  `uniqueness` and `communality`. The factor fit estimates the residual
+  standard deviations, so `P`, `corrP` and `sigma_P` describe the covariance
+  left after the fixed effects rather than the marginal covariance of `Y`.
 * The multivariate models now report pointwise `log_lik`, enabling LOO, WAIC
   and other predictive comparisons with the fits.
 * `fit_draws()` handles the factor outputs: factor fits return `loadings` as a
@@ -43,6 +45,22 @@
   twelve-trait modular hierarchy, and `examples/structure_comparison.R`
   compares the unstructured, diagonal, factor and shared-factor covariance
   structures.
+
+## Bug fixes
+
+* The factor phenotypic model in `lm_phen_cov()` no longer pins the diagonal of
+  `P` to the marginal variance of `Y`. Removing the fixed effects lowers the
+  residual variance, so the model could only fit the likelihood by inflating
+  the correlations. It now estimates a residual scale per trait, as the
+  unstructured model does, and `sigma_P` is the residual standard deviation.
+
+## Changes
+
+* Chains no longer all start at the same point. The sampler used to be called
+  with `init = 0`; each chain now draws its own start from the engine default.
+  A shared start makes chains agree by construction, so `Rhat` cannot detect a
+  posterior mode that no chain visited. Pass `init` through `...` to pin the
+  start of a run that is hard to initialize.
 
 # stanimal 0.5.1
 

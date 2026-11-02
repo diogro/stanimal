@@ -320,7 +320,9 @@ fit <- lm_phen_cov(Y, X, covariance_structure = "factor", n_factors = 3)
 fit$summary(c("P", "loadings", "factor_magnitude"))
 ```
 
-`covariance_structure = "factor"` uses the regularized-horseshoe loadings, the sublinear `n_factors` default and `column_decay`. The factor fit reports `loadings`, `factor_magnitude`, `uniqueness` and `communality` in addition to `P`, `corrP` and `sigma_P`.
+`covariance_structure = "factor"` uses the regularized-horseshoe loadings, the sublinear `n_factors` default and `column_decay`. The factor fit reports `loadings`, `factor_magnitude`, `uniqueness` and `communality` in addition to `P`, `corrP` and `sigma_P`. `examples/factor_phenotypic_covariance.R` fits the full 35-trait mouse covariance matrix this way on the log-trait scale, and checks the fitted `P` against the OLS residual covariance.
+
+Keep the factors on the observed trait scale. Rotating first (for instance to the size/shape scores of `size_shape()`) spreads every loading over all the traits, which removes the sparsity the prior is there to find, and turns the low-rank structure into the rotation itself: the score covariance is then almost diagonal, so the factor decomposition is left weakly identified.
 
 ## Data scaling and back-transformed coefficients
 
@@ -343,7 +345,7 @@ Models fit with cmdstanr are compiled once and the executable is reused in later
 
 # Examples
 
-Complete runnable scripts are in [`examples/`](examples/): `univariate.R`, `multivariate.R`, `factor_model.R` (sparse factor `G`), `structure_comparison.R` (the five covariance structures), `ratones.R` (real mouse data), `phenotypic_covariance.R`, `gibbs.R` and `multivariate_power_simulation.R`. They compare the posterior with a simulated truth or with the data and write figures to `examples/figures/`; see [`examples/README.md`](examples/README.md) for what each one covers.
+Complete runnable scripts are in [`examples/`](examples/): `univariate.R`, `multivariate.R`, `factor_model.R` (sparse factor `G`), `structure_comparison.R` (the five covariance structures), `ratones.R` (real mouse data), `phenotypic_covariance.R`, `factor_phenotypic_covariance.R` (the full 35-trait factor P model, on the log-trait scale), `gibbs.R` and `multivariate_power_simulation.R`. They compare the posterior with a simulated truth or with the data and write figures to `examples/figures/`; see [`examples/README.md`](examples/README.md) for what each one covers.
 
 ## A complete example
 

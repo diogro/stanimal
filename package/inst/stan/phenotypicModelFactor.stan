@@ -1,6 +1,10 @@
 // Multivariate linear model for the phenotypic covariance matrix P with a
 // sparse factor structure on the correlation scale.
-// P = diag(y_sd) (Lambda Lambda' + Psi) diag(y_sd)
+// P = diag(sigma_P) (Lambda Lambda' + Psi) diag(sigma_P), sigma_P = y_sd .* s_P
+// The scale s_P is a parameter: P describes the residuals, and removing the
+// fixed effects lowers their variance below the marginal variance of Y. Fixing
+// the diagonal at the marginal variance would leave the correlations as the
+// only free part and inflate them to compensate. (ask me how I know...)
 data {
   int<lower=1> K; // number of traits
   int<lower=1> J; // number of fixed effects
@@ -60,6 +64,7 @@ transformed data {
 }
 parameters {
   matrix[K, J] beta_scaled; // fixed effects on scaled predictors
+  vector<lower=0>[K] s_P; // phenotypic sds, standardized response scale
   matrix[K, M] loadings_raw; // non-centred loadings
   matrix<lower=0>[K, M] local_scale; // local horseshoe scales
   real<lower=0> global_scale; // global horseshoe scale
@@ -108,7 +113,7 @@ transformed parameters {
 }
 model {
   matrix[K, K] P_std = loadings_tp * loadings_tp' + diag_matrix(uniqueness_tp);
-  matrix[K, K] L_P = cholesky_decompose(P_std);
+  matrix[K, K] L_P = diag_pre_multiply(s_P, cholesky_decompose(P_std));
   vector[K] log_diag_P = log(diagonal(L_P));
   for (k in 1:K)
     L_P[k, k] = fmax(L_P[k, k], 1e-12);
@@ -122,6 +127,7 @@ model {
   for (k in 1:K)
     for (j in 1:J)
       beta_scaled[k, j] ~ normal(0, beta_prior_sd[j]);
+  s_P ~ normal(0, 1);
   to_vector(loadings_raw) ~ normal(0, 1);
   to_vector(local_scale) ~ cauchy(0, 1);
   global_scale ~ cauchy(0, hs_global_scale);
@@ -130,9 +136,9 @@ generated quantities {
   matrix[K, M] loadings = loadings_tp;
   vector[K] uniqueness = uniqueness_tp;
   vector[K] communality = communality_tp;
-  vector[K] sigma_P = y_sd;
+  vector[K] sigma_P = y_sd .* s_P;
   matrix[K, K] P_std = loadings_tp * loadings_tp' + diag_matrix(uniqueness_tp);
-  matrix[K, K] P = quad_form_diag(P_std, y_sd);
+  matrix[K, K] P = quad_form_diag(P_std, y_sd .* s_P);
   matrix[K, K] corrP = P_std;
   vector[M] factor_magnitude;
   for (m in 1:M)

@@ -14,6 +14,7 @@ Rscript examples/univariate.R
 | `factor_model.R` | `lmm_animal(genetic_structure = "factor")`: a sparse nine-factor `G` for twelve traits with a hierarchical size/block/sub-block structure, regularized-horseshoe loadings, column decay, and posterior summaries |
 | `ratones.R` | `lmm_animal()` on real data: four log cranial distances of 329 mice, with `A` from the bundled pedigree (`ratones_morpho` and `ratones_pedigree`) |
 | `phenotypic_covariance.R` | `lm_phen_cov()` with no pedigree, plus `size_shape()` and `back_transform()`, on the same mouse data |
+| `factor_phenotypic_covariance.R` | `lm_phen_cov(covariance_structure = "factor")` on the full 35-trait mouse covariance matrix, on the log-trait scale: sparse loadings, factor magnitudes, communality and uniqueness, an OLS residual-covariance check and correlation heatmaps |
 | `gibbs.R` | `lmm_animal_gibbs()`, the single-chain Gibbs sampler; its inverse-Wishart priors differ from `lmm_animal()` |
 | `multivariate_power_simulation.R` | Parallel simulation study of genetic-correlation recovery across sample sizes, writing summaries to `results/` |
 | `package_comparison.R` | The same bivariate animal model fitted with `stanimal`, `MCMCglmm`, `BGLR`, `sommer`, `lme4breeding` and ASReml-R, with estimates compared with the simulated truth, minimum ESS of `G` and timings |

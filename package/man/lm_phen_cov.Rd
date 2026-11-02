@@ -44,7 +44,7 @@ lm_phen_cov(
 
 \item{model_file}{Optional path to a custom Stan file replacing the default model.}
 
-\item{covariance_structure}{Covariance structure for the phenotypic model: "unstructured" (default, scales times an LKJ correlation matrix) or "factor", which uses \eqn{P = \mathrm{diag}(\sigma_P)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(\sigma_P)} with regularized-horseshoe loadings, where \eqn{\sigma_P} are the response standard deviations.}
+\item{covariance_structure}{Covariance structure for the phenotypic model: "unstructured" (default, scales times an LKJ correlation matrix) or "factor", which uses \eqn{P = \mathrm{diag}(\sigma_P)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(\sigma_P)} with regularized-horseshoe loadings, where \eqn{\sigma_P} are the residual standard deviations, estimated with the same half-normal prior as the unstructured model.}
 
 \item{n_factors}{Number of factors when \code{covariance_structure = "factor"}, a whole number between 1 and the number of traits minus one. If \code{NULL}, the same sublinear default as \code{lmm_animal()} is used. Ignored otherwise.}
 
@@ -58,7 +58,10 @@ lm_phen_cov(
 With \code{cmd_stan = TRUE}, a \code{CmdStanMCMC} object from cmdstanr, usable with posterior and bayesplot (see \code{\link{lmm_animal}}); use \code{\link{rename_beta}} for \code{beta} draws named after the columns of \code{X}, and \code{\link{fit_draws}} or \code{\link{draws_mean}} to get \code{P}, \code{corrP} and \code{sigma_P} as matrices. With \code{cmd_stan = FALSE}, a \code{stanfit} object.
 
 The unstructured fit reports \code{P} (original trait scale), \code{corrP},
-\code{sigma_P} and the fixed effects \code{beta[trait, j]}.
+\code{sigma_P} and the fixed effects \code{beta[trait, j]}. \code{sigma_P} are
+the residual standard deviations, so \code{P}, \code{corrP} and \code{sigma_P}
+describe the covariance of the residuals after the fixed effects, not the
+marginal covariance of \code{Y}.
 
 Factor fits add quantities that describe the decomposition:
 \itemize{

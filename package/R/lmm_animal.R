@@ -545,11 +545,10 @@ rename_beta <- function(fit, variables = NULL, ...) {
 }
 
 .rstan_sample <- function(model, stan_data, iter, warmup, chains, control, ...) {
-  # init = 0 starts at the prior mode (identity correlations, unit scales),
-  # avoiding degenerate cholesky_factor_corr draws that can abort a chain at
-  # high trait counts. Overridden by an explicit `init` in `...`.
+  # Each chain draws its own start, as in cstan(): a shared start would make the
+  # chains agree by construction. Overridden by an explicit `init` in `...`.
   control <- .rstan_control(.check_control(control))
   args <- list(object = model, data = stan_data, iter = iter, warmup = warmup,
-               chains = chains, control = control, init = 0)
+               chains = chains, control = control)
   do.call(rstan::sampling, utils::modifyList(args, list(...)))
 }

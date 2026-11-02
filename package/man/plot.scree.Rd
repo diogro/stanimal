@@ -7,11 +7,11 @@
 \method{plot}{scree}(x, reference = NULL, title = "Scree plot", ...)
 }
 \arguments{
-\item{x}{A `scree` object from \code{\link{scree_eigenvalues}}.}
+\item{x}{A \code{scree} object from \code{\link{scree_eigenvalues}}.}
 
 \item{reference}{Optional eigenvalue cutoffs, either the object returned by
-\code{\link{suggest_n_factors}} or its `reference` attribute. Components
-above the dashed line are the ones parallel analysis keeps.}
+\code{\link{suggest_n_factors}} or its \code{reference} attribute.
+Components above the dashed line are the ones parallel analysis keeps.}
 
 \item{title}{Plot title.}
 

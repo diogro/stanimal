@@ -10,46 +10,46 @@ suggest_n_factors(Y, X = NULL, nsim = 200, level = 0.95, max_factors = 20)
 \item{Y}{Numeric matrix of traits, individuals in rows.}
 
 \item{X}{Optional finite numeric fixed-effects matrix with the same rows as
-`Y`, as in \code{\link{lmm_animal}}. The default `NULL` uses an intercept
-only, which is the same as centering the traits.}
+\code{Y}, as in \code{\link{lmm_animal}}. The default \code{NULL} uses an
+intercept only, which is the same as centering the traits.}
 
 \item{nsim}{Number of simulated data sets, a whole number. More is slower
-and steadier; the default is enough to place the 95% point.}
+and steadier; the default is enough to place the 95\% point.}
 
 \item{level}{Quantile of the simulated eigenvalues to compare against, one
 number between 0 and 1. The default 0.95 keeps a component only when it
-clears 95% of what uncorrelated data of the same size produces.}
+clears 95\% of what uncorrelated data of the same size produces.}
 
 \item{max_factors}{Largest number to report, a whole number. It is capped at
 the number of traits minus one, because the factor models need at least one
 residual degree of freedom per trait.}
 }
 \value{
-A whole number between 1 and `ncol(Y) - 1`. The raw count is in
-  `attr(x, "retained")`, which is 0 when nothing stands above the noise, the
-  eigenvalue cutoffs are in `attr(x, "reference")` for
-  \code{\link{plot.scree}}, and `attr(x, "share")` is the fraction of the
-  variance taken by the retained components.
+A whole number between 1 and \code{ncol(Y) - 1}. The raw count is in
+  \code{attr(x, "retained")}, which is 0 when nothing stands above the noise,
+  the eigenvalue cutoffs are in \code{attr(x, "reference")} for
+  \code{\link{plot.scree}}, and \code{attr(x, "share")} is the fraction of
+  the variance taken by the retained components.
 }
 \description{
 Compares the eigenvalues of the residual trait correlation matrix with those
 of data that has no correlation at all, and returns how many components stand
-above that reference. It is the rule of thumb for setting `n_factors` when
-you intend to interpret the factors.
+above that reference. It is the rule of thumb for setting \code{n_factors}
+when you intend to interpret the factors.
 }
 \details{
 Parallel analysis (Horn 1965) asks what the eigenvalues would look
   like with no shared structure: it simulates independent normal traits with
   the same number of individuals, removes the same fixed effects, and records
-  the `level` quantile of each eigenvalue. A component is retained when its
-  observed eigenvalue is larger. Unlike "keep the eigenvalues above one" or
-  eyeballing the elbow, the cutoff then accounts for the sample size, the
+  the \code{level} quantile of each eigenvalue. A component is retained when
+  its observed eigenvalue is larger. Unlike "keep the eigenvalues above one"
+  or eyeballing the elbow, the cutoff then accounts for the sample size, the
   number of traits and the fixed effects.
 
-  The result is an **upper bound**, not a recommendation to use that many
+  The result is an \strong{upper bound}, not a recommendation to use that many
   factors. With a few hundred individuals and dozens of traits the noise floor
   is high enough that weak components clear it: on the mouse morphometric data
-  it keeps seven dimensions, of which the first two take 28% and 11% of the
+  it keeps seven dimensions, of which the first two take 28\% and 11\% of the
   variance while the seventh clears its cutoff by 0.003. Factors you intend to
   interpret are usually fewer: look at \code{\link{scree_eigenvalues}} and stop
   where the eigenvalues flatten out. The count also cannot tell a single strong
@@ -58,7 +58,7 @@ Parallel analysis (Horn 1965) asks what the eigenvalues would look
 
   The result is at least 1 because the factor models need at least one factor;
   when nothing clears the reference, that is a sign that a factor model is
-  fitting noise rather than structure, and `attr(x, "retained")` says so.
+  fitting noise rather than structure, and \code{attr(x, "retained")} says so.
 
   Fix the seed before calling when the answer has to be reproducible.
 }

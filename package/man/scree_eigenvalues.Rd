@@ -10,24 +10,24 @@ scree_eigenvalues(Y, X = NULL)
 \item{Y}{Numeric matrix of traits, individuals in rows.}
 
 \item{X}{Optional finite numeric fixed-effects matrix with the same rows as
-`Y`, as in \code{\link{lmm_animal}}. The default `NULL` uses an intercept
-only, which is the same as centering the traits.}
+\code{Y}, as in \code{\link{lmm_animal}}. The default \code{NULL} uses an
+intercept only, which is the same as centering the traits.}
 }
 \value{
-A data frame of class `scree` with one row per component and columns
-  `component`, `eigenvalue`, `share` and `cumulative`. `share` is the
-  eigenvalue divided by the number of traits and `cumulative` is its running
-  total.
+A data frame of class \code{scree} with one row per component and
+  columns \code{component}, \code{eigenvalue}, \code{share} and
+  \code{cumulative}. \code{share} is the eigenvalue divided by the number of
+  traits and \code{cumulative} is its running total.
 }
 \description{
-The eigenvalues behind a scree plot, for choosing `n_factors` in the sparse
-factor models. The traits are residualized on `X` first, so the eigenvalues
-describe the correlation the factor model actually fits.
+The eigenvalues behind a scree plot, for choosing \code{n_factors} in the
+sparse factor models. The traits are residualized on \code{X} first, so the
+eigenvalues describe the correlation the factor model actually fits.
 }
 \details{
-A factor contributes at most one eigenvalue per factor to this
-  decomposition, so the number of eigenvalues that stand out above the noise
-  floor is an upper bound on a useful `n_factors`. Use
+A factor contributes at most one eigenvalue to this decomposition,
+  so the number of eigenvalues that stand out above the noise floor is an
+  upper bound on a useful \code{n_factors}. Use
   \code{\link{suggest_n_factors}} to turn that into a number, and
   \code{\link{plot.scree}} to look at it.
 }

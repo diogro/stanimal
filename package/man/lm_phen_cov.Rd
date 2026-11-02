@@ -50,7 +50,7 @@ lm_phen_cov(
 
 \item{hs_global_scale, hs_slab_scale}{Scales of the regularized-horseshoe prior on the factor loadings. Both must be positive and are only used by the factor model.}
 
-\item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. The default 0.8 orders the columns so that the factor labels stay meaningful; with \code{column_decay = 1} the columns are exchangeable a priori and their labels can swap between chains. Only used by the factor model, and explicitly supplying it otherwise warns that it is ignored.}
+\item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. The default 0.8 orders the columns so that the factor labels stay meaningful; with \code{column_decay = 1} the columns are exchangeable a priori and their labels can swap between chains. Few factors need a stronger decay than many: with two columns of comparable size 0.8 is often too mild to separate them, while \code{0.5^(m - 1)} would shrink the fifth column of a many-factor model to a sixteenth of the first. Only used by the factor model, and explicitly supplying it otherwise warns that it is ignored.}
 
 \item{...}{additional parameters for stan sampling.}
 }

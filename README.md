@@ -141,6 +141,8 @@ That is what `examples/factor_phenotypic_covariance.R` works through. The scree 
 
 `column_decay` (default `0.8`) multiplies the prior standard deviation of column `m` by `column_decay^(m - 1)`, which is what stops the factor labels from swapping between chains. With `column_decay = 1` the columns are exchangeable a priori, and `factor_magnitude` can report large `Rhat` values on a perfectly healthy fit. Falling back to the default `n_factors` warns with the number it used, because that fallback only sees the number of traits.
 
+How strong the decay needs to be depends on how many columns have to be told apart. Few factors need *more* shrinkage than many: with two columns of comparable size, `0.8` is often too mild and their labels still swap, while a broader model wants the mild default, because `0.5^(m - 1)` shrinks the prior of the fifth column to a sixteenth of the first. So lower `column_decay` when a fit with two or three factors has `factor_magnitude` `Rhat` values well above one, and leave it at the default when there are many.
+
 ## Output
 
 With the default `cmd_stan = TRUE`, `lmm_animal()` returns a `CmdStanMCMC` object, so the usual cmdstanr, posterior and bayesplot tools work directly:

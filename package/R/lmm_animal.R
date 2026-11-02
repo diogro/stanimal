@@ -338,6 +338,11 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   }
   attr(fit, "genetic_structure") <- genetic_structure
   attr(fit, "residual_structure") <- residual_structure
+  # the parametrization only means something for a single trait, so record what
+  # the model actually used rather than what was passed
+  attr(fit, "parametrization") <- if (ncol(Y) == 1L) parametrization else "variance"
+  attr(fit, "lkj_prior") <- lkj_prior
+  attr(fit, "beta_prior") <- beta_prior
   if (factor_model) attr(fit, "n_factors") <- n_factors
   return(fit)
 }

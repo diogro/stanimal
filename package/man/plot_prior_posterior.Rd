@@ -8,7 +8,7 @@
 plot_prior_posterior(
   fit,
   trait_names = NULL,
-  lkj_prior = 2,
+  lkj_prior = NULL,
   n_prior = 4000,
   prior = NULL,
   ncol = 4
@@ -17,7 +17,7 @@ plot_prior_posterior(
 plot_forest(
   fit,
   trait_names = NULL,
-  lkj_prior = 2,
+  lkj_prior = NULL,
   n_prior = 4000,
   prior = NULL,
   prob = 0.95
@@ -30,8 +30,11 @@ traits, \code{corrG}.}
 
 \item{trait_names}{Optional trait names.}
 
-\item{lkj_prior, n_prior}{Passed to \code{\link{animal_prior_draws}}
-(\code{n_prior} is \code{n}).}
+\item{lkj_prior}{Optional LKJ shape for the prior draws. The default
+\code{NULL} uses the shape recorded by the fit, and 2 when the fit does not
+carry one.}
+
+\item{n_prior}{Passed to \code{\link{animal_prior_draws}} as \code{n}.}
 
 \item{prior}{Optional prior draws in the format returned by
 \code{animal_prior_draws}; computed if \code{NULL}.}
@@ -50,4 +53,11 @@ Posterior versus prior for heritabilities and genetic correlations
 }
 \details{
 Where prior and posterior overlap, the data add little information.
+
+  The prior is drawn from the model configuration recorded by
+  \code{\link{lmm_animal}}, so an \code{"h2"} fit is compared with its beta
+  prior on the heritability and an unstructured fit with the LKJ shape it was
+  given. A sparse factor fit records no matching closed form (its prior is on
+  the loadings, with the column decay on top), so that combination is an
+  error: pass \code{prior} with draws from the prior you used.
 }

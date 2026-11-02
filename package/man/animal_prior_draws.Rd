@@ -4,7 +4,13 @@
 \alias{animal_prior_draws}
 \title{Prior draws for heritabilities and genetic correlations}
 \usage{
-animal_prior_draws(n_traits, n = 4000, lkj_prior = 2, trait_names = NULL)
+animal_prior_draws(
+  n_traits,
+  n = 4000,
+  lkj_prior = 2,
+  trait_names = NULL,
+  beta_prior = NULL
+)
 }
 \arguments{
 \item{n_traits}{Number of traits, a whole number of at least 1.}
@@ -16,6 +22,11 @@ below 1 put mass on correlations near +/-1, and a shape of 0 or less is not
 a distribution.}
 
 \item{trait_names}{Optional trait names.}
+
+\item{beta_prior}{Optional shapes of the beta prior that the univariate
+\code{parametrization = "h2"} model puts on the heritability. When given,
+the draws come from that beta instead of the scaled half-normal ratio,
+because that is the prior the fit uses. Only valid for a single trait.}
 }
 \value{
 A long data frame with columns \code{type} (\code{"Heritability"} or
@@ -29,7 +40,8 @@ genetic correlations, which do not depend on the scale of the data.
 \details{
 Standard deviations are half-normal(0, 1) and correlation matrices
   are LKJ(\code{lkj_prior}), as in the Stan models. Univariate fits use the
-  default \code{parametrization = "variance"} prior.
+  default \code{parametrization = "variance"} prior unless \code{beta_prior}
+  is given, in which case that beta is the prior on the heritability.
 
   The residual correlation structure of the fit does not enter these draws:
   heritability divides the genetic variance by the phenotypic variance, which

@@ -55,6 +55,14 @@
 
 ## Bug fixes
 
+* `plot_prior_posterior()` and `plot_forest()` compare against the prior the fit
+  actually used instead of always drawing the unstructured one. `lmm_animal()`
+  now records `lkj_prior`, `beta_prior` and `parametrization` on the fit, so an
+  unstructured fit is compared with its own LKJ shape and a univariate
+  `parametrization = "h2"` fit with its beta prior on the heritability (which
+  `animal_prior_draws()` can now generate through `beta_prior`). A sparse factor
+  fit has no closed-form prior to reproduce, so that combination errors and asks
+  for an explicit `prior` rather than quietly plotting the wrong comparison.
 * The factor phenotypic model in `lm_phen_cov()` no longer pins the diagonal of
   `P` to the marginal variance of `Y`. Removing the fixed effects lowers the
   residual variance, so the model could only fit the likelihood by inflating

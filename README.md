@@ -373,7 +373,7 @@ Models fit with cmdstanr are compiled once and the executable is reused in later
 
 # Examples
 
-Complete runnable scripts are in [`examples/`](examples/): `univariate.R`, `multivariate.R`, `factor_model.R` (sparse factor `G`), `structure_comparison.R` (the five covariance structures), `ratones.R` (real mouse data), `phenotypic_covariance.R`, `factor_phenotypic_covariance.R` (the full 35-trait factor P model, on the log-trait scale), `gibbs.R` and `multivariate_power_simulation.R`. They compare the posterior with a simulated truth or with the data and write figures to `examples/figures/`; see [`examples/README.md`](examples/README.md) for what each one covers.
+Complete runnable scripts are in [`examples/`](examples/): `univariate.R`, `multivariate.R`, `factor_model.R` (sparse factor `G`), `structure_comparison.R` (the five covariance structures), `ratones.R` (real mouse data), `phenotypic_covariance.R`, `factor_phenotypic_covariance.R` (the full 35-trait factor P model, on the log-trait scale), `gibbs.R`, `multivariate_power_simulation.R`, and the cross-package comparisons `package_comparison.R` and `trait_comparison.R`. They compare the posterior with a simulated truth or with the data and write figures to `examples/figures/`; see [`examples/README.md`](examples/README.md) for what each one covers.
 
 ## A complete example
 

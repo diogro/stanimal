@@ -10,11 +10,16 @@
 #'   below 1 put mass on correlations near +/-1, and a shape of 0 or less is not
 #'   a distribution.
 #' @param trait_names Optional trait names.
+#' @param beta_prior Optional shapes of the beta prior that the univariate
+#'   \code{parametrization = "h2"} model puts on the heritability. When given,
+#'   the draws come from that beta instead of the scaled half-normal ratio,
+#'   because that is the prior the fit uses. Only valid for a single trait.
 #' @return A long data frame with columns \code{type} (\code{"Heritability"} or
 #'   \code{"Genetic correlation"}), \code{parameter} and \code{value}.
 #' @details Standard deviations are half-normal(0, 1) and correlation matrices
 #'   are LKJ(\code{lkj_prior}), as in the Stan models. Univariate fits use the
-#'   default \code{parametrization = "variance"} prior.
+#'   default \code{parametrization = "variance"} prior unless \code{beta_prior}
+#'   is given, in which case that beta is the prior on the heritability.
 #'
 #'   The residual correlation structure of the fit does not enter these draws:
 #'   heritability divides the genetic variance by the phenotypic variance, which
@@ -24,11 +29,20 @@
 #'   argument for it.
 #' @export
 animal_prior_draws <- function(n_traits, n = 4000, lkj_prior = 2,
-                               trait_names = NULL) {
+                               trait_names = NULL, beta_prior = NULL) {
   n_traits <- .check_count(n_traits, "n_traits")
   n <- .check_count(n, "n")
   lkj_prior <- .check_positive(lkj_prior, "lkj_prior")
   trait_names <- .trait_names(trait_names, n_traits)
+  if (!is.null(beta_prior)) {
+    if (n_traits != 1L)
+      stop("`beta_prior` is the prior of the univariate `parametrization = "
+           , "\"h2\"` model, which has a single trait.", call. = FALSE)
+    beta_prior <- .check_beta_prior(beta_prior)
+    h2 <- matrix(stats::rbeta(n, beta_prior[1L], beta_prior[2L]), n, 1L,
+                 dimnames = list(NULL, trait_names))
+    return(.long_draws(h2, NULL, "prior"))
+  }
   h2 <- matrix(NA_real_, n, n_traits, dimnames = list(NULL, trait_names))
   pairs <- .trait_pairs(trait_names)
   cors <- matrix(NA_real_, n, nrow(pairs), dimnames = list(NULL, pairs$parameter))
@@ -77,16 +91,25 @@ animal_parameter_draws <- function(fit, trait_names = NULL) {
 #' Posterior versus prior for heritabilities and genetic correlations
 #'
 #' @inheritParams animal_parameter_draws
-#' @param lkj_prior,n_prior Passed to \code{\link{animal_prior_draws}}
-#'   (\code{n_prior} is \code{n}).
+#' @param lkj_prior Optional LKJ shape for the prior draws. The default
+#'   \code{NULL} uses the shape recorded by the fit, and 2 when the fit does not
+#'   carry one.
+#' @param n_prior Passed to \code{\link{animal_prior_draws}} as \code{n}.
 #' @param prior Optional prior draws in the format returned by
 #'   \code{animal_prior_draws}; computed if \code{NULL}.
 #' @return A ggplot object. \code{plot_prior_posterior} shows overlaid densities
 #'   in one panel per parameter, and \code{plot_forest} shows means and
 #'   \code{prob} intervals of the posterior and the prior.
 #' @details Where prior and posterior overlap, the data add little information.
+#'
+#'   The prior is drawn from the model configuration recorded by
+#'   \code{\link{lmm_animal}}, so an \code{"h2"} fit is compared with its beta
+#'   prior on the heritability and an unstructured fit with the LKJ shape it was
+#'   given. A sparse factor fit records no matching closed form (its prior is on
+#'   the loadings, with the column decay on top), so that combination is an
+#'   error: pass \code{prior} with draws from the prior you used.
 #' @export
-plot_prior_posterior <- function(fit, trait_names = NULL, lkj_prior = 2,
+plot_prior_posterior <- function(fit, trait_names = NULL, lkj_prior = NULL,
                                  n_prior = 4000, prior = NULL, ncol = 4) {
   ncol <- .check_count(ncol, "ncol")
   d <- .prior_posterior(fit, trait_names, lkj_prior, n_prior, prior)
@@ -105,7 +128,7 @@ plot_prior_posterior <- function(fit, trait_names = NULL, lkj_prior = 2,
 #' @param prob Probability mass of the highest density interval, between 0 and 1.
 #' @param ncol Number of facet columns for \code{plot_prior_posterior}.
 #' @export
-plot_forest <- function(fit, trait_names = NULL, lkj_prior = 2,
+plot_forest <- function(fit, trait_names = NULL, lkj_prior = NULL,
                         n_prior = 4000, prior = NULL, prob = 0.95) {
   prob <- .check_prob(prob, "prob")
   d <- .prior_posterior(fit, trait_names, lkj_prior, n_prior, prior)
@@ -136,9 +159,18 @@ plot_forest <- function(fit, trait_names = NULL, lkj_prior = 2,
   n_prior <- .check_count(n_prior, "n_prior")
   post <- animal_parameter_draws(fit, trait_names)
   if (is.null(prior)) {
-    k <- length(unique(post$parameter[post$type == "Heritability"]))
-    prior <- animal_prior_draws(k, n_prior, lkj_prior,
-                                unique(post$parameter[post$type == "Heritability"]))
+    config <- .fit_prior_config(fit)
+    if (config$factor)
+      stop("`fit` uses a sparse factor model, whose prior on `G` is the ",
+           "regularized horseshoe on the loadings plus the column decay and has ",
+           "no closed form here, so the unstructured prior would be the wrong ",
+           "comparison. Pass `prior` with draws from the prior you actually ",
+           "used, in the format returned by `animal_prior_draws()`.",
+           call. = FALSE)
+    parameters <- unique(post$parameter[post$type == "Heritability"])
+    prior <- animal_prior_draws(length(parameters), n_prior,
+                                lkj_prior %||% config$lkj_prior %||% 2,
+                                parameters, beta_prior = config$h2_prior)
   }
   d <- rbind(post, prior)
   d$source <- factor(ifelse(d$source == "posterior", "Posterior", "Prior"),
@@ -146,6 +178,19 @@ plot_forest <- function(fit, trait_names = NULL, lkj_prior = 2,
   d$type <- factor(d$type, levels = c("Heritability", "Genetic correlation"))
   d$parameter <- factor(d$parameter, levels = unique(post$parameter))
   d[order(d$type), ]
+}
+
+# The model configuration that lmm_animal() records on the fit, so the prior it
+# used can be reproduced instead of assuming the unstructured one. A bare draws
+# object carries nothing and falls back to those defaults.
+.fit_prior_config <- function(fit) {
+  genetic <- attr(fit, "genetic_structure") %||% "unstructured"
+  residual <- attr(fit, "residual_structure") %||% "unstructured"
+  parametrization <- attr(fit, "parametrization") %||% "variance"
+  list(factor = identical(genetic, "factor") ||
+         identical(residual, "shared_factor"),
+       lkj_prior = attr(fit, "lkj_prior"),
+       h2_prior = if (identical(parametrization, "h2")) attr(fit, "beta_prior"))
 }
 
 .trait_names <- function(trait_names, k) {

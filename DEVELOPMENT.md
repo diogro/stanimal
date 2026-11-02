@@ -30,6 +30,12 @@ rather than changing it, read `AGENTS.md` instead.
 - `examples/*.R` are runnable scripts that write figures to `examples/figures/`
   (gitignored). `examples/README.md` indexes them.
 
+`plan.md` is the working roadmap: incomplete trait records, breeding values and
+LOO first, then evolutionary analysis of `G`, then the locus-effect models. It
+lives on the **`roadmap` branch** rather than on `master`, so someone browsing the
+repository is not presented with an internal plan. Read it with
+`git checkout roadmap`, or `git show roadmap:plan.md` without switching.
+
 ## Commands
 
 ```sh

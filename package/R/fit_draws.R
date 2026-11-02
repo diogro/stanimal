@@ -8,11 +8,16 @@
 # shape, without the draw dimension.
 
 .model_components <- c("G", "E", "P", "corrG", "corrE", "corrP",
-                       "h2", "sigma_G", "sigma_E", "sigma_P", "beta")
+                       "h2", "sigma_G", "sigma_E", "sigma_P", "beta",
+                       "loadings", "uniqueness", "communality", "s_G",
+                       "genetic_uniqueness", "residual_uniqueness",
+                       "factor_heritability", "factor_magnitude")
 
 .matrix_components <- c("G", "E", "P", "corrG", "corrE", "corrP")
 
-.vector_components <- c("h2", "sigma_G", "sigma_E", "sigma_P")
+.vector_components <- c("h2", "sigma_G", "sigma_E", "sigma_P",
+                        "uniqueness", "communality", "s_G",
+                        "genetic_uniqueness", "residual_uniqueness")
 
 #' Posterior draws of a fit, shaped by trait
 #'
@@ -35,8 +40,12 @@
 #' @return A list of class \code{fit_draws}, with one element per quantity
 #'   the fit holds: \code{G}, \code{E}, \code{P}, \code{corrG}, \code{corrE},
 #'   \code{corrP} as trait by trait by draw arrays, \code{h2}, \code{sigma_G},
-#'   \code{sigma_E} and \code{sigma_P} as trait by draw matrices, and
-#'   \code{beta} as a trait by term by draw array. Every dimension
+#'   \code{sigma_E}, \code{sigma_P}, \code{uniqueness}, \code{communality},
+#'   \code{genetic_uniqueness}, \code{residual_uniqueness} and \code{s_G} as
+#'   trait by draw matrices, \code{loadings} as a trait by factor by draw array
+#'   for factor fits, \code{factor_heritability} and \code{factor_magnitude}
+#'   as factor by draw matrices, and \code{beta} as a trait by term by draw
+#'   array. Every dimension
 #'   is named, and draws are last, the same layout as
 #'   \code{\link{lmm_animal_gibbs}} and \code{\link{back_transform}}.
 #'   Quantities the fit does not report are derived when they follow from the
@@ -85,6 +94,14 @@ fit_draws <- function(fit, traits = NULL, terms = NULL) {
     sigma_G = .vector_draws(m, "sigma_G", k, traits),
     sigma_E = .vector_draws(m, "sigma_E", k, traits),
     sigma_P = .vector_draws(m, "sigma_P", k, traits),
+    loadings = .loading_draws(m, k, traits),
+    uniqueness = .vector_draws(m, "uniqueness", k, traits),
+    communality = .vector_draws(m, "communality", k, traits),
+    s_G = .vector_draws(m, "s_G", k, traits),
+    genetic_uniqueness = .vector_draws(m, "genetic_uniqueness", k, traits),
+    residual_uniqueness = .vector_draws(m, "residual_uniqueness", k, traits),
+    factor_heritability = .indexed_vector_draws(m, "factor_heritability"),
+    factor_magnitude = .indexed_vector_draws(m, "factor_magnitude"),
     beta = .beta_draws(m, k, traits, terms, attr(fit, "x_names"))
   )
   .complete_components(components, traits = traits, terms = terms)
@@ -113,7 +130,10 @@ print.fit_draws <- function(x, ...) {
 #' @param x A fit, or an object from \code{\link{fit_draws}}.
 #' @param parameter Name of the quantity to summarise: \code{"G"}, \code{"E"},
 #'   \code{"P"}, \code{"corrG"}, \code{"corrE"}, \code{"corrP"}, \code{"h2"},
-#'   \code{"sigma_G"}, \code{"sigma_E"}, \code{"sigma_P"} or \code{"beta"}.
+#'   \code{"sigma_G"}, \code{"sigma_E"}, \code{"sigma_P"}, \code{"loadings"},
+#'   \code{"uniqueness"}, \code{"communality"}, \code{"genetic_uniqueness"},
+#'   \code{"residual_uniqueness"}, \code{"s_G"}, \code{"factor_heritability"},
+#'   \code{"factor_magnitude"} or \code{"beta"}.
 #'   The default summarises every quantity the fit holds.
 #' @param probs For \code{draws_quantile}, one or more probabilities between 0
 #'   and 1; the default is the 95\% equal-tailed interval.
@@ -297,6 +317,37 @@ draws_quantile <- function(x, parameter = NULL, probs = c(0.025, 0.975),
          dimnames = list(traits, NULL))
 }
 
+# Factor loadings are trait by factor by draw, not trait by trait.
+.loading_draws <- function(m, k, traits) {
+  vars <- grep("^loadings\\[", colnames(m), value = TRUE)
+  if (!length(vars)) return(NULL)
+  pieces <- strsplit(sub("^loadings\\[", "", sub("\\]$", "", vars)), ",",
+                     fixed = TRUE)
+  row <- as.integer(vapply(pieces, `[`, character(1), 1L))
+  col <- as.integer(vapply(pieces, `[`, character(1), 2L))
+  if (anyNA(row) || anyNA(col))
+    stop("`loadings` draw names must use integer indices.", call. = FALSE)
+  n_factors <- max(col)
+  out <- array(NA_real_, c(k, n_factors, nrow(m)),
+               dimnames = list(traits, paste0("factor", seq_len(n_factors)),
+                               NULL))
+  for (v in seq_along(vars)) out[row[v], col[v], ] <- m[, vars[v]]
+  out
+}
+
+# Factor heritabilities and magnitudes are indexed by factor, not by trait.
+.indexed_vector_draws <- function(m, name) {
+  vars <- grep(paste0("^", name, "\\["), colnames(m), value = TRUE)
+  if (!length(vars)) return(NULL)
+  index <- suppressWarnings(as.integer(sub(".*\\[([0-9]+)\\]$", "\\1", vars)))
+  if (anyNA(index))
+    stop("`", name, "` draw names must use integer indices.", call. = FALSE)
+  out <- matrix(NA_real_, max(index), nrow(m),
+                dimnames = list(paste0("factor", seq_len(max(index))), NULL))
+  for (v in seq_along(vars)) out[index[v], ] <- m[, vars[v]]
+  out
+}
+
 # Beta draws as trait by term by draw. The engines report the fixed effects
 # either by index (`beta[2,1]`, `beta[1]`) or already named (`beta[2,age]`,
 # `beta[age]`), so both spellings are parsed, and the columns of X name the
@@ -374,6 +425,13 @@ draws_quantile <- function(x, parameter = NULL, probs = c(0.025, 0.975),
     dimnames(components[[name]]) <- list(traits, traits, NULL)
   for (name in intersect(names(components), .vector_components))
     dimnames(components[[name]]) <- list(traits, NULL)
+  if (!is.null(components$loadings))
+    dimnames(components$loadings)[[1L]] <- traits
+  for (name in c("factor_heritability", "factor_magnitude")) {
+    if (!is.null(components[[name]]))
+      rownames(components[[name]]) <- paste0("factor",
+                                             seq_len(nrow(components[[name]])))
+  }
   if (!is.null(components$beta)) {
     if (!is.null(terms)) {
       if (dim(components$beta)[2L] != length(terms))

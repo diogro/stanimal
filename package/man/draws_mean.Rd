@@ -14,7 +14,10 @@ draws_quantile(x, parameter = NULL, probs = c(0.025, 0.975), traits = NULL)
 
 \item{parameter}{Name of the quantity to summarise: \code{"G"}, \code{"E"},
 \code{"P"}, \code{"corrG"}, \code{"corrE"}, \code{"corrP"}, \code{"h2"},
-\code{"sigma_G"}, \code{"sigma_E"}, \code{"sigma_P"} or \code{"beta"}.
+\code{"sigma_G"}, \code{"sigma_E"}, \code{"sigma_P"}, \code{"loadings"},
+\code{"uniqueness"}, \code{"communality"}, \code{"genetic_uniqueness"},
+\code{"residual_uniqueness"}, \code{"s_G"}, \code{"factor_heritability"},
+\code{"factor_magnitude"} or \code{"beta"}.
 The default summarises every quantity the fit holds.}
 
 \item{traits}{Optional trait names, one per trait. The default uses the

@@ -135,6 +135,16 @@ test_that("the sampler arguments are checked the same way everywhere", {
   expect_error(lmm_animal(Y, X, A, chains = 2, cores = 4), "`cores` must not exceed")
   expect_error(lmm_animal(Y, X, A, parametrization = "h2", beta_prior = 0),
                "`beta_prior`")
+  expect_error(lmm_animal(Y, X, A, beta_prior = 0), "`beta_prior`")
+})
+
+test_that("ignored priors warn only when explicitly supplied", {
+  expect_warning(stanimal:::.warn_ignored(TRUE, FALSE, "lkj_prior"),
+                 "`lkj_prior` is ignored")
+  expect_silent(stanimal:::.warn_ignored(FALSE, FALSE, "lkj_prior"))
+  expect_silent(stanimal:::.warn_ignored(TRUE, TRUE, "lkj_prior"))
+  expect_equal(stanimal:::.check_beta_prior(c(2, 5)), c(2, 5))
+  expect_error(stanimal:::.check_beta_prior(c(1, -1)), "`beta_prior`")
 })
 
 test_that("the Gibbs sampler shares the response and design checks", {

@@ -182,18 +182,66 @@ generated quantities {
   vector[K] sigma_G = y_sd .* s_G;
   vector[K] sigma_E = y_sd .* s_E;
   vector[K] h2;
-  {
-    matrix[K, K] G_std = multiply_lower_tri_self_transpose(diag_pre_multiply(s_G, L_Omega_G));
-    matrix[K, K] E_std;
-    if (unstructured_E)
-      E_std = multiply_lower_tri_self_transpose(diag_pre_multiply(s_E, L_Omega_E));
-    else
-      E_std = diag_matrix(square(s_E));
-    G = quad_form_diag(G_std, y_sd);
-    E = quad_form_diag(E_std, y_sd);
-  }
+  vector[N] log_lik;
+  matrix[K, K] G_std = multiply_lower_tri_self_transpose(diag_pre_multiply(s_G, L_Omega_G));
+  matrix[K, K] E_std;
+  if (unstructured_E)
+    E_std = multiply_lower_tri_self_transpose(diag_pre_multiply(s_E, L_Omega_E));
+  else
+    E_std = diag_matrix(square(s_E));
+  G = quad_form_diag(G_std, y_sd);
+  E = quad_form_diag(E_std, y_sd);
   P = G + E;
   corrG = multiply_lower_tri_self_transpose(L_Omega_G);
   for (k in 1:K)
     h2[k] = G[k, k] / P[k, k];
+
+  {
+    matrix[K, K] L_G = diag_pre_multiply(s_G, L_Omega_G);
+    matrix[K, K] L_E;
+    if (unstructured_E)
+      L_E = diag_pre_multiply(s_E, L_Omega_E);
+    else
+      L_E = diag_matrix(s_E);
+    vector[K] log_diag_E = log(diagonal(L_E));
+    for (k in 1:K)
+      L_E[k, k] = fmax(L_E[k, k], 1e-12);
+    matrix[K, K] C = mdivide_left_tri_low(L_E, L_G);
+    matrix[K, K] Mmat = C * C';
+    Mmat = (Mmat + Mmat') / 2;
+    for (i in 1:K)
+      for (j in 1:K)
+        Mmat[i, j] = fmin(fmax(Mmat[i, j], -1e150), 1e150);
+    vector[K] d = eigenvalues_sym(Mmat);
+    for (k in 1:K)
+      d[k] = fmax(d[k], 0);
+    real gap = positive_infinity();
+    for (k in 2:K)
+      gap = fmin(gap, d[k] - d[k - 1]);
+
+    if (gap > 1e-4 * fmax(d[K], 1.0)) {
+      matrix[K, K] U = eigenvectors_sym(Mmat);
+      matrix[N, K] resid = Ys - Xs * beta_scaled';
+      matrix[K, N] W = mdivide_left_tri_low(L_E, resid');
+      matrix[N, K] Z = W' * U;
+      for (n in 1:N) {
+        real quad = 0;
+        real log_denom = 0;
+        for (k in 1:K) {
+          real denom = 1 + lambda[n] * d[k];
+          quad += square(Z[n, k]) / denom;
+          log_denom += log(denom);
+        }
+        log_lik[n] = -0.5 * (K * log(2 * pi())
+                             + 2 * sum(log_diag_E)
+                             + log_denom + quad);
+      }
+    } else {
+      matrix[N, K] mu = Xs * beta_scaled';
+      for (n in 1:N)
+        log_lik[n] = multi_normal_cholesky_lpdf(
+          Ys[n] | mu[n],
+          cholesky_decompose(lambda[n] * G_std + E_std));
+    }
+  }
 }

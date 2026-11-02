@@ -19,7 +19,12 @@ lmm_animal(
   control = list(adapt_delta = 0.99),
   cmd_stan = TRUE,
   blend_A = FALSE,
-  residual_structure = c("unstructured", "diagonal"),
+  residual_structure = c("unstructured", "diagonal", "shared_factor"),
+  genetic_structure = c("unstructured", "factor"),
+  n_factors = NULL,
+  hs_global_scale = 1,
+  hs_slab_scale = 2,
+  column_decay = 1,
   ...
 )
 }
@@ -30,9 +35,9 @@ lmm_animal(
 
 \item{A}{Finite symmetric positive-definite relationship matrix matching the rows of Y. A matrix that is only positive semidefinite (duplicated individuals, for example) is rejected; set \code{blend_A = TRUE} to regularize it. When \code{A} and \code{Y} both have row names, they are used to put \code{A} in the order of \code{Y}; names that disagree are an error. Without names the rows are matched by position.}
 
-\item{lkj_prior}{Shape parameter of the LKJ prior on the correlation matrices of the multivariate model. \code{1} is uniform over correlation matrices, values above \code{1} shrink correlations toward zero, and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits: at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of genetic correlations, a well-known problem in quantitative genetics. A finite number above 0.}
+\item{lkj_prior}{Shape parameter of the LKJ prior on the correlation matrices of the multivariate model. \code{1} is uniform over correlation matrices, values above \code{1} shrink correlations toward zero, and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits: at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of genetic correlations, a well-known problem in quantitative genetics. A finite number above 0. It is used only by multivariate models with \code{residual_structure = "unstructured"} and not \code{shared_factor}; explicitly supplying it in other configurations warns that it is ignored.}
 
-\item{beta_prior}{Parameters of the beta prior on h2, used only by the univariate model with \code{parametrization = "h2"}. The default \code{c(1, 1)} is flat on h2.}
+\item{beta_prior}{Parameters of the beta prior on h2. Used by the univariate model with \code{parametrization = "h2"} and by the shared-factor model for the factor heritabilities. The default \code{c(1, 1)} is flat on h2 and on each factor heritability. It is validated for every model; explicitly supplying it where it is not used warns that it is ignored.}
 
 \item{parametrization}{Univariate models only. \code{"variance"} (default) estimates the genetic and residual standard deviations with half-normal priors and derives h2. \code{"h2"} estimates a total standard deviation and h2 with a beta prior (\code{beta_prior}). If the variance version shows low E-BFMI, a warning suggests switching to \code{"h2"}. Ignored for multivariate fits.}
 
@@ -52,7 +57,15 @@ lmm_animal(
 
 \item{blend_A}{If TRUE, replace A with 0.99 * A + 0.01 * I before fitting, making singular A positive definite.}
 
-\item{residual_structure}{Residual covariance for multivariate fits: "unstructured" (default, full covariance between traits) or "diagonal". With a diagonal residual, environmental covariances between traits are absorbed into the genetic covariance and inflate heritability, so "unstructured" is recommended when estimating G.}
+\item{residual_structure}{Residual covariance for multivariate fits: "unstructured" (default, full covariance between traits), "diagonal", or "shared_factor". With a diagonal residual, environmental covariances between traits are absorbed into the genetic covariance and inflate heritability, so "unstructured" is recommended when estimating G without a factor model. "shared_factor" requires \code{genetic_structure = "factor"} and fits the shared-factor model \eqn{G = \Lambda \mathrm{diag}(h^2_\text{factor}) \Lambda^T + \Psi_G}, \eqn{E = \Lambda \mathrm{diag}(1 - h^2_\text{factor}) \Lambda^T + \Psi_E}, so the same latent factors explain genetic and residual covariance and each factor has a heritability.}
+
+\item{genetic_structure}{Genetic covariance for multivariate fits: "unstructured" (default, direct scales and LKJ correlation) or "factor", which uses the sparse factor model \eqn{G = \mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)} on the correlation scale. The factor model gives loadings regularized-horseshoe priors for automatic shrinkage; loadings are not exactly zero. The ordinary factor model reports \code{loadings}, \code{factor_magnitude}, \code{uniqueness}, \code{communality} and \code{s_G}. With \code{residual_structure = "shared_factor"} the same loadings also structure E, and the fit reports \code{loadings}, \code{factor_magnitude}, \code{factor_heritability}, \code{genetic_uniqueness}, \code{residual_uniqueness}, \code{uniqueness} and \code{communality}. It is available only for multivariate fits and is not compatible with \code{model_file}.}
+
+\item{n_factors}{Number of shared factors when \code{genetic_structure = "factor"} (and \code{residual_structure = "shared_factor"} for the shared model), a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model uses a sublinear default, \code{min(K - 1, max(2, floor(sqrt(K))), 20)}, and reports the value with a message. Ignored otherwise.}
+
+\item{hs_global_scale, hs_slab_scale}{Scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale. Smaller \code{hs_global_scale} gives stronger shrinkage and fewer effective loadings; \code{hs_slab_scale} bounds the largest loading in the slab. Both must be positive and are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns that they are ignored. See Piironen and Vehtari (2017) on choosing the global scale from the expected number of nonzero loadings.}
+
+\item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 1 applies no decay. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. A non-default value outside \code{genetic_structure = "factor"} errors, and explicitly supplying the default in that case warns that it is ignored.}
 
 \item{...}{additional parameters for stan sampling}
 }
@@ -63,7 +76,7 @@ With \code{cmd_stan = TRUE}, a \code{CmdStanMCMC} object from cmdstanr: use \cod
 Fits a univariate or multivariate linear mixed animal model using a known relatedness matrix
 }
 \details{
-The models estimate the additive genetic and residual standard deviations (\code{sigma_G}, \code{sigma_E}) directly, with half-normal priors on the standardized response scale, and report \code{h2} as a derived quantity; there is no prior on h2 itself. The multivariate model estimates the additive genetic covariance matrix \code{G} and the residual covariance \code{E} directly, each as scales times an LKJ-distributed correlation matrix (\code{lkj_prior}), with half-normal priors on the scales of the standardized responses. Breeding values are marginalized using the eigendecomposition of \code{A}, so the likelihood needs no per-individual random effects; only the eigenvalues of \code{A} are used, which is why a singular \code{A} can be fitted once it is regularized with \code{blend_A = TRUE}. Returned quantities (original response scale) are \code{G}, \code{E}, \code{P = G + E}, \code{corrG}, \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}.
+The models estimate the additive genetic and residual standard deviations (\code{sigma_G}, \code{sigma_E}) directly, with half-normal priors on the standardized response scale, and report \code{h2} as a derived quantity; there is no prior on h2 itself. The multivariate model estimates the additive genetic covariance matrix \code{G} and the residual covariance \code{E} directly, each as scales times an LKJ-distributed correlation matrix (\code{lkj_prior}), with half-normal priors on the scales of the standardized responses. With \code{genetic_structure = "factor"}, \code{G} is instead \eqn{\mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)}, where the loadings \eqn{\Lambda} have regularized-horseshoe priors and \eqn{\Psi} is diagonal on the correlation scale; the default global shrinkage is \code{hs_global_scale = 1}. With \code{residual_structure = "shared_factor"}, the same loadings enter both covariances: \eqn{G = \Lambda\mathrm{diag}(h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_G)} and \eqn{E = \Lambda\mathrm{diag}(1 - h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_E)}, with \code{beta(1, 1)} priors on the factor heritabilities. The optional \code{column_decay} multiplies the prior standard deviation of factor column \eqn{m} by \code{column_decay^(m - 1)}, which favours factors in decreasing order without adding a learned decay parameter. Breeding values are marginalized using the eigendecomposition of \code{A}, so the likelihood needs no per-individual random effects; only the eigenvalues of \code{A} are used, which is why a singular \code{A} can be fitted once it is regularized with \code{blend_A = TRUE}. Returned quantities (original response scale) are \code{G}, \code{E}, \code{P = G + E}, \code{corrG}, \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}.
 
 The per-individual likelihoods are whitened by the residual Cholesky factor and rotated into a single eigendecomposition of \code{E^{-1/2} G E^{-1/2}}, so each evaluation costs \code{O(N K^2 + K^3)} rather than \code{O(N K^3)}. This lets the multivariate model scale to dozens of traits without a Cholesky factorization per individual. When the eigenvalues of that matrix are nearly coincident (for example at initialization, or when \code{G} is roughly proportional to \code{E}) the model automatically falls back to a per-individual Cholesky evaluation, which has a well-behaved gradient.
 

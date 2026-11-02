@@ -84,6 +84,44 @@ The multivariate model estimates `G` and the residual covariance `E` directly. E
 - Fitting many traits is still computationally heavy even though the likelihood is cheap: an unstructured `G` at `K = 40` has roughly 1,700 parameters, and NUTS needs many leapfrog steps, so one fit can take an hour or more. Fewer `iter`, a larger `lkj_prior`, or `residual_structure = "diagonal"` make fits faster.
 - The side that does not scale is the number of individuals. `A` is dense, so the models receive all $N \times N$ of it and each chain eigendecomposes it before sampling: $O(N^3)$ time and $O(N^2)$ memory per chain, about two seconds at 1,000 individuals, half a minute at 2,000 and a minute at 4,000. That is a one-off cost, and afterwards an evaluation is only linear in $N$: with many traits, sampling dominates and the decomposition is a small fraction of the fit (at 4,000 individuals and `K = 3`, about a minute out of ten), while with few traits and short runs it can be most of it (at 4,000 individuals univariate, about 70% of 500 iterations). Either way the package targets many traits on hundreds to a few thousand individuals; for cohorts in the tens of thousands, where the dense relationship matrix is the bottleneck, an engine that works with the sparse inverse of `A` (such as [ASReml](https://asreml.locustware.com/)) is the better tool.
 
+### Sparse factor models for G and E
+
+When the number of traits is large, an unstructured `G` and `E` need $O(K^2)$ parameters and become expensive to estimate. Two factor-structured alternatives are available.
+
+**Factor `G`.** `genetic_structure = "factor"` models the genetic covariance as
+
+$$
+G = \operatorname{diag}(s_G)(\Lambda\Lambda^\top + \Psi)\operatorname{diag}(s_G),
+$$
+
+with sparse loadings $\Lambda$ on the correlation scale and diagonal uniqueness $\Psi$. The loadings have regularized-horseshoe priors, and `column_decay` can favour factors in decreasing order. `n_factors` sets the number of factors; if omitted, a sublinear default is used.
+
+```r
+fit <- lmm_animal(Y, X, A,
+                  genetic_structure = "factor", n_factors = 3)
+fit$summary(c("loadings", "factor_magnitude"))
+```
+
+**Shared factors for `G` and `E`.** `residual_structure = "shared_factor"` uses the same latent factors for genetic and residual covariance:
+
+$$
+G = \Lambda\operatorname{diag}(h^2_{\text{factor}})\Lambda^\top + \operatorname{diag}(\Psi_G),
+\qquad
+E = \Lambda\operatorname{diag}(1-h^2_{\text{factor}})\Lambda^\top + \operatorname{diag}(\Psi_E),
+$$
+
+so each factor has a heritability. This follows the sparse factor model of [Runcie and Mukherjee (2013)](https://doi.org/10.1534/genetics.113.151217) (“Bayesian Sparse Factor Analysis of Genetic Covariance Matrices”, *Genetics*; [arXiv:1211.3706](https://arxiv.org/abs/1211.3706)). It requires `genetic_structure = "factor"`:
+
+```r
+fit <- lmm_animal(Y, X, A,
+                  genetic_structure = "factor",
+                  residual_structure = "shared_factor",
+                  n_factors = 3)
+fit$summary(c("factor_heritability", "G", "E"))
+```
+
+Factor fits report `loadings`, `factor_magnitude`, `factor_heritability`, `uniqueness` and `communality`. Individual loadings are only identified up to rotation and sign, so interpret `G`, the communalities and the factor magnitudes rather than the posterior means of single loadings. The factor prior reduces the number of covariance parameters, but the current Stan models still use a $K \times K$ eigendecomposition, so the factor structures help parameter count and parsimony more than the linear-algebra cost. `examples/factor_model.R` and `examples/structure_comparison.R` show both alternatives.
+
 ## Output
 
 With the default `cmd_stan = TRUE`, `lmm_animal()` returns a `CmdStanMCMC` object, so the usual cmdstanr, posterior and bayesplot tools work directly:
@@ -267,7 +305,7 @@ Models fit with cmdstanr are compiled once and the executable is reused in later
 
 # Examples
 
-Complete runnable scripts are in [`examples/`](examples/): `univariate.R`, `multivariate.R`, `ratones.R` (real mouse data), `phenotypic_covariance.R`, `gibbs.R` and `multivariate_power_simulation.R`. They compare the posterior with a simulated truth or with the data and write figures to `examples/figures/`; see [`examples/README.md`](examples/README.md) for what each one covers.
+Complete runnable scripts are in [`examples/`](examples/): `univariate.R`, `multivariate.R`, `factor_model.R` (sparse factor `G`), `structure_comparison.R` (the five covariance structures), `ratones.R` (real mouse data), `phenotypic_covariance.R`, `gibbs.R` and `multivariate_power_simulation.R`. They compare the posterior with a simulated truth or with the data and write figures to `examples/figures/`; see [`examples/README.md`](examples/README.md) for what each one covers.
 
 ## A complete example
 

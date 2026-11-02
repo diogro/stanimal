@@ -1,3 +1,43 @@
+# stanimal 0.6.0
+
+## New features
+
+* `lmm_animal()` gains `genetic_structure = "factor"`, which models the genetic
+  covariance as a sparse factor structure on the correlation scale,
+  `G = diag(s_G) (Lambda Lambda' + Psi) diag(s_G)`, with regularized-horseshoe
+  priors on the loadings (Piironen and Vehtari 2017). `n_factors` sets the
+  number of factors; if it is omitted, the factor model starts from the
+  sublinear default `min(K - 1, max(2, floor(sqrt(K))), 20)` and reports the
+  value. `hs_global_scale` and `hs_slab_scale` control the shrinkage, and
+  `column_decay` optionally multiplies the prior standard deviation of factor
+  column `m` by `column_decay^(m - 1)` to favour decreasing factor magnitudes.
+  The unstructured model remains the default. Factor fits report
+  `loadings`, `factor_magnitude`, `uniqueness`, `communality` and `s_G` in
+  addition to `G`, `E`, `P`, `h2` and the other summaries.
+* `lmm_animal()` gains `residual_structure = "shared_factor"` for the
+  shared-factor model
+  `G = Lambda diag(h2_factor) Lambda' + diag(psi_G)` and
+  `E = Lambda diag(1 - h2_factor) Lambda' + diag(psi_E)`.
+  The same latent factors structure both covariances, and the factor
+  heritabilities identify how much of each factor is genetic; their beta prior
+  is controlled by the existing `beta_prior` argument. It requires
+  `genetic_structure = "factor"` and reports `loadings`, `factor_magnitude`,
+  `factor_heritability`, `genetic_uniqueness`, `residual_uniqueness`,
+  `uniqueness` and `communality`.
+* The multivariate models now report pointwise `log_lik`, enabling LOO, WAIC
+  and other predictive comparisons with the fits.
+* `fit_draws()` handles the factor outputs: factor fits return `loadings` as a
+  trait by factor by draw array, `uniqueness` and `communality` as trait by
+  draw matrices, and `factor_heritability` and `factor_magnitude` as factor by
+  draw matrices.
+* Prior arguments are validated consistently even when the selected model does
+  not use them, and explicitly supplying an unused prior now warns instead of
+  being silently ignored.
+* `examples/factor_model.R` demonstrates the sparse factor model on a
+  twelve-trait modular hierarchy, and `examples/structure_comparison.R`
+  compares the unstructured, diagonal, factor and shared-factor covariance
+  structures.
+
 # stanimal 0.5.1
 
 ## Name change

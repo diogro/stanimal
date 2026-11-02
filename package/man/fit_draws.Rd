@@ -24,8 +24,12 @@ draws, in their order in the fit. The default uses the column names of
 A list of class \code{fit_draws}, with one element per quantity
   the fit holds: \code{G}, \code{E}, \code{P}, \code{corrG}, \code{corrE},
   \code{corrP} as trait by trait by draw arrays, \code{h2}, \code{sigma_G},
-  \code{sigma_E} and \code{sigma_P} as trait by draw matrices, and
-  \code{beta} as a trait by term by draw array. Every dimension
+  \code{sigma_E}, \code{sigma_P}, \code{uniqueness}, \code{communality},
+  \code{genetic_uniqueness}, \code{residual_uniqueness} and \code{s_G} as
+  trait by draw matrices, \code{loadings} as a trait by factor by draw array
+  for factor fits, \code{factor_heritability} and \code{factor_magnitude}
+  as factor by draw matrices, and \code{beta} as a trait by term by draw
+  array. Every dimension
   is named, and draws are last, the same layout as
   \code{\link{lmm_animal_gibbs}} and \code{\link{back_transform}}.
   Quantities the fit does not report are derived when they follow from the

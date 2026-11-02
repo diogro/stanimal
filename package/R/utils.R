@@ -37,6 +37,33 @@
 
 .check_count <- function(x, arg) .check_whole(x, arg, 1)
 
+# Initial number of factors when the user asks for a factor model but leaves
+# `n_factors` NULL. A sublinear default avoids the quadratic loadings of
+# `n_traits / 2` while still allowing more factors as the trait count grows.
+# The cap keeps the first fit practical; LOO or factor-magnitude checks should
+# refine this value.
+.default_n_factors <- function(n_traits) {
+  as.integer(min(n_traits - 1L, max(2L, floor(sqrt(n_traits))), 20L))
+}
+
+# Shapes of a beta prior: two finite positive numbers.
+.check_beta_prior <- function(x, arg = "beta_prior") {
+  if (!is.numeric(x) || length(x) != 2L || any(!is.finite(x)) || any(x <= 0))
+    stop("`", arg, "` must be two positive numbers, the shapes of a beta prior.",
+         call. = FALSE)
+  as.numeric(x)
+}
+
+# Warn when a caller explicitly supplies an argument that the selected model
+# does not use. Defaults are not warnings, because the caller did not choose
+# them; the warning is only for a request that would otherwise be silent.
+.warn_ignored <- function(supplied, used, arg) {
+  if (supplied && !used)
+    warning("`", arg, "` is ignored by this model configuration.",
+            call. = FALSE)
+  invisible(NULL)
+}
+
 # A single probability, strictly inside (0, 1).
 .check_prob <- function(x, arg) .check_in_range(x, arg, 0, 1, TRUE, TRUE)
 

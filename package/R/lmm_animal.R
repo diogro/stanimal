@@ -31,8 +31,8 @@
 #' @param Y response variable, univariate or multivariate. Every trait must vary: constant traits cannot be standardized and are an error.
 #' @param X Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.
 #' @param A Finite symmetric positive-definite relationship matrix matching the rows of Y. A matrix that is only positive semidefinite (duplicated individuals, for example) is rejected; set \code{blend_A = TRUE} to regularize it. When \code{A} and \code{Y} both have row names, they are used to put \code{A} in the order of \code{Y}; names that disagree are an error. Without names the rows are matched by position.
-#' @param lkj_prior Shape parameter of the LKJ prior on the correlation matrices of the multivariate model. \code{1} is uniform over correlation matrices, values above \code{1} shrink correlations toward zero, and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits: at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of genetic correlations, a well-known problem in quantitative genetics. A finite number above 0.
-#' @param beta_prior Parameters of the beta prior on h2, used only by the univariate model with \code{parametrization = "h2"}. The default \code{c(1, 1)} is flat on h2.
+#' @param lkj_prior Shape parameter of the LKJ prior on the correlation matrices of the multivariate model. \code{1} is uniform over correlation matrices, values above \code{1} shrink correlations toward zero, and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits: at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of genetic correlations, a well-known problem in quantitative genetics. A finite number above 0. It is used only by multivariate models with \code{residual_structure = "unstructured"} and not \code{shared_factor}; explicitly supplying it in other configurations warns that it is ignored.
+#' @param beta_prior Parameters of the beta prior on h2. Used by the univariate model with \code{parametrization = "h2"} and by the shared-factor model for the factor heritabilities. The default \code{c(1, 1)} is flat on h2 and on each factor heritability. It is validated for every model; explicitly supplying it where it is not used warns that it is ignored.
 #' @param parametrization Univariate models only. \code{"variance"} (default) estimates the genetic and residual standard deviations with half-normal priors and derives h2. \code{"h2"} estimates a total standard deviation and h2 with a beta prior (\code{beta_prior}). If the variance version shows low E-BFMI, a warning suggests switching to \code{"h2"}. Ignored for multivariate fits.
 #' @param iter Number of MCMC iterations, a whole number.
 #' @param warmup Number of warmup iterations, a whole number smaller than \code{iter}.
@@ -42,10 +42,14 @@
 #' @param control Named list of sampler controls, passed to whichever engine runs: \code{adapt_delta}, \code{adapt_engaged}, \code{max_treedepth}, \code{step_size} (rstan's \code{stepsize} is accepted), \code{init_buffer}, \code{term_buffer}, \code{window} and \code{metric}. Any other name is an error, so a control is never silently ignored.
 #' @param cmd_stan Logical, use cmdstanr. If FALSE, uses rstan. Both engines are suggested packages: when cmdstanr is not installed the fit falls back to rstan with a warning, and when neither is installed the fit errors.
 #' @param blend_A If TRUE, replace A with 0.99 * A + 0.01 * I before fitting, making singular A positive definite.
-#' @param residual_structure Residual covariance for multivariate fits: "unstructured" (default, full covariance between traits) or "diagonal". With a diagonal residual, environmental covariances between traits are absorbed into the genetic covariance and inflate heritability, so "unstructured" is recommended when estimating G.
+#' @param residual_structure Residual covariance for multivariate fits: "unstructured" (default, full covariance between traits), "diagonal", or "shared_factor". With a diagonal residual, environmental covariances between traits are absorbed into the genetic covariance and inflate heritability, so "unstructured" is recommended when estimating G without a factor model. "shared_factor" requires \code{genetic_structure = "factor"} and fits the shared-factor model \eqn{G = \Lambda \mathrm{diag}(h^2_\text{factor}) \Lambda^T + \Psi_G}, \eqn{E = \Lambda \mathrm{diag}(1 - h^2_\text{factor}) \Lambda^T + \Psi_E}, so the same latent factors explain genetic and residual covariance and each factor has a heritability.
+#' @param genetic_structure Genetic covariance for multivariate fits: "unstructured" (default, direct scales and LKJ correlation) or "factor", which uses the sparse factor model \eqn{G = \mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)} on the correlation scale. The factor model gives loadings regularized-horseshoe priors for automatic shrinkage; loadings are not exactly zero. The ordinary factor model reports \code{loadings}, \code{factor_magnitude}, \code{uniqueness}, \code{communality} and \code{s_G}. With \code{residual_structure = "shared_factor"} the same loadings also structure E, and the fit reports \code{loadings}, \code{factor_magnitude}, \code{factor_heritability}, \code{genetic_uniqueness}, \code{residual_uniqueness}, \code{uniqueness} and \code{communality}. It is available only for multivariate fits and is not compatible with \code{model_file}.
+#' @param n_factors Number of shared factors when \code{genetic_structure = "factor"} (and \code{residual_structure = "shared_factor"} for the shared model), a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model uses a sublinear default, \code{min(K - 1, max(2, floor(sqrt(K))), 20)}, and reports the value with a message. Ignored otherwise.
+#' @param hs_global_scale,hs_slab_scale Scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale. Smaller \code{hs_global_scale} gives stronger shrinkage and fewer effective loadings; \code{hs_slab_scale} bounds the largest loading in the slab. Both must be positive and are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns that they are ignored. See Piironen and Vehtari (2017) on choosing the global scale from the expected number of nonzero loadings.
+#' @param column_decay Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 1 applies no decay. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. A non-default value outside \code{genetic_structure = "factor"} errors, and explicitly supplying the default in that case warns that it is ignored.
 #' @param ... additional parameters for stan sampling
 #' @return With \code{cmd_stan = TRUE}, a \code{CmdStanMCMC} object from cmdstanr: use \code{fit$draws()} (a \code{posterior} draws array) and \code{fit$summary()}, and pass these, or the fit itself, to bayesplot (e.g. \code{bayesplot::mcmc_trace(fit$draws("h2"))}, \code{bayesplot::nuts_params(fit)}). Fixed effects are \code{beta[j]} (univariate) or \code{beta[trait,j]} for column \code{j} of \code{X}; use \code{\link{rename_beta}} to get draws named after the columns of \code{X}. Use \code{\link{fit_draws}} to reshape the draws into trait by trait by draw arrays, and \code{\link{draws_mean}} or \code{\link{draws_quantile}} for posterior summaries that are already matrices. With \code{cmd_stan = FALSE}, a \code{stanfit} object whose \code{beta} draws are named after the columns of \code{X}.
-#' @details The models estimate the additive genetic and residual standard deviations (\code{sigma_G}, \code{sigma_E}) directly, with half-normal priors on the standardized response scale, and report \code{h2} as a derived quantity; there is no prior on h2 itself. The multivariate model estimates the additive genetic covariance matrix \code{G} and the residual covariance \code{E} directly, each as scales times an LKJ-distributed correlation matrix (\code{lkj_prior}), with half-normal priors on the scales of the standardized responses. Breeding values are marginalized using the eigendecomposition of \code{A}, so the likelihood needs no per-individual random effects; only the eigenvalues of \code{A} are used, which is why a singular \code{A} can be fitted once it is regularized with \code{blend_A = TRUE}. Returned quantities (original response scale) are \code{G}, \code{E}, \code{P = G + E}, \code{corrG}, \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}.
+#' @details The models estimate the additive genetic and residual standard deviations (\code{sigma_G}, \code{sigma_E}) directly, with half-normal priors on the standardized response scale, and report \code{h2} as a derived quantity; there is no prior on h2 itself. The multivariate model estimates the additive genetic covariance matrix \code{G} and the residual covariance \code{E} directly, each as scales times an LKJ-distributed correlation matrix (\code{lkj_prior}), with half-normal priors on the scales of the standardized responses. With \code{genetic_structure = "factor"}, \code{G} is instead \eqn{\mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)}, where the loadings \eqn{\Lambda} have regularized-horseshoe priors and \eqn{\Psi} is diagonal on the correlation scale; the default global shrinkage is \code{hs_global_scale = 1}. With \code{residual_structure = "shared_factor"}, the same loadings enter both covariances: \eqn{G = \Lambda\mathrm{diag}(h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_G)} and \eqn{E = \Lambda\mathrm{diag}(1 - h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_E)}, with \code{beta(1, 1)} priors on the factor heritabilities. The optional \code{column_decay} multiplies the prior standard deviation of factor column \eqn{m} by \code{column_decay^(m - 1)}, which favours factors in decreasing order without adding a learned decay parameter. Breeding values are marginalized using the eigendecomposition of \code{A}, so the likelihood needs no per-individual random effects; only the eigenvalues of \code{A} are used, which is why a singular \code{A} can be fitted once it is regularized with \code{blend_A = TRUE}. Returned quantities (original response scale) are \code{G}, \code{E}, \code{P = G + E}, \code{corrG}, \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}.
 #'
 #' The per-individual likelihoods are whitened by the residual Cholesky factor and rotated into a single eigendecomposition of \code{E^{-1/2} G E^{-1/2}}, so each evaluation costs \code{O(N K^2 + K^3)} rather than \code{O(N K^3)}. This lets the multivariate model scale to dozens of traits without a Cholesky factorization per individual. When the eigenvalues of that matrix are nearly coincident (for example at initialization, or when \code{G} is roughly proportional to \code{E}) the model automatically falls back to a per-individual Cholesky evaluation, which has a well-behaved gradient.
 #'
@@ -61,23 +65,75 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                       iter = 3000, warmup = floor(iter/2), 
                       chains = 4, cores = chains, model_file = NULL, control = list(adapt_delta = 0.99), 
                       cmd_stan = TRUE, blend_A = FALSE,
-                      residual_structure = c("unstructured", "diagonal"), ...){
+                      residual_structure = c("unstructured", "diagonal",
+                                             "shared_factor"),
+                      genetic_structure = c("unstructured", "factor"),
+                      n_factors = NULL, hs_global_scale = 1,
+                      hs_slab_scale = 2, column_decay = 1, ...){
+  beta_prior_supplied <- !missing(beta_prior)
+  lkj_prior_supplied <- !missing(lkj_prior)
+  hs_global_scale_supplied <- !missing(hs_global_scale)
+  hs_slab_scale_supplied <- !missing(hs_slab_scale)
+  column_decay_supplied <- !missing(column_decay)
   residual_structure <- match.arg(residual_structure)
+  genetic_structure <- match.arg(genetic_structure)
   parametrization <- match.arg(parametrization)
   lkj_prior <- .check_positive(lkj_prior, "lkj_prior")
+  beta_prior <- .check_beta_prior(beta_prior)
+  hs_global_scale <- .check_positive(hs_global_scale, "hs_global_scale")
+  hs_slab_scale <- .check_positive(hs_slab_scale, "hs_slab_scale")
+  column_decay <- .check_in_range(column_decay, "column_decay", 0, 1,
+                                  open_low = TRUE)
   blend_A <- .check_flag(blend_A, "blend_A")
   cmd_stan <- .check_flag(cmd_stan, "cmd_stan")
-  if (parametrization == "h2" &&
-      (!is.numeric(beta_prior) || length(beta_prior) != 2L ||
-         any(!is.finite(beta_prior)) || any(beta_prior <= 0)))
-    stop("`beta_prior` must be two positive numbers, the shapes of the beta ",
-         "prior on h2.", call. = FALSE)
   .check_iterations(iter, warmup)
   .check_sampler_size(chains, cores)
   YX <- .check_response_design(Y, X)
   Y <- YX$Y
   X <- YX$X
   A <- as.matrix(A)
+
+  factor_model <- genetic_structure == "factor"
+  if (residual_structure == "shared_factor" && !factor_model)
+    stop("`residual_structure = \"shared_factor\"` requires `genetic_structure = \"factor\"`.",
+         call. = FALSE)
+  shared_factor_model <- factor_model && residual_structure == "shared_factor"
+  if (factor_model) {
+    if (ncol(Y) < 2L)
+      stop("`genetic_structure = \"factor\"` needs at least two traits.",
+           call. = FALSE)
+    if (!is.null(model_file))
+      stop("`model_file` cannot be combined with `genetic_structure = \"factor\"`.",
+           call. = FALSE)
+    if (is.null(n_factors)) {
+      n_factors <- .default_n_factors(ncol(Y))
+      message("`n_factors` was not supplied; using ", n_factors,
+              " factors for ", ncol(Y),
+              " traits (sublinear default).")
+    }
+    n_factors <- .check_count(n_factors, "n_factors")
+    if (n_factors >= ncol(Y))
+      stop("`n_factors` must be smaller than the number of traits (",
+           ncol(Y), ").", call. = FALSE)
+  } else {
+    if (!is.null(n_factors))
+      stop("`n_factors` is only used with `genetic_structure = \"factor\"`.",
+           call. = FALSE)
+    if (column_decay != 1)
+      stop("`column_decay` is only used with `genetic_structure = \"factor\"`.",
+           call. = FALSE)
+  }
+
+  beta_used <- (ncol(Y) == 1L && parametrization == "h2") ||
+    shared_factor_model
+  lkj_used <- ncol(Y) > 1L && !shared_factor_model &&
+    residual_structure == "unstructured"
+  factor_used <- factor_model
+  .warn_ignored(beta_prior_supplied, beta_used, "beta_prior")
+  .warn_ignored(lkj_prior_supplied, lkj_used, "lkj_prior")
+  .warn_ignored(hs_global_scale_supplied, factor_used, "hs_global_scale")
+  .warn_ignored(hs_slab_scale_supplied, factor_used, "hs_slab_scale")
+  .warn_ignored(column_decay_supplied, factor_used, "column_decay")
 
   n <- nrow(Y)
   A <- .check_relationship_matrix(A, Y)
@@ -131,10 +187,32 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                      X = X,
                      Y = Y,
                      A = A,
-                     lkj_prior = lkj_prior,
-                     x_mean_weight = YX$x_mean_weight,
-                     unstructured_E = as.integer(residual_structure == "unstructured"))
-    model_code <- .read_animal_model_code(model_file)
+                     x_mean_weight = YX$x_mean_weight)
+    if (shared_factor_model) {
+      stan_data$M <- n_factors
+      stan_data$hs_global_scale <- hs_global_scale
+      stan_data$hs_slab_scale <- hs_slab_scale
+      stan_data$column_decay <- column_decay
+      stan_data$h2_prior_a <- beta_prior[1L]
+      stan_data$h2_prior_b <- beta_prior[2L]
+    } else {
+      stan_data$lkj_prior <- lkj_prior
+      stan_data$unstructured_E <- as.integer(residual_structure == "unstructured")
+      if (factor_model) {
+        stan_data$M <- n_factors
+        stan_data$hs_global_scale <- hs_global_scale
+        stan_data$hs_slab_scale <- hs_slab_scale
+        stan_data$column_decay <- column_decay
+      }
+    }
+    default_model <- if (shared_factor_model) {
+      "animalModelGSharedFactor.stan"
+    } else if (factor_model) {
+      "animalModelGFactor.stan"
+    } else {
+      "animalModelG.stan"
+    }
+    model_code <- .read_animal_model_code(model_file, default_model)
     if(cmd_stan){
       fit = cstan(model_code = model_code,
                   data = stan_data,
@@ -143,15 +221,25 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
       attr(fit, "x_names") <- colnames(X)
       attr(fit, "y_names") <- colnames(Y)
     } else {
+      model_name <- if (shared_factor_model) {
+        "animalModelGSharedFactor"
+      } else if (factor_model) {
+        "animalModelGFactor"
+      } else {
+        "animalModelG"
+      }
       model <- .get_rstan_model(
         model_code,
-        "animalModelG_runtime",
-        if (is.null(model_file)) "animalModelG" else NULL
+        paste0(model_name, "_runtime"),
+        if (is.null(model_file)) model_name else NULL
       )
       fit = .rstan_sample(model, stan_data, iter, warmup, chains, control, ...)
       fit <- .rename_fixed_effect_draws(fit, X, ncol(Y))
     }
   }
+  attr(fit, "genetic_structure") <- genetic_structure
+  attr(fit, "residual_structure") <- residual_structure
+  if (factor_model) attr(fit, "n_factors") <- n_factors
   return(fit)
 }
 

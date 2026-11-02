@@ -48,7 +48,8 @@ A <- makeA(ped)
 # zero, so G and E are well conditioned and REML does not sit on the boundary.
 set.seed(4321)
 G <- random_covariance(2, min_var = 0.7, max_var = 1.3,
-                       trait_names = c("t1", "t2"))
+                       trait_names = c("t1", "t2"), 
+                       method = "factor", integration = 0.6)
 E <- random_covariance(2, min_var = 0.7, max_var = 1.3,
                        trait_names = c("t1", "t2"))
 

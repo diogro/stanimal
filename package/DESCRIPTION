@@ -10,7 +10,6 @@ Authors@R:
            role = c("aut", "cre"),
            email = "diogro@gmail.com",
            comment = c(ORCID = "0000-0002-7603-0092"))
-Maintainer: Diogo Melo <diogro@gmail.com>
 License: GPL (>=3)
 Encoding: UTF-8
 LazyData: true

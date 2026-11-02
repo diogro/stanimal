@@ -343,6 +343,9 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   attr(fit, "parametrization") <- if (ncol(Y) == 1L) parametrization else "variance"
   attr(fit, "lkj_prior") <- lkj_prior
   attr(fit, "beta_prior") <- beta_prior
+  # a custom Stan file can use any prior it likes, so nothing below can be
+  # recovered from the recorded arguments alone
+  attr(fit, "custom_model") <- !is.null(model_file)
   if (factor_model) attr(fit, "n_factors") <- n_factors
   return(fit)
 }

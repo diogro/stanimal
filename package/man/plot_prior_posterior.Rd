@@ -57,7 +57,9 @@ Where prior and posterior overlap, the data add little information.
   The prior is drawn from the model configuration recorded by
   \code{\link{lmm_animal}}, so an \code{"h2"} fit is compared with its beta
   prior on the heritability and an unstructured fit with the LKJ shape it was
-  given. A sparse factor fit records no matching closed form (its prior is on
-  the loadings, with the column decay on top), so that combination is an
-  error: pass \code{prior} with draws from the prior you used.
+  given. Two configurations have no prior this function can reproduce, and
+  both are errors rather than a comparison against the wrong prior: a sparse
+  factor fit, whose prior is on the loadings with the column decay on top, and
+  a fit sampled from a custom \code{model_file}, where the prior is whatever
+  that file says. Pass \code{prior} with draws from the prior you used.
 }

@@ -1,13 +1,16 @@
-# Guide for agents working with stanimal
+# Using stanimal — guide for agents
 
 `stanimal` fits Bayesian quantitative-genetic models in Stan (CmdStan via cmdstanr,
-with an rstan fallback). Everything is returned on the **original data scale**, so
-estimates can be compared with the trait values directly.
+with an rstan fallback). Covariances, standard deviations, heritabilities and
+fixed effects are returned on the **original data scale**, so they can be compared
+with the trait values directly. Factor-specific quantities keep their documented
+model scale: `loadings` and `communality`/`uniqueness` are on the correlation
+scale, and `s_G` is on the standardized response scale.
 
 This file is the interface guide: what to call, what comes back, and how to make
-the prior choices that the function signatures do not make for you. Usage
-examples live in `README.md` and `examples/`; the package sources are in
-`package/`.
+the prior choices that the function signatures do not make for you. It is written
+for anyone *using* the package. Worked examples live in `README.md` and
+`examples/`; if you are changing the package itself, read `DEVELOPMENT.md`.
 
 ## Quick decision table
 
@@ -53,10 +56,17 @@ intercept; `A` is a symmetric positive-definite relationship matrix whose rows
 are matched to `Y` by name when both have names. `...` is forwarded to the
 sampler, so `seed`, `refresh`, `init` and `show_messages` work there.
 
-Both model functions return a `CmdStanMCMC` (or a `stanfit` with
-`cmd_stan = FALSE`) carrying the configuration they ran with:
-`attr(fit, "genetic_structure")`, `"residual_structure"`, `"parametrization"`,
-`"lkj_prior"`, `"beta_prior"`, `"n_factors"`, `"x_names"`, `"y_names"`.
+Both model functions return a `CmdStanMCMC` (or an `stanfit` with
+`cmd_stan = FALSE`). A fit records the configuration it ran with, and the two
+functions record different things:
+
+- `lmm_animal()`: `genetic_structure`, `residual_structure`, `parametrization`,
+  `n_factors` (factor fits), `lkj_prior`, `beta_prior`.
+- `lm_phen_cov()`: `covariance_structure`, `n_factors` (factor fits),
+  `lkj_prior`, `column_decay`.
+- Both: `x_names`, `y_names`, and `custom_model` (TRUE when `model_file` was
+  used). A custom file can use any prior, so nothing about the prior can be
+  recovered from those attributes.
 
 ### What each configuration reports
 
@@ -213,23 +223,11 @@ directly.
 - **Do not assume chains share a start.** No `init` is forced: each chain draws
   its own. Pass `init` if you need reproducibility at a specific point.
 
-## Working in this repository
+## Where to look next
 
-- `package/` is the R package; `README.md` and `examples/` are outside it.
-- Test: `Rscript -e 'testthat::test_local("package", filter="model-P", reporter="summary")'`
-- Docs: `cd package && Rscript -e 'roxygen2::roxygenise(".")'`
-- Check: `R CMD build package && R CMD check --no-tests --no-manual --no-build-vignettes stanimal_0.6.0.tar.gz`
-  (checking the directory directly fails: DESCRIPTION has `Authors@R` but no
-  generated `Author:` field)
-- Examples call `library(stanimal)`, so reinstall (`R CMD INSTALL package`) after
-  changing anything under `package/R` or `package/inst/stan`.
-- `test-readme.R` executes the root README's R blocks but **skips inside the built
-  tarball**, so a passing `R CMD check` says nothing about the README. Run it from
-  a checkout. Its blocks share one environment, so a snippet must not clobber a
-  name a later one uses.
-- Roxygen markdown is **off**: use `\code{}`/`\strong{}` and escape prose `%` as
-  `\%`, or the rest of the Rd line is silently commented out.
-- `.Rbuildignore` controls the tarball; `.gitignore` does not. Compiled Stan
-  executables must stay in `.Rbuildignore`.
-- Fit tolerances are calibrated: measure the actual error, then set roughly twice
-  it. Loose absolute bounds have hidden real bugs here before.
+- `README.md` — the full narrative, worked examples, and the mathematics of each
+  model.
+- `examples/` — runnable scripts; `examples/README.md` says what each covers.
+- `?lmm_animal`, `?lm_phen_cov`, `?size_shape`, `?makeA` — argument-level detail.
+- `DEVELOPMENT.md` — **only if you are changing stanimal itself**: repository
+  layout, build and test commands, and the packaging conventions.

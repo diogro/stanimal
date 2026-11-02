@@ -175,5 +175,10 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
     fit = .rstan_sample(model, stan_data, iter, warmup, chains, control, ...)
     fit <- .rename_fixed_effect_draws(fit, X, ncol(Y))
   }
+  attr(fit, "covariance_structure") <- covariance_structure
+  if (factor_model) attr(fit, "n_factors") <- n_factors
+  attr(fit, "lkj_prior") <- lkj_prior
+  attr(fit, "column_decay") <- column_decay
+  attr(fit, "custom_model") <- !is.null(model_file)
   return(fit)
 }

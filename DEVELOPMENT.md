@@ -1,0 +1,117 @@
+# Developing stanimal
+
+This is the maintainer's guide: how the repository is laid out, how to build and
+test it, and the traps that have bitten before. If you are *using* the package
+rather than changing it, read `AGENTS.md` instead.
+
+## Layout
+
+- `package/` is the R package. `README.md` and `examples/` sit outside it, so they
+  are not in the built tarball.
+- `package/R/` — one file per concern: `lmm_animal.R` (animal models and the
+  `Y`/`X`/`A` validation), `lm_phen_cov.R`, `lmm_animal_gibbs.R`,
+  `animal_design.R`, `makeA.R`, `genomic_relationship.R`, `size_shape.R`
+  (`pc1_variance_share()`, `size_shape()`, `back_transform()`), `random_covariance.R`,
+  `scree.R` (`scree_eigenvalues()`, `suggest_n_factors()`, `plot.scree()`),
+  `fit_draws.R` (draw reshaping and `draws_mean()`), `plots.R`, `utils.R`
+  (validators), `cmdstan_support.r` (compilation, caching and the sampler call).
+- `package/inst/stan/` — one Stan program per model:
+
+| file | model |
+|---|---|
+| `animalModelUni.stan` | univariate, `parametrization = "variance"` |
+| `animalModelUniH2.stan` | univariate, beta prior on h2 |
+| `animalModelG.stan` | multivariate unstructured `G` and `E` |
+| `animalModelGFactor.stan` | sparse factor `G` |
+| `animalModelGSharedFactor.stan` | shared factors for `G` and `E` |
+| `phenotypicModel.stan` | unstructured `P` |
+| `phenotypicModelFactor.stan` | sparse factor `P` |
+
+- `examples/*.R` are runnable scripts that write figures to `examples/figures/`
+  (gitignored). `examples/README.md` indexes them.
+
+## Commands
+
+```sh
+# tests (testthat edition 3, runs in parallel)
+Rscript -e 'testthat::test_local("package", filter="model-P", reporter="summary")'
+# documentation
+cd package && Rscript -e 'roxygen2::roxygenise(".")'
+# build then check; checking the directory directly fails, see below
+R CMD build package && R CMD check --no-tests --no-manual --no-build-vignettes stanimal_0.6.0.tar.gz
+# examples call library(stanimal), so reinstall after changing R/ or inst/stan
+R CMD INSTALL package
+```
+
+`R CMD check package/` fails before checking because `DESCRIPTION` has
+`Authors@R` and no generated `Author:` field. Always build the tarball first.
+
+`R CMD check` must stay at `Status: OK`.
+
+## Testing
+
+- Tests skip without CmdStan (`skip_if_no_cmdstan()`); rstan-only tests are
+  skipped with `STANIMAL_SKIP_RSTAN=true`.
+- Fits in tests are small (`iter` 200–1200, two chains) and check convergence with
+  `expect_clean_fit()`, which allows `Rhat < 1.05` and no divergences.
+- **Calibrate tolerances; do not guess.** Measure the actual error of the
+  configuration, then set roughly twice it. Loose absolute bounds
+  (`expect_lt(max(abs(P - truth)), 1.2)`) hid a real scale bug for weeks.
+- Compare covariances on the **correlation scale** and relative to the best
+  rank-`k` approximation. An absolute RMSE on entries of ~1e-3 is meaningless.
+- `test-readme.R` executes every R block in the root `README.md`, but it **skips
+  inside the built tarball** (the README is not in the package), so a green
+  `R CMD check` says nothing about the README. Run it from a checkout with
+  `filter="readme"`.
+- Those README blocks run **sequentially in one shared environment**, seeded with
+  fixtures from `readme_context()` (`Y` has 2 traits, plus `X`, `A`, `dat`,
+  `log_traits`, `pedigree`, ...). A snippet must not clobber a name a later one
+  needs, and must not ask for more factors than the fixture has traits.
+
+## Documentation
+
+- Roxygen markdown is **off** (no `Roxygen:` field in `DESCRIPTION`). Use
+  `\code{}` and `\strong{}`, not backticks or `**bold**`.
+- Escape prose `%` as `\%`. An unescaped `%` comments out the rest of the Rd line
+  and the file fails to parse, with errors that point at unrelated lines.
+- `ls("package:stanimal")` is the exported surface; internal helpers start with a
+  dot and are used through `stanimal:::...` in tests.
+
+## Packaging
+
+- `.gitignore` does not control the tarball; `.Rbuildignore` does. Compiled Stan
+  executables (cmdstanr and rstan write them next to the `.stan` sources) are
+  excluded there — without that rule `R CMD check` reports the package contains
+  executables.
+- Compiled models are cached in `stan_cache_dir()`, keyed by a hash of the Stan
+  code, so editing a `.stan` file recompiles automatically. After a CmdStan
+  upgrade call `stanimal_clear_cache()`.
+
+## Traps that have already cost time
+
+- **`quad_form_diag(P_std, y_sd)` with a data-derived scale pins the diagonal.**
+  In a factor model with `communality + uniqueness = 1`, the covariance's diagonal
+  then equals the *marginal* variance while the likelihood is on residuals, so the
+  sampler inflates the correlations to compensate. `phenotypicModelFactor.stan`
+  needed a free `s_P`. There is a regression test asserting that `sigma_P` tracks
+  the residual SD, not `sd(Y)`.
+- **A shared `init` hides multimodality.** Passing `init = 0` made all chains
+  start at the same point, so `communality` looked perfectly converged on a
+  posterior with two modes. No `init` is passed now; each chain draws its own.
+- **Factor summaries are rotation-dependent.** `loadings` and `factor_magnitude`
+  are only pinned by the prior, so a poor `Rhat` there is not a failure. The
+  exception is a bimodal `communality`, which is real.
+- **Prior plots once compared against the wrong prior.** The fit now records its
+  configuration and the plotting helpers reproduce it; factor fits and
+  `model_file` fits error instead of guessing.
+- **A redundant factor direction is not free.** `n_factors` above what the data
+  support gives bimodal communalities rather than a better covariance.
+
+## Style
+
+`snake_case`. Argument names are backticked in error messages, and every `stop()`
+and `warning()` passes `call. = FALSE`. Shared validators live in `utils.R`
+(`.check_count`, `.check_positive`, `.check_flag`, `.check_whole`,
+`.check_in_range`, `.check_beta_prior`); `%||%` is available. Comments explain
+why a choice was made, not what the line does — the Stan files carry most of the
+reasoning for the models.

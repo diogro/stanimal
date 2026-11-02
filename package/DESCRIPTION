@@ -4,7 +4,12 @@ Date: 2026-11-02
 Title: Animal Models in Stan
 Description: Fit linear animal models in Stan for one or more traits.
 Additional_repositories: https://stan-dev.r-universe.dev
-Authors@R: person("Diogo", "Melo", , "diogro@gmail.com", c("aut", "cre"))
+Authors@R: 
+    person(given = "Diogo",
+           family = "Melo",
+           role = c("aut", "cre"),
+           email = "diogro@gmail.com",
+           comment = c(ORCID = "0000-0002-7603-0092"))
 Maintainer: Diogo Melo <diogro@gmail.com>
 License: GPL (>=3)
 Encoding: UTF-8

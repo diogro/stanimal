@@ -30,12 +30,17 @@ set.seed(1234)
 
 n_gen <- 5; n_breed <- 100
 ped <- data.frame(id = seq_len(n_gen * n_breed),
-                  sire = NA_integer_, dam = NA_integer_)
+                  sire = NA_integer_, dam = NA_integer_,
+                  sex = NA_character_, stringsAsFactors = FALSE)
+# Sex-consistent parents: a male can only be a sire and a female only a dam.
+# This also keeps the pedigree less regular, so REML is better conditioned.
+ped$sex[seq_len(n_breed)] <- sample(rep(c("M", "F"), each = n_breed / 2))
 for (g in 2:n_gen) {
   kids <- ((g - 1) * n_breed + 1):(g * n_breed)
-  pool <- ped[ped$id <= (g - 1) * n_breed, ]
-  ped$sire[kids] <- sample(pool$id[pool$id %% 2 == 1], n_breed, TRUE)
-  ped$dam[kids]  <- sample(pool$id[pool$id %% 2 == 0], n_breed, TRUE)
+  pool <- ped[ped$id < min(kids), ]
+  ped$sire[kids] <- sample(pool$id[pool$sex == "M"], n_breed, TRUE)
+  ped$dam[kids]  <- sample(pool$id[pool$sex == "F"], n_breed, TRUE)
+  ped$sex[kids]  <- sample(c("M", "F"), n_breed, TRUE)
 }
 A <- makeA(ped)
 
@@ -82,6 +87,22 @@ lower2mat <- function(x, k = 2) {
   m
 }
 
+# ASReml's vm() wants a sparse inverse as a three-column matrix: row, column
+# and value for the lower triangle, sorted row-major. Building it from A avoids
+# asreml::ainverse(), which fails intermittently on some pedigrees.
+sparse_ginv <- function(A) {
+  inverse <- solve(A)
+  inverse[abs(inverse) < 1e-10 * max(abs(inverse))] <- 0
+  lower <- lower.tri(inverse, diag = TRUE) & inverse != 0
+  index <- which(lower, arr.ind = TRUE)
+  index <- index[order(index[, 1], index[, 2]), , drop = FALSE]
+  out <- cbind(Row = index[, 1], Column = index[, 2],
+               Ainverse = inverse[index])
+  attr(out, "rowNames") <- rownames(A)
+  attr(out, "geneticGroups") <- c(0, 0)
+  class(out) <- c(class(out), "ginv")
+  out
+}
 results <- list(compare("truth", G, E))
 
 # One row per engine, filled in as each fit runs, so an engine that is not
@@ -115,7 +136,7 @@ time_mcmc <- system.time(
   fit_mcmc <- MCMCglmm(cbind(t1, t2) ~ trait + trait:sex + trait:age - 1,
                        random   = ~ us(trait):id,
                        rcov     = ~ us(trait):units,
-                       ginverse = list(id = MCMCglmm::inverseA(ped)$Ainv),
+                       ginverse = list(id = MCMCglmm::inverseA(ped[, 1:3])$Ainv),
                        family   = c("gaussian", "gaussian"),
                        prior = prior, data = dat,
                        nitt = 13000, burnin = 3000, thin = 10, verbose = FALSE))
@@ -219,29 +240,23 @@ if (!has_asreml) {
           "ASReml-R fit is skipped")
 } else {
   library(asreml)
-  ped0 <- ped; ped0[is.na(ped0)] <- 0               # ASReml codes founders as 0
-  # asreml::ainverse() is not MCMCglmm::inverseA(): same pedigree, two packages
-  ainv <- try(asreml::ainverse(ped0), silent = TRUE)  # ASReml's sparse inverse
-  if (inherits(ainv, "try-error")) {
-    message("asreml::ainverse() failed to form A^-1 (",
-            conditionMessage(attr(ainv, "condition")),
-            "), skipping the ASReml-R fit")
-  } else {
-    # Time both passes: bivariate ASReml-R fits are estimated in two steps
-    time_asr <- system.time({
-      fit_asr <- asreml(fixed  = cbind(t1, t2) ~ trait + trait:sex + trait:age,
-                        random = ~ vm(id, ainv):us(trait, init = c(1, 0.2, 1)),
-                        rcov   = ~ units:us(trait, init = c(1, 0.2, 1)),
-                        data = dat)
-      fit_asr <- update(fit_asr)
-    })
-    vc <- summary(fit_asr)$varcomp
-    results$asreml <- compare("asreml",
-                              lower2mat(vc[grep("^vm\\(", rownames(vc)), 1]),
-                              lower2mat(vc[grep("^units.*trait!trait",
-                                                rownames(vc)), 1]),
-                              elapsed = time_asr[["elapsed"]])
-  }
+  Ainv_asr <- sparse_ginv(A)
+  # Time both passes: bivariate ASReml-R fits are estimated in two steps. The
+  # first pass can report non-convergence; the update finishes it.
+  time_asr <- system.time({
+    fit_asr <- suppressWarnings(asreml(
+      fixed  = cbind(t1, t2) ~ trait + trait:sex + trait:age,
+      random = ~ vm(id, Ainv_asr):us(trait, init = c(1, 0, 1)),
+      rcov   = ~ units:us(trait, init = c(1, 0, 1)),
+      data = dat))
+    fit_asr <- update(fit_asr)
+  })
+  vc <- summary(fit_asr)$varcomp
+  results$asreml <- compare("asreml",
+                            lower2mat(vc[grep("^vm\\(", rownames(vc)), 1]),
+                            lower2mat(vc[grep("^units.*trait!trait",
+                                              rownames(vc)), 1]),
+                            elapsed = time_asr[["elapsed"]])
 }
 
 ## The comparison -----------------------------------------------------------
@@ -254,10 +269,10 @@ print(out)
 
 # Timings are a single run each, in seconds, and cover the fit call only.
 # Setup outside the call is not timed: animal_design() builds A for stanimal,
-# solve(A) inverts it for sommer, and ainverse() is run before the ASReml-R
-# fit, while the inverse of A that MCMCglmm needs is evaluated inside its call
-# and so is included. stanimal's time also includes compiling the model when the
-# cache is cold; after the first fit the compiled executable is reused and only
-# sampling is timed. These are not like-for-like posteriors either: MCMCglmm,
-# BGLR and stanimal sample and stop at different effective sample sizes, while
-# sommer, lme4breeding and ASReml-R maximize the REML likelihood.
+# solve(A) inverts it for sommer, and sparse_ginv(A) builds ASReml-R's inverse
+# before its fit, while the inverse of A that MCMCglmm needs is evaluated inside
+# its call and so is included. stanimal's time also includes compiling the model
+# when the cache is cold; after the first fit the compiled executable is reused
+# and only sampling is timed. These are not like-for-like posteriors either:
+# MCMCglmm, BGLR and stanimal sample and stop at different effective sample
+# sizes, while sommer, lme4breeding and ASReml-R maximize the REML likelihood.

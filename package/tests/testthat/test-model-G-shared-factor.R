@@ -46,8 +46,9 @@ test_that("shared-factor model samples and exposes factor heritabilities", {
 
   G_hat <- post_matrix(fit, "G", 6)
   E_hat <- post_matrix(fit, "E", 6)
-  expect_lt(max(abs(G_hat - truth$G)), 1.2)
-  expect_lt(max(abs(E_hat - truth$E)), 1.2)
+  # recovering G and E to about 0.25 on entries of order one
+  expect_lt(max(abs(G_hat - truth$G)), 0.5)
+  expect_lt(max(abs(E_hat - truth$E)), 0.5)
 
   h2_factor <- fit$summary("factor_heritability")$mean
   expect_length(h2_factor, 2)

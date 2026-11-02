@@ -122,6 +122,25 @@ fit$summary(c("factor_heritability", "G", "E"))
 
 Factor fits report `loadings`, `factor_magnitude`, `factor_heritability`, `uniqueness` and `communality`. The last two are the less familiar quantities: `communality[k]` is the variance that trait `k` shares through the factors, and `uniqueness[k]` is its trait-specific remainder. In the ordinary factor model they are on the correlation scale, so `communality + uniqueness = 1`; multiplying them by `s_G[k]^2` gives the common and unique genetic variances. In shared-factor fits, `uniqueness = genetic_uniqueness + residual_uniqueness` and `factor_heritability[m]` is the genetic share of factor `m`. `factor_magnitude[m]` is the squared norm of loading column `m` across traits, not a per-trait quantity. Loadings and factor magnitudes both depend on how the factors are oriented, and nothing in the model fixes that orientation except the prior: two solutions with the same `G` can differ by a rotation, a sign flip or a permutation of the columns. So interpret `G`, `E`, the communalities and the uniquenesses, and treat a poor `Rhat` on `loadings` or `factor_magnitude` as an orientation that moved rather than as a failed fit. Lowering `column_decay` orders the columns and makes the magnitudes comparable. The factor prior reduces the number of covariance parameters, but the current Stan models still use a $K \times K$ eigendecomposition, so the factor structures help parameter count and parsimony more than the linear-algebra cost. `examples/factor_model.R` and `examples/structure_comparison.R` show both alternatives.
 
+### Choosing the number of factors
+
+`n_factors` is the argument to think about: too few factors underfit the covariance, and too many split one direction across several columns, which is what makes the loadings rotate. Two helpers look at the data instead of guessing:
+
+```r
+set.seed(1)
+suggested <- suggest_n_factors(log_traits, X)      # parallel analysis
+scree <- scree_eigenvalues(log_traits, X)          # the table behind the plot
+plot(scree, reference = suggested)                 # scree plot with the cutoffs
+```
+
+`suggest_n_factors()` runs a parallel analysis (Horn 1965). It compares the eigenvalues of the residual trait correlation matrix with those of data that has no shared structure, after removing the same fixed effects, and counts the components that clear the cutoff. Because the cutoff accounts for the sample size, the number of traits and the covariates, it is more reliable than "keep the eigenvalues above one" or eyeballing the elbow.
+
+Treat the result as an **upper bound**, not a target. On the mouse morphometric data it keeps seven dimensions, but the first two carry 28% and 11% of the variance while the seventh clears its cutoff by 0.003 — a statistic, not a factor. `attr(suggested, "share")` reports how much of the variance the retained components take, and `attr(suggested, "retained")` is the raw count, which is `0` when nothing stands above the noise at all. Read the scree plot and stop where the eigenvalues flatten; that is the number of factors you can interpret. If you only want a good `P` or `G`, a few more is harmless provided `column_decay` keeps the columns ordered.
+
+That is what `examples/factor_phenotypic_covariance.R` works through. The scree on the 35 log traits shows two components at 28% and 11% and then a flat tail. A three-factor fit gives bimodal communalities (`Rhat` around 1.5 across four chains) — the model saying the third direction is not there. Two factors converge, but only with a decay strong enough to separate the two columns: at `column_decay = 0.8` their magnitudes were 6.0 and 6.7 with `Rhat` 1.5, while `0.5` gave 7.8 and 5.0 with `Rhat` 1.0.
+
+`column_decay` (default `0.8`) multiplies the prior standard deviation of column `m` by `column_decay^(m - 1)`, which is what stops the factor labels from swapping between chains. With `column_decay = 1` the columns are exchangeable a priori, and `factor_magnitude` can report large `Rhat` values on a perfectly healthy fit. Falling back to the default `n_factors` warns with the number it used, because that fallback only sees the number of traits.
+
 ## Output
 
 With the default `cmd_stan = TRUE`, `lmm_animal()` returns a `CmdStanMCMC` object, so the usual cmdstanr, posterior and bayesplot tools work directly:

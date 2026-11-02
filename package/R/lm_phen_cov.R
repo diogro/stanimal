@@ -8,9 +8,9 @@
 #' @param X Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.
 #' @param lkj_prior Shape parameter of the LKJ prior on the correlation matrix. \code{1} is uniform; values above \code{1} shrink correlations toward zero and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits, because at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of correlations. A finite number above 0. It is used only by \code{covariance_structure = "unstructured"}; explicitly supplying it for the factor model warns that it is ignored.
 #' @param covariance_structure Covariance structure for the phenotypic model: "unstructured" (default, scales times an LKJ correlation matrix) or "factor", which uses \eqn{P = \mathrm{diag}(\sigma_P)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(\sigma_P)} with regularized-horseshoe loadings, where \eqn{\sigma_P} are the residual standard deviations, estimated with the same half-normal prior as the unstructured model.
-#' @param n_factors Number of factors when \code{covariance_structure = "factor"}, a whole number between 1 and the number of traits minus one. If \code{NULL}, the same sublinear default as \code{lmm_animal()} is used. Ignored otherwise.
+#' @param n_factors Number of factors when \code{covariance_structure = "factor"}, a whole number between 1 and the number of traits minus one. If \code{NULL}, the model falls back to the same sublinear rule as \code{lmm_animal()} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.
 #' @param hs_global_scale,hs_slab_scale Scales of the regularized-horseshoe prior on the factor loadings. Both must be positive and are only used by the factor model.
-#' @param column_decay Standard-deviation multiplier for successive factor columns, between 0 and 1. The default 1 applies no decay. Only used by the factor model.
+#' @param column_decay Standard-deviation multiplier for successive factor columns, between 0 and 1. The default 0.8 orders the columns so that the factor labels stay meaningful; with \code{column_decay = 1} the columns are exchangeable a priori and their labels can swap between chains. Only used by the factor model, and explicitly supplying it otherwise warns that it is ignored.
 #' @param iter Number of MCMC iterations, a whole number.
 #' @param warmup Number of warmup iterations, a whole number smaller than \code{iter}.
 #' @param chains Number of chains to run, a whole number.
@@ -93,7 +93,7 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
                         cmd_stan = TRUE, model_file = NULL,
                         covariance_structure = c("unstructured", "factor"),
                         n_factors = NULL, hs_global_scale = 1,
-                        hs_slab_scale = 2, column_decay = 1, ...){
+                        hs_slab_scale = 2, column_decay = 0.8, ...){
   lkj_prior_supplied <- !missing(lkj_prior)
   hs_global_scale_supplied <- !missing(hs_global_scale)
   hs_slab_scale_supplied <- !missing(hs_slab_scale)
@@ -121,8 +121,9 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
            call. = FALSE)
     if (is.null(n_factors)) {
       n_factors <- .default_n_factors(ncol(Y))
-      message("`n_factors` was not supplied; using ", n_factors,
-              " factors for ", ncol(Y), " traits (sublinear default).")
+      warning("`n_factors` was not supplied; using ", n_factors,
+              " factors for ", ncol(Y), " traits. See `suggest_n_factors()` ",
+              "for a number chosen from the data.", call. = FALSE)
     }
     n_factors <- .check_count(n_factors, "n_factors")
     if (n_factors >= ncol(Y))
@@ -131,9 +132,6 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
   } else {
     if (!is.null(n_factors))
       stop("`n_factors` is only used with `covariance_structure = \"factor\"`.",
-           call. = FALSE)
-    if (column_decay != 1)
-      stop("`column_decay` is only used with `covariance_structure = \"factor\"`.",
            call. = FALSE)
   }
   .warn_ignored(lkj_prior_supplied, !factor_model, "lkj_prior")

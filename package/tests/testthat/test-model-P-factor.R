@@ -20,7 +20,12 @@ test_that("factor P model samples and exposes factor summaries", {
   ))
   expect_s3_class(fit, "CmdStanMCMC")
   expect_clean_fit(fit)
-  expect_lt(max(abs(post_matrix(fit, "P", 3) - P)), 1.2)
+  # the posterior mean recovers P to about 0.1 on entries of order one, and the
+  # correlations to about 0.03; a scale that is not free shows up here long
+  # before it shows up in the variances
+  expect_lt(max(abs(post_matrix(fit, "P", 3) - P)), 0.25)
+  expect_lt(max(abs(stats::cov2cor(post_matrix(fit, "P", 3)) -
+                      stats::cov2cor(P))), 0.08)
 
   loadings <- fit_draws(fit)$loadings
   expect_equal(dim(loadings), c(3, 2, posterior::ndraws(fit$draws("P"))))
@@ -74,8 +79,8 @@ test_that("factor P model validates its options", {
     lm_phen_cov(sim$Y, sim$X, n_factors = 2),
     "`n_factors` is only used"
   )
-  expect_error(
+  expect_warning(
     lm_phen_cov(sim$Y, sim$X, column_decay = 0.5),
-    "`column_decay` is only used"
+    "`column_decay` is ignored"
   )
 })

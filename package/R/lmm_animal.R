@@ -44,9 +44,9 @@
 #' @param blend_A If TRUE, replace A with 0.99 * A + 0.01 * I before fitting, making singular A positive definite.
 #' @param residual_structure Residual covariance for multivariate fits: "unstructured" (default, full covariance between traits), "diagonal", or "shared_factor". With a diagonal residual, environmental covariances between traits are absorbed into the genetic covariance and inflate heritability, so "unstructured" is recommended when estimating G without a factor model. "shared_factor" requires \code{genetic_structure = "factor"} and fits the shared-factor model \eqn{G = \Lambda \mathrm{diag}(h^2_\text{factor}) \Lambda^T + \Psi_G}, \eqn{E = \Lambda \mathrm{diag}(1 - h^2_\text{factor}) \Lambda^T + \Psi_E}, so the same latent factors explain genetic and residual covariance and each factor has a heritability.
 #' @param genetic_structure Genetic covariance for multivariate fits: "unstructured" (default, direct scales and LKJ correlation) or "factor", which uses the sparse factor model \eqn{G = \mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)} on the correlation scale. The factor model gives loadings regularized-horseshoe priors for automatic shrinkage; loadings are not exactly zero. The ordinary factor model reports \code{loadings}, \code{factor_magnitude}, \code{uniqueness}, \code{communality} and \code{s_G}. With \code{residual_structure = "shared_factor"} the same loadings also structure E, and the fit reports \code{loadings}, \code{factor_magnitude}, \code{factor_heritability}, \code{genetic_uniqueness}, \code{residual_uniqueness}, \code{uniqueness} and \code{communality}. It is available only for multivariate fits and is not compatible with \code{model_file}.
-#' @param n_factors Number of factors when \code{genetic_structure = "factor"}; for \code{residual_structure = "shared_factor"} these are shared by \code{G} and \code{E}. It is a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model uses a sublinear default, \code{min(K - 1, max(2, floor(sqrt(K))), 20)}, and reports the value with a message. Ignored otherwise.
+#' @param n_factors Number of factors when \code{genetic_structure = "factor"}; for \code{residual_structure = "shared_factor"} these are shared by \code{G} and \code{E}. It is a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model falls back to \code{min(K - 1, max(2, floor(sqrt(K))), 20)} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.
 #' @param hs_global_scale,hs_slab_scale Scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale. Smaller \code{hs_global_scale} gives stronger shrinkage and fewer effective loadings; \code{hs_slab_scale} bounds the largest loading in the slab. Both must be positive and are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns that they are ignored. See Piironen and Vehtari (2017) on choosing the global scale from the expected number of nonzero loadings.
-#' @param column_decay Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 1 applies no decay. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. A non-default value outside \code{genetic_structure = "factor"} errors, and explicitly supplying the default in that case warns that it is ignored.
+#' @param column_decay Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 0.8 orders the columns without forcing a strict hierarchy; with \code{column_decay = 1} the columns are exchangeable a priori and their labels are free to swap between chains. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. Explicitly supplying it outside \code{genetic_structure = "factor"} warns that it is ignored.
 #' @param ... additional parameters for stan sampling
 #' @return With \code{cmd_stan = TRUE}, a \code{CmdStanMCMC} object from cmdstanr: use \code{fit$draws()} (a \code{posterior} draws array) and \code{fit$summary()}, and pass these, or the fit itself, to bayesplot (e.g. \code{bayesplot::mcmc_trace(fit$draws("h2"))}, \code{bayesplot::nuts_params(fit)}). Fixed effects are \code{beta[j]} (univariate) or \code{beta[trait,j]} for column \code{j} of \code{X}; use \code{\link{rename_beta}} to get draws named after the columns of \code{X}. Use \code{\link{fit_draws}} to reshape the draws into trait by trait by draw arrays, and \code{\link{draws_mean}} or \code{\link{draws_quantile}} for posterior summaries that are already matrices. Factor fits also expose \code{loadings}, \code{factor_magnitude}, \code{uniqueness} and \code{communality}; shared-factor fits add \code{factor_heritability}, \code{genetic_uniqueness} and \code{residual_uniqueness}. With \code{cmd_stan = FALSE}, a \code{stanfit} object whose \code{beta} draws are named after the columns of \code{X}.
 #' Multivariate fits report \code{G}, \code{E}, \code{P = G + E}, \code{corrG},
@@ -171,7 +171,7 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                                              "shared_factor"),
                       genetic_structure = c("unstructured", "factor"),
                       n_factors = NULL, hs_global_scale = 1,
-                      hs_slab_scale = 2, column_decay = 1, ...){
+                      hs_slab_scale = 2, column_decay = 0.8, ...){
   beta_prior_supplied <- !missing(beta_prior)
   lkj_prior_supplied <- !missing(lkj_prior)
   hs_global_scale_supplied <- !missing(hs_global_scale)
@@ -209,9 +209,9 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
            call. = FALSE)
     if (is.null(n_factors)) {
       n_factors <- .default_n_factors(ncol(Y))
-      message("`n_factors` was not supplied; using ", n_factors,
-              " factors for ", ncol(Y),
-              " traits (sublinear default).")
+      warning("`n_factors` was not supplied; using ", n_factors,
+              " factors for ", ncol(Y), " traits. See `suggest_n_factors()` ",
+              "for a number chosen from the data.", call. = FALSE)
     }
     n_factors <- .check_count(n_factors, "n_factors")
     if (n_factors >= ncol(Y))
@@ -220,9 +220,6 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   } else {
     if (!is.null(n_factors))
       stop("`n_factors` is only used with `genetic_structure = \"factor\"`.",
-           call. = FALSE)
-    if (column_decay != 1)
-      stop("`column_decay` is only used with `genetic_structure = \"factor\"`.",
            call. = FALSE)
   }
 

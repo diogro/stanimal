@@ -24,7 +24,7 @@ lmm_animal(
   n_factors = NULL,
   hs_global_scale = 1,
   hs_slab_scale = 2,
-  column_decay = 1,
+  column_decay = 0.8,
   ...
 )
 }
@@ -61,11 +61,11 @@ lmm_animal(
 
 \item{genetic_structure}{Genetic covariance for multivariate fits: "unstructured" (default, direct scales and LKJ correlation) or "factor", which uses the sparse factor model \eqn{G = \mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)} on the correlation scale. The factor model gives loadings regularized-horseshoe priors for automatic shrinkage; loadings are not exactly zero. The ordinary factor model reports \code{loadings}, \code{factor_magnitude}, \code{uniqueness}, \code{communality} and \code{s_G}. With \code{residual_structure = "shared_factor"} the same loadings also structure E, and the fit reports \code{loadings}, \code{factor_magnitude}, \code{factor_heritability}, \code{genetic_uniqueness}, \code{residual_uniqueness}, \code{uniqueness} and \code{communality}. It is available only for multivariate fits and is not compatible with \code{model_file}.}
 
-\item{n_factors}{Number of factors when \code{genetic_structure = "factor"}; for \code{residual_structure = "shared_factor"} these are shared by \code{G} and \code{E}. It is a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model uses a sublinear default, \code{min(K - 1, max(2, floor(sqrt(K))), 20)}, and reports the value with a message. Ignored otherwise.}
+\item{n_factors}{Number of factors when \code{genetic_structure = "factor"}; for \code{residual_structure = "shared_factor"} these are shared by \code{G} and \code{E}. It is a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model falls back to \code{min(K - 1, max(2, floor(sqrt(K))), 20)} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.}
 
 \item{hs_global_scale, hs_slab_scale}{Scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale. Smaller \code{hs_global_scale} gives stronger shrinkage and fewer effective loadings; \code{hs_slab_scale} bounds the largest loading in the slab. Both must be positive and are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns that they are ignored. See Piironen and Vehtari (2017) on choosing the global scale from the expected number of nonzero loadings.}
 
-\item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 1 applies no decay. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. A non-default value outside \code{genetic_structure = "factor"} errors, and explicitly supplying the default in that case warns that it is ignored.}
+\item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 0.8 orders the columns without forcing a strict hierarchy; with \code{column_decay = 1} the columns are exchangeable a priori and their labels are free to swap between chains. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. Explicitly supplying it outside \code{genetic_structure = "factor"} warns that it is ignored.}
 
 \item{...}{additional parameters for stan sampling}
 }

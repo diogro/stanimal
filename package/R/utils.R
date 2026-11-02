@@ -40,8 +40,8 @@
 # Initial number of factors when the user asks for a factor model but leaves
 # `n_factors` NULL. A sublinear default avoids the quadratic loadings of
 # `n_traits / 2` while still allowing more factors as the trait count grows.
-# The cap keeps the first fit practical; LOO or factor-magnitude checks should
-# refine this value.
+# It only sees the number of traits, so it cannot know whether the data support
+# that many: `suggest_n_factors()` is the data-driven answer.
 .default_n_factors <- function(n_traits) {
   as.integer(min(n_traits - 1L, max(2L, floor(sqrt(n_traits))), 20L))
 }

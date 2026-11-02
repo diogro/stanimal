@@ -24,7 +24,8 @@ test_that("factor G model samples and exposes factor summaries", {
   expect_equal(attr(fit, "n_factors"), 2)
 
   expect_clean_fit(fit)
-  expect_lt(max(abs(post_matrix(fit, "G", 3) - G)), 0.9)
+  # the posterior mean recovers G to about 0.4 on entries of order one
+  expect_lt(max(abs(post_matrix(fit, "G", 3) - G)), 0.6)
 
   loadings <- fit_draws(fit)$loadings
   expect_equal(dim(loadings), c(3, 2, posterior::ndraws(fit$draws("G"))))
@@ -56,11 +57,11 @@ test_that("factor model uses the sublinear n_factors default", {
 
   sim <- simulate_animal(n_fam = 10, size = 4, G = true_factor_G(),
                          E = diag(3), seed = 32)
-  expect_message(
-    fit_default <- suppressWarnings(lmm_animal(
+  expect_warning(
+    fit_default <- lmm_animal(
       sim$Y, sim$X, sim$A, genetic_structure = "factor",
       iter = 200, warmup = 100, chains = 1, cores = 1,
-      seed = 1, refresh = 0, show_messages = FALSE)),
+      seed = 1, refresh = 0, show_messages = FALSE),
     "n_factors"
   )
   expect_equal(attr(fit_default, "n_factors"), 2)
@@ -79,9 +80,9 @@ test_that("factor model validates n_factors and model files", {
                n_factors = 2, model_file = tempfile()),
     "`model_file` cannot be combined"
   )
-  expect_error(
+  expect_warning(
     lmm_animal(sim$Y, sim$X, sim$A, column_decay = 0.5),
-    "`column_decay` is only used"
+    "`column_decay` is ignored"
   )
   expect_error(
     lmm_animal(sim$Y, sim$X, sim$A, genetic_structure = "factor",

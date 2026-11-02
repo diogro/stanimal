@@ -32,6 +32,13 @@
   `uniqueness` and `communality`. The factor fit estimates the residual
   standard deviations, so `P`, `corrP` and `sigma_P` describe the covariance
   left after the fixed effects rather than the marginal covariance of `Y`.
+* `suggest_n_factors()` chooses the number of factors from the data by parallel
+  analysis (Horn 1965), comparing the eigenvalues of the residual trait
+  correlation matrix against those of data with no shared structure. The result
+  is an upper bound, and its attributes carry the full eigenvalue comparison.
+  `scree_eigenvalues()` returns the eigenvalues behind a scree plot, and
+  `plot()` draws it with the parallel-analysis cutoffs. Both residualize on the
+  fixed effects first, so they describe the correlation the factor model fits.
 * The multivariate models now report pointwise `log_lik`, enabling LOO, WAIC
   and other predictive comparisons with the fits.
 * `fit_draws()` handles the factor outputs: factor fits return `loadings` as a
@@ -56,6 +63,16 @@
 
 ## Changes
 
+* `column_decay` now defaults to `0.8` instead of `1` in both factor models. With
+  no decay the factor columns are exchangeable a priori, so their labels are free
+  to swap between chains and `factor_magnitude` reports large `Rhat` values on a
+  healthy fit; the mild decay orders the columns without forcing a hierarchy.
+  `column_decay = 1` restores the previous behaviour. Supplying `column_decay`
+  without a factor model now warns instead of erroring, like the other factor
+  priors.
+* Leaving `n_factors` to the fallback now warns with the number it used, instead
+  of reporting it with a message. The fallback only sees the number of traits;
+  `suggest_n_factors()` is the data-driven answer.
 * Chains no longer all start at the same point. The sampler used to be called
   with `init = 0`; each chain now draws its own start from the engine default.
   A shared start makes chains agree by construction, so `Rhat` cannot detect a

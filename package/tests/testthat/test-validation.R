@@ -102,8 +102,10 @@ test_that("custom model files are read and missing defaults error", {
 })
 
 test_that("all shipped Stan files are discoverable", {
-  for (f in c("animalModelG.stan", "animalModelUni.stan",
-              "animalModelUniH2.stan", "phenotypicModel.stan"))
+  for (f in c("animalModelG.stan", "animalModelGFactor.stan",
+              "animalModelGSharedFactor.stan", "animalModelUni.stan",
+              "animalModelUniH2.stan", "phenotypicModel.stan",
+              "phenotypicModelFactor.stan"))
     expect_true(nzchar(stanimal:::.read_animal_model_code(NULL, f)))
 })
 

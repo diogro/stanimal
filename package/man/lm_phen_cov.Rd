@@ -15,6 +15,11 @@ lm_phen_cov(
   control = list(adapt_delta = 0.99),
   cmd_stan = TRUE,
   model_file = NULL,
+  covariance_structure = c("unstructured", "factor"),
+  n_factors = NULL,
+  hs_global_scale = 1,
+  hs_slab_scale = 2,
+  column_decay = 1,
   ...
 )
 }
@@ -23,7 +28,7 @@ lm_phen_cov(
 
 \item{X}{Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.}
 
-\item{lkj_prior}{Shape parameter of the LKJ prior on the correlation matrix. \code{1} is uniform; values above \code{1} shrink correlations toward zero and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits, because at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of correlations. A finite number above 0.}
+\item{lkj_prior}{Shape parameter of the LKJ prior on the correlation matrix. \code{1} is uniform; values above \code{1} shrink correlations toward zero and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits, because at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of correlations. A finite number above 0. It is used only by \code{covariance_structure = "unstructured"}; explicitly supplying it for the factor model warns that it is ignored.}
 
 \item{iter}{Number of MCMC iterations, a whole number.}
 
@@ -39,6 +44,14 @@ lm_phen_cov(
 
 \item{model_file}{Optional path to a custom Stan file replacing the default model.}
 
+\item{covariance_structure}{Covariance structure for the phenotypic model: "unstructured" (default, scales times an LKJ correlation matrix) or "factor", which uses \eqn{P = \mathrm{diag}(\sigma_P)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(\sigma_P)} with regularized-horseshoe loadings, where \eqn{\sigma_P} are the response standard deviations.}
+
+\item{n_factors}{Number of factors when \code{covariance_structure = "factor"}, a whole number between 1 and the number of traits minus one. If \code{NULL}, the same sublinear default as \code{lmm_animal()} is used. Ignored otherwise.}
+
+\item{hs_global_scale, hs_slab_scale}{Scales of the regularized-horseshoe prior on the factor loadings. Both must be positive and are only used by the factor model.}
+
+\item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. The default 1 applies no decay. Only used by the factor model.}
+
 \item{...}{additional parameters for stan sampling.}
 }
 \value{
@@ -51,7 +64,7 @@ information. It is the counterpart of \code{\link{lmm_animal}} without the
 genetic component, and uses the same priors, scaling and outputs.
 }
 \details{
-The model estimates \code{P} as scales times an LKJ-distributed correlation matrix, with half-normal priors on the scales of the standardized responses. Returned quantities (original response scale) are \code{P}, \code{corrP}, \code{sigma_P} and the fixed effects \code{beta[trait,j]}.
+The unstructured model estimates \code{P} as scales times an LKJ-distributed correlation matrix, with half-normal priors on the scales of the standardized responses. With \code{covariance_structure = "factor"}, \code{P} is instead \eqn{\mathrm{diag}(\sigma_P)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(\sigma_P)}, with regularized-horseshoe loadings and deterministic column decay. The factor fit reports \code{loadings}, \code{factor_magnitude}, \code{uniqueness} and \code{communality} in addition to \code{P}, \code{corrP}, \code{sigma_P} and the fixed effects. Returned quantities are on the original response scale.
 
 The likelihood is computed by whitening the residuals with the Cholesky factor of \code{P} in a single triangular solve, at \code{O(N K^2 + K^3)} per evaluation rather than a per-individual loop, so the model scales to dozens of traits.
 

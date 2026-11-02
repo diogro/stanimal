@@ -313,6 +313,15 @@ fit <- lm_phen_cov(Y, X, lkj_prior = 2)
 fit$summary("P")
 ```
 
+For many traits, the phenotypic covariance can instead use the same sparse factor structure as the animal model:
+
+```r
+fit <- lm_phen_cov(Y, X, covariance_structure = "factor", n_factors = 3)
+fit$summary(c("P", "loadings", "factor_magnitude"))
+```
+
+`covariance_structure = "factor"` uses the regularized-horseshoe loadings, the sublinear `n_factors` default and `column_decay`. The factor fit reports `loadings`, `factor_magnitude`, `uniqueness` and `communality` in addition to `P`, `corrP` and `sigma_P`.
+
 ## Data scaling and back-transformed coefficients
 
 All models standardize the response and divide continuous predictors by their standard deviation (constant and 0/1 columns are not scaled) for better sampling. Coefficients are back-transformed, so `beta` is in the original units of `X` and `Y`, and the mean of the response is restored through the design: onto an intercept column, or split across the indicator columns of a factor when the intercept is dropped.

@@ -24,6 +24,12 @@
   `genetic_structure = "factor"` and reports `loadings`, `factor_magnitude`,
   `factor_heritability`, `genetic_uniqueness`, `residual_uniqueness`,
   `uniqueness` and `communality`.
+* `lm_phen_cov()` gains `covariance_structure = "factor"`, which replaces the
+  unstructured phenotypic covariance with a sparse factor model on the
+  correlation scale. It uses the same regularized-horseshoe loadings,
+  `n_factors` default, `hs_global_scale`, `hs_slab_scale` and `column_decay` as
+  the animal factor model, and reports `loadings`, `factor_magnitude`,
+  `uniqueness` and `communality`.
 * The multivariate models now report pointwise `log_lik`, enabling LOO, WAIC
   and other predictive comparisons with the fits.
 * `fit_draws()` handles the factor outputs: factor fits return `loadings` as a

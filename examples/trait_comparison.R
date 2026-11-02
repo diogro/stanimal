@@ -114,20 +114,34 @@ h2_true <- diag(G) / diag(G + E)
 rG_true <- corr_of(G)
 
 # One row per engine: mean squared error of G, E, the heritabilities and the
-# genetic correlations, and the time the fit took.
-compare <- function(engine, G_hat, E_hat, elapsed = NA_real_) {
+# genetic correlations, the minimum ESS of G, ESS per retained draw, and time.
+compare <- function(engine, G_hat, E_hat, elapsed = NA_real_,
+                    min_ess = NA_real_, n_draws = NA_real_) {
   ok <- !is.null(G_hat) && !is.null(E_hat) &&
     !anyNA(G_hat) && !anyNA(E_hat)
   if (!ok)
     return(data.frame(engine = engine, G_mse = NA_real_, E_mse = NA_real_,
                       h2_mse = NA_real_, corrG_mse = NA_real_,
+                      min_ess = min_ess, ess_ratio = min_ess / n_draws,
                       time_s = elapsed))
   data.frame(engine = engine,
              G_mse = mean((G_hat - G)^2),
              E_mse = mean((E_hat - E)^2),
              h2_mse = mean((diag(G_hat) / diag(G_hat + E_hat) - h2_true)^2),
              corrG_mse = mean((corr_of(G_hat) - rG_true)^2),
+             min_ess = min_ess, ess_ratio = min_ess / n_draws,
              time_s = elapsed)
+}
+
+# Smallest bulk ESS across the unique elements of G. The draws matrix has one
+# row per retained draw and one column per parameter.
+ess_min <- function(draws) {
+  draws <- as.matrix(draws)
+  if (!nrow(draws) || !ncol(draws)) return(NA_real_)
+  values <- vapply(seq_len(ncol(draws)),
+                   function(j) posterior::ess_bulk(draws[, j]), numeric(1))
+  if (all(is.na(values))) return(NA_real_)
+  min(values, na.rm = TRUE)
 }
 
 results <- list(compare("truth", G, E))
@@ -150,9 +164,15 @@ time_stan <- system.time(
   fit_stan <- lmm_animal(design$Y, design$X, design$A,
                          iter = 2000, warmup = 1000, chains = 4, cores = 4,
                          refresh = 0))
+g_pairs <- which(lower.tri(diag(n_traits), diag = TRUE), arr.ind = TRUE)
+g_draws <- fit_draws(fit_stan)$G
+g_matrix <- vapply(seq_len(nrow(g_pairs)), function(i)
+  g_draws[g_pairs[i, 1], g_pairs[i, 2], ], numeric(dim(g_draws)[3]))
 results$stanimal <- compare("stanimal", draws_mean(fit_stan, "G"),
                             draws_mean(fit_stan, "E"),
-                            elapsed = time_stan[["elapsed"]])
+                            elapsed = time_stan[["elapsed"]],
+                            min_ess = ess_min(g_matrix),
+                            n_draws = nrow(g_matrix))
 
 ## MCMCglmm: Bayesian, pedigree supplied as the inverse of A ----------------
 
@@ -170,11 +190,13 @@ time_mcmc <- system.time(
                        nitt = 13000, burnin = 3000, thin = 10, verbose = FALSE))
 # VCV holds the K x K G matrix in column order, then the K x K residual matrix
 k2 <- n_traits^2
+mcmc_draws <- as.matrix(fit_mcmc$VCV)[, seq_len(k2), drop = FALSE]
 results$MCMCglmm <- compare(
   "MCMCglmm",
   matrix(colMeans(fit_mcmc$VCV[, seq_len(k2)]), n_traits),
   matrix(colMeans(fit_mcmc$VCV[, k2 + seq_len(k2)]), n_traits),
-  elapsed = time_mcmc[["elapsed"]])
+  elapsed = time_mcmc[["elapsed"]],
+  min_ess = ess_min(mcmc_draws), n_draws = nrow(mcmc_draws))
 
 ## BGLR: Bayesian multitrait, pedigree relationship as an RKHS kernel -------
 
@@ -185,6 +207,7 @@ if (requireNamespace("BGLR", quietly = TRUE)) {
   # Weak inverse-Wishart priors with prior mean I, for G and for the residual
   prior_cov <- list(type = "UN", df0 = n_traits + 3,
                     S0 = 2 * diag(n_traits))
+  bglr_prefix <- file.path(tempdir(), "bglr_traits_")
   time_bglr <- system.time(
     fit_bglr <- BGLR::Multitrait(
       y = as.matrix(dat[traits]),
@@ -192,10 +215,19 @@ if (requireNamespace("BGLR", quietly = TRUE)) {
                  list(K = A_dat, model = "RKHS", Cov = prior_cov)),
       intercept = FALSE, resCov = prior_cov,
       nIter = 13000, burnIn = 3000, thin = 10,
-      saveAt = file.path(tempdir(), "bglr_"), verbose = FALSE))
+      saveAt = bglr_prefix, verbose = FALSE))
+  bglr_omega <- Sys.glob(paste0(bglr_prefix, "Omega_*.dat"))
+  bglr_ess <- NA_real_
+  bglr_draws <- NA_real_
+  if (length(bglr_omega)) {
+    bglr_samples <- as.matrix(read.table(bglr_omega[1]))
+    bglr_ess <- ess_min(bglr_samples)
+    bglr_draws <- nrow(bglr_samples)
+  }
   results$BGLR <- compare("BGLR", fit_bglr$ETA[[2]]$Cov$Omega,
                           fit_bglr$resCov$R,
-                          elapsed = time_bglr[["elapsed"]])
+                          elapsed = time_bglr[["elapsed"]],
+                          min_ess = bglr_ess, n_draws = bglr_draws)
 } else {
   message("BGLR is not installed; install.packages(\"BGLR\") to add it")
 }
@@ -298,11 +330,15 @@ print(out)
 
 # G_mse and E_mse are the elementwise mean squared errors against the simulated
 # matrices; h2_mse and corrG_mse compare the trait-level summaries (corrG uses
-# the upper triangle, since the diagonal is always 1). Timings are a single run
-# each, in seconds, and cover the fit call only. Setup outside the call is not
-# timed: animal_design() builds A for stanimal, solve(A) inverts it for sommer,
-# and sparse_ginv(A) builds ASReml-R's inverse before its fit, while the inverse
-# of A that MCMCglmm needs is evaluated inside its call and so is included.
+# the upper triangle, since the diagonal is always 1). min_ess is the smallest
+# bulk effective sample size across the unique elements of G, and ess_ratio
+# divides it by the retained draws (4000 for stanimal, 1000 for MCMCglmm and
+# BGLR), so it measures mixing rather than chain length. REML engines have no
+# draws and leave both columns NA. Timings are a single run each, in seconds,
+# and cover the fit call only. Setup outside the call is not timed:
+# animal_design() builds A for stanimal, solve(A) inverts it for sommer, and
+# sparse_ginv(A) builds ASReml-R's inverse before its fit, while the inverse of A
+# that MCMCglmm needs is evaluated inside its call and so is included.
 # stanimal's time also includes compiling the model when the cache is cold;
 # after the first fit the compiled executable is reused and only sampling is
 # timed. These are not like-for-like posteriors either: MCMCglmm, BGLR and

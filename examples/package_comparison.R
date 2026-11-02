@@ -67,15 +67,29 @@ dat <- data.frame(id = factor(ped$id), sex = X[, "sex"], age = X[, "age"], Y)
 ## Comparison helpers --------------------------------------------------------
 
 # One row per engine: the three distinct entries of G and of E, heritabilities,
-# the genetic correlation and the time the fit took in seconds.
-compare <- function(engine, G_hat, E_hat, elapsed = NA_real_) {
+# the genetic correlation, the minimum ESS of G, ESS per retained draw, and
+# the time the fit took in seconds.
+compare <- function(engine, G_hat, E_hat, elapsed = NA_real_,
+                    min_ess = NA_real_, n_draws = NA_real_) {
   data.frame(engine = engine,
              G11 = G_hat[1, 1], G12 = G_hat[1, 2], G22 = G_hat[2, 2],
              E11 = E_hat[1, 1], E12 = E_hat[1, 2], E22 = E_hat[2, 2],
              h2_1 = G_hat[1, 1] / (G_hat[1, 1] + E_hat[1, 1]),
              h2_2 = G_hat[2, 2] / (G_hat[2, 2] + E_hat[2, 2]),
              rG = if (anyNA(G_hat)) NA_real_ else cov2cor(G_hat)[1, 2],
+             min_ess = min_ess, ess_ratio = min_ess / n_draws,
              time_s = elapsed)
+}
+
+# Smallest bulk ESS across the unique elements of G. The draws matrix has one
+# row per retained draw and one column per parameter.
+ess_min <- function(draws) {
+  draws <- as.matrix(draws)
+  if (!nrow(draws) || !ncol(draws)) return(NA_real_)
+  values <- vapply(seq_len(ncol(draws)),
+                   function(j) posterior::ess_bulk(draws[, j]), numeric(1))
+  if (all(is.na(values))) return(NA_real_)
+  min(values, na.rm = TRUE)
 }
 
 # ASReml reports us() parameters as the lower triangle, row by row
@@ -124,9 +138,15 @@ time_stan <- system.time(
                          refresh = 0))
 
 # G[i,j] and E[i,j] draws, summarised as trait by trait posterior means
+g_pairs <- which(lower.tri(diag(2), diag = TRUE), arr.ind = TRUE)
+g_draws <- fit_draws(fit_stan)$G
+g_matrix <- vapply(seq_len(nrow(g_pairs)), function(i)
+  g_draws[g_pairs[i, 1], g_pairs[i, 2], ], numeric(dim(g_draws)[3]))
 results$stanimal <- compare("stanimal", draws_mean(fit_stan, "G"),
                             draws_mean(fit_stan, "E"),
-                            elapsed = time_stan[["elapsed"]])
+                            elapsed = time_stan[["elapsed"]],
+                            min_ess = ess_min(g_matrix),
+                            n_draws = nrow(g_matrix))
 
 ## MCMCglmm: Bayesian, pedigree supplied as the inverse of A ----------------
 
@@ -142,10 +162,13 @@ time_mcmc <- system.time(
                        prior = prior, data = dat,
                        nitt = 13000, burnin = 3000, thin = 10, verbose = FALSE))
 # VCV columns are G[t1,t1], G[t2,t1], G[t1,t2], G[t2,t2], then the same for units
+mcmc_draws <- as.matrix(fit_mcmc$VCV)[, 1:4, drop = FALSE]
 results$MCMCglmm <- compare("MCMCglmm",
                             matrix(colMeans(fit_mcmc$VCV[, 1:4]), 2),
                             matrix(colMeans(fit_mcmc$VCV[, 5:8]), 2),
-                            elapsed = time_mcmc[["elapsed"]])
+                            elapsed = time_mcmc[["elapsed"]],
+                            min_ess = ess_min(mcmc_draws),
+                            n_draws = nrow(mcmc_draws))
 
 ## BGLR: Bayesian multitrait, pedigree relationship as an RKHS kernel -------
 # Multitrait gives each trait its own fixed effects, and a K kernel supplies  
@@ -158,6 +181,7 @@ if (requireNamespace("BGLR", quietly = TRUE)) {
   # S0 and df0 are set explicitly so the priors are in the same spirit as the
   # other engines and Multitrait does not print the values it would pick
   prior_cov <- list(type = "UN", df0 = 5, S0 = 2 * diag(2))
+  bglr_prefix <- file.path(tempdir(), "bglr_bivariate_")
   time_bglr <- system.time(
     fit_bglr <- BGLR::Multitrait(
       y = cbind(dat$t1, dat$t2),
@@ -165,11 +189,20 @@ if (requireNamespace("BGLR", quietly = TRUE)) {
                  list(K = A_dat, model = "RKHS", Cov = prior_cov)),
       intercept = FALSE, resCov = prior_cov,
       nIter = 13000, burnIn = 3000, thin = 10,
-      saveAt = file.path(tempdir(), "bglr_"), verbose = FALSE))
+      saveAt = bglr_prefix, verbose = FALSE))
+  bglr_omega <- Sys.glob(paste0(bglr_prefix, "Omega_*.dat"))
+  bglr_ess <- NA_real_
+  bglr_draws <- NA_real_
+  if (length(bglr_omega)) {
+    bglr_samples <- as.matrix(read.table(bglr_omega[1]))
+    bglr_ess <- ess_min(bglr_samples)
+    bglr_draws <- nrow(bglr_samples)
+  }
   # Omega is the trait by trait genetic covariance, R the residual one
   results$BGLR <- compare("BGLR", fit_bglr$ETA[[2]]$Cov$Omega,
                           fit_bglr$resCov$R,
-                          elapsed = time_bglr[["elapsed"]])
+                          elapsed = time_bglr[["elapsed"]],
+                          min_ess = bglr_ess, n_draws = bglr_draws)
 } else {
   message("BGLR is not installed; install.packages(\"BGLR\") to add it")
 }
@@ -274,6 +307,9 @@ print(out)
 # before its fit, while the inverse of A that MCMCglmm needs is evaluated inside
 # its call and so is included. stanimal's time also includes compiling the model
 # when the cache is cold; after the first fit the compiled executable is reused
-# and only sampling is timed. These are not like-for-like posteriors either:
-# MCMCglmm, BGLR and stanimal sample and stop at different effective sample
-# sizes, while sommer, lme4breeding and ASReml-R maximize the REML likelihood.
+# and only sampling is timed. min_ess is the smallest bulk effective sample size
+# across the unique elements of G, and ess_ratio divides it by the retained
+# draws (4000 for stanimal, 1000 for MCMCglmm and BGLR); REML engines leave both
+# NA. These are not like-for-like posteriors either: MCMCglmm, BGLR and stanimal
+# sample and stop at different effective sample sizes, while sommer, lme4breeding
+# and ASReml-R maximize the REML likelihood.

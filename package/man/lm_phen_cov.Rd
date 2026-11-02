@@ -56,6 +56,30 @@ lm_phen_cov(
 }
 \value{
 With \code{cmd_stan = TRUE}, a \code{CmdStanMCMC} object from cmdstanr, usable with posterior and bayesplot (see \code{\link{lmm_animal}}); use \code{\link{rename_beta}} for \code{beta} draws named after the columns of \code{X}, and \code{\link{fit_draws}} or \code{\link{draws_mean}} to get \code{P}, \code{corrP} and \code{sigma_P} as matrices. With \code{cmd_stan = FALSE}, a \code{stanfit} object.
+
+The unstructured fit reports \code{P} (original trait scale), \code{corrP},
+\code{sigma_P} and the fixed effects \code{beta[trait, j]}.
+
+Factor fits add quantities that describe the decomposition:
+\itemize{
+  \item \code{loadings}: the trait by factor loading matrix \eqn{\Lambda},
+    on the correlation scale.
+  \item \code{communality}: for trait \eqn{k},
+    \eqn{c_k = \sum_m \lambda_{km}^2}, the part of the trait's variance
+    explained by the common factors. On the correlation scale
+    \eqn{c_k + u_k = 1}; multiplying by \code{sigma_P[k]^2} gives the common
+    phenotypic variance of trait \eqn{k}.
+  \item \code{uniqueness}: for trait \eqn{k}, \eqn{u_k = 1 - c_k}, the
+    trait-specific variance left after the factors. Multiplying by
+    \code{sigma_P[k]^2} gives the unique phenotypic variance.
+  \item \code{factor_magnitude}: for factor \eqn{m},
+    \eqn{\sum_k \lambda_{km}^2}, the variance the factor contributes across
+    traits. It is a factor-level summary, not a per-trait quantity.
+}
+These are available from \code{fit$summary()} and from
+\code{\link{fit_draws}}: \code{loadings} is a trait by factor by draw array,
+\code{factor_magnitude} is a factor by draw matrix, and the uniqueness and
+communality vectors are trait by draw matrices.
 }
 \description{
 Estimates the phenotypic covariance matrix \code{P} of one or more traits
@@ -69,6 +93,30 @@ The unstructured model estimates \code{P} as scales times an LKJ-distributed cor
 The likelihood is computed by whitening the residuals with the Cholesky factor of \code{P} in a single triangular solve, at \code{O(N K^2 + K^3)} per evaluation rather than a per-individual loop, so the model scales to dozens of traits.
 
 Continuous predictors are centered and divided by their sample standard deviation inside Stan. Constant and 0/1 indicator columns are not centered or scaled. Standardized slopes have \code{normal(0, 1)} priors; the intercept contribution has a wider \code{normal(0, 2.5)} prior. Returned \code{beta} coefficients are backtransformed to original predictor and response units, including restoring the response mean to the intercept; \code{beta_scaled} draws are also available.
+}
+\examples{
+\dontrun{
+set.seed(1)
+n <- 60
+X <- cbind(Intercept = 1, sex = rbinom(n, 1, 0.5))
+P <- random_covariance(3, min_var = 0.8, max_var = 1.2,
+                       trait_names = c("t1", "t2", "t3"))
+B <- rbind(c(10, 9, 11), c(1, -0.5, 0.3))
+Y <- X \%*\% B + matrix(rnorm(n * 3), n) \%*\% chol(P)
+colnames(Y) <- c("t1", "t2", "t3")
+
+fit <- lm_phen_cov(Y, X, iter = 1000, warmup = 500,
+                   chains = 2, cores = 2, refresh = 0)
+fit$summary(c("P", "corrP", "sigma_P"))
+round(draws_mean(fit, "P"), 2)
+
+# Sparse factor P
+factor_fit <- lm_phen_cov(Y, X, covariance_structure = "factor",
+                          n_factors = 2, iter = 1000, warmup = 500,
+                          chains = 2, cores = 2, refresh = 0)
+factor_fit$summary(c("P", "loadings", "factor_magnitude"))
+dim(fit_draws(factor_fit)$loadings)
+}
 }
 \author{
 Diogo Melo

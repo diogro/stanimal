@@ -2,3 +2,8 @@
 ^\.\.Rcheck$
 ^data-raw$
 Rplots\.pdf$
+# rstan writes the compiled model next to its .stan source; the executables are
+# build artifacts and must not reach the tarball (R CMD check flags them).
+^inst/stan/animalModelG$
+^inst/stan/animalModelGFactor$
+^inst/stan/.*\.(o|hpp|rds)$

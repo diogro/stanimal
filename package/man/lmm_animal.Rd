@@ -75,7 +75,19 @@ Multivariate fits report \code{G}, \code{E}, \code{P = G + E}, \code{corrG},
 \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}, plus the
 fixed effects \code{beta[trait, j]}.
 
-Factor fits add quantities that describe the factor decomposition:
+Factor fits add quantities that describe the factor decomposition. They come
+in two groups. \code{communality}, \code{uniqueness} and
+\code{factor_heritability} do not depend on how the factors are oriented, so
+the data identify them and their \code{Rhat} and effective sample size are
+read like any other parameter. \code{loadings} and \code{factor_magnitude}
+do depend on it: two solutions with the same \code{G} can differ by a
+rotation, a sign flip or a permutation of the columns, and nothing fixes that
+choice except the prior. A poor \code{Rhat} on those two is therefore not
+evidence that the fit failed, and their posterior means describe whichever
+orientations the chains visited. Judge convergence on \code{G}, \code{E},
+\code{P}, \code{corrG}, \code{communality} and \code{uniqueness}, and pin
+the orientation down by lowering \code{column_decay}, which orders the
+columns, or by asking for fewer factors.
 \itemize{
   \item \code{loadings}: the trait by factor loading matrix \eqn{\Lambda}.
     For the ordinary factor model these are on the correlation scale; for
@@ -96,15 +108,20 @@ Factor fits add quantities that describe the factor decomposition:
     \code{residual_uniqueness} \eqn{\psi_{Ek}} giving the two parts.
   \item \code{factor_magnitude}: for factor \eqn{m},
     \eqn{\sum_k \lambda_{km}^2}, the variance the factor contributes across
-    traits. It is a factor-level summary, not a per-trait quantity, and is
-    useful for comparing or ranking the columns.
+    traits. It is a factor-level summary, not a per-trait quantity. Ranking
+    the columns only means something once the orientation is fixed, by
+    \code{column_decay} or by an \code{n_factors} small enough to leave the
+    factors identified.
   \item \code{factor_heritability}: shared-factor fits only. For factor
     \eqn{m}, \eqn{h^2_m} is the fraction of that factor's variance that is
     genetic: the genetic part is multiplied by \eqn{h^2_m} and the residual
     part by \eqn{1-h^2_m}.
-  \item \code{s_G}: ordinary factor model only, the genetic standard
-    deviations used to move the correlation-scale decomposition to the
-    original scale. Shared-factor fits do not estimate \code{s_G}.
+  \item \code{s_G}: ordinary factor model only. The genetic standard
+    deviation of each trait on the standardized response scale, which is the
+    diagonal scale that moves the correlation-scale decomposition to the
+    original scale; multiplying it by the response standard deviation gives
+    the genetic standard deviations \code{sigma_G} on the data scale.
+    Shared-factor fits do not estimate \code{s_G}.
 }
 These are available from \code{fit$summary()} and from
 \code{\link{fit_draws}}. The latter returns \code{loadings} as a trait by

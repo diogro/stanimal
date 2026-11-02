@@ -80,9 +80,13 @@ fit <- lmm_animal(
   refresh = 0, show_messages = FALSE
 )
 
-# The posterior mean of G is close to the simulated factor covariance.
+# The posterior mean of G is close to the simulated factor covariance. The
+# error is reported relative to the size of G, so it stays readable whatever
+# scale the simulation uses; an absolute RMSE on a covariance matrix means
+# nothing without the variances it should be compared with.
 G_hat <- draws_mean(fit, "G")
-cat("G RMSE:", round(sqrt(mean((G_hat - G)^2)), 3), "\n")
+cat("G relative error:",
+    round(sqrt(mean((G_hat - G)^2)) / sqrt(mean(G^2)), 3), "\n")
 round(G_hat, 2)
 round(G, 2)
 

@@ -49,11 +49,14 @@ fit <- lm_phen_cov(
 )
 
 # P is already on the log-trait scale, so it is directly comparable with the
-# OLS residual covariance, the unpenalised estimate of the same quantity.
+# OLS residual covariance, the unpenalised estimate of the same quantity. The
+# error is reported relative to the size of the covariance: these variances are
+# around 0.001, so an absolute RMSE of a few thousandths is a large relative
+# error and says nothing on its own.
 P_hat <- draws_mean(fit, "P")
 P_ols <- stats::cov(stats::lm.fit(X, Y)$residuals)
-cat("P RMSE against the OLS residual covariance:",
-    round(sqrt(mean((P_hat - P_ols)^2)), 4), "\n")
+cat("P relative error against the OLS residual covariance:",
+    round(sqrt(mean((P_hat - P_ols)^2)) / sqrt(mean(P_ols^2)), 3), "\n")
 cat("first five variances:\n")
 print(round(rbind(factor = diag(P_hat)[1:5], ols = diag(P_ols)[1:5]), 4))
 

@@ -97,7 +97,7 @@ $$
 with sparse loadings $\Lambda$ on the correlation scale and diagonal uniqueness $\Psi$. The loadings have regularized-horseshoe priors, and `column_decay` can favour factors in decreasing order. `n_factors` sets the number of factors; if omitted, a sublinear default is used.
 
 ```r
-fit <- lmm_animal(Y, X, A,
+fit <- lmm_animal(log_traits, X, A,
                   genetic_structure = "factor", n_factors = 3)
 fit$summary(c("loadings", "factor_magnitude"))
 ```
@@ -113,14 +113,14 @@ $$
 so each factor has a heritability. This follows the sparse factor model of [Runcie and Mukherjee (2013)](https://doi.org/10.1534/genetics.113.151217) (“Bayesian Sparse Factor Analysis of Genetic Covariance Matrices”, *Genetics*; [arXiv:1211.3706](https://arxiv.org/abs/1211.3706)). It requires `genetic_structure = "factor"`:
 
 ```r
-fit <- lmm_animal(Y, X, A,
+fit <- lmm_animal(log_traits, X, A,
                   genetic_structure = "factor",
                   residual_structure = "shared_factor",
                   n_factors = 3)
 fit$summary(c("factor_heritability", "G", "E"))
 ```
 
-Factor fits report `loadings`, `factor_magnitude`, `factor_heritability`, `uniqueness` and `communality`. The last two are the less familiar quantities: `communality[k]` is the variance that trait `k` shares through the factors, and `uniqueness[k]` is its trait-specific remainder. In the ordinary factor model they are on the correlation scale, so `communality + uniqueness = 1`; multiplying them by `s_G[k]^2` gives the common and unique genetic variances. In shared-factor fits, `uniqueness = genetic_uniqueness + residual_uniqueness` and `factor_heritability[m]` is the genetic share of factor `m`. `factor_magnitude[m]` is the squared norm of loading column `m` across traits, not a per-trait quantity. Individual loadings are only identified up to rotation and sign, so interpret `G`, the communalities and the factor magnitudes rather than the posterior means of single loadings. The factor prior reduces the number of covariance parameters, but the current Stan models still use a $K \times K$ eigendecomposition, so the factor structures help parameter count and parsimony more than the linear-algebra cost. `examples/factor_model.R` and `examples/structure_comparison.R` show both alternatives.
+Factor fits report `loadings`, `factor_magnitude`, `factor_heritability`, `uniqueness` and `communality`. The last two are the less familiar quantities: `communality[k]` is the variance that trait `k` shares through the factors, and `uniqueness[k]` is its trait-specific remainder. In the ordinary factor model they are on the correlation scale, so `communality + uniqueness = 1`; multiplying them by `s_G[k]^2` gives the common and unique genetic variances. In shared-factor fits, `uniqueness = genetic_uniqueness + residual_uniqueness` and `factor_heritability[m]` is the genetic share of factor `m`. `factor_magnitude[m]` is the squared norm of loading column `m` across traits, not a per-trait quantity. Loadings and factor magnitudes both depend on how the factors are oriented, and nothing in the model fixes that orientation except the prior: two solutions with the same `G` can differ by a rotation, a sign flip or a permutation of the columns. So interpret `G`, `E`, the communalities and the uniquenesses, and treat a poor `Rhat` on `loadings` or `factor_magnitude` as an orientation that moved rather than as a failed fit. Lowering `column_decay` orders the columns and makes the magnitudes comparable. The factor prior reduces the number of covariance parameters, but the current Stan models still use a $K \times K$ eigendecomposition, so the factor structures help parameter count and parsimony more than the linear-algebra cost. `examples/factor_model.R` and `examples/structure_comparison.R` show both alternatives.
 
 ## Output
 
@@ -229,13 +229,13 @@ pc1_variance_share(log_traits)   # 1 / n_traits means no dominant gradient; > 0.
 
 ```r
 ss <- size_shape(log_traits)                  # individuals in rows, traits in columns
-dat <- cbind(morphology, ss$scores)           # size, shape1, shape2, ...
+ss_dat <- cbind(morphology, ss$scores)        # size, shape1, shape2, ...
 
 # the response is every score, so the model traits match the ones back_transform()
 # expects; build it from ss$traits instead of writing cbind(size, shape1, ...)
 f <- reformulate(c("sex", "site"),
                  response = sprintf("cbind(%s)", paste(ss$traits, collapse = ", ")))
-design <- animal_design(f, dat)
+design <- animal_design(f, ss_dat)
 fit <- lmm_animal(design$Y, design$X, A)
 
 post <- back_transform(fit, ss)               # G, E, P, corrG, corrP and h2 on the log scale
@@ -268,9 +268,11 @@ Inbreeding is accounted for, so a pedigree with matings between relatives gives 
 Founders are unrelated by default. If the base population has structure — multiple breeds or populations, or a known relationship among the founders — pass `Gamma`, the relationship matrix among founders, to `makeA()`:
 
 ```r
+# a three-individual pedigree: founders 1 and 2 and their offspring 3
+ped2 <- data.frame(id = c(1, 2, 3), sire = c(NA, NA, 1), dam = c(NA, NA, 2))
 Gamma <- matrix(c(1, 0.25, 0.25, 1), 2,
-                dimnames = list(c("f1", "f2"), c("f1", "f2")))
-A <- makeA(pedigree, Gamma = Gamma)
+                dimnames = list(c("1", "2"), c("1", "2")))
+A <- makeA(ped2, Gamma = Gamma)
 ```
 
 Founders are individuals with both parents unknown. `Gamma` can be matched by founder IDs through its dimnames, or by founder order when it has no names. This is the \(A^\Gamma\) construction for related founders and metafounders (Legarra et al. 2015): the founder block is initialized from `Gamma` instead of the identity, and the tabular recursion propagates those relationships.
@@ -280,14 +282,19 @@ For genetic groups or metafounders, assign each founder to a group and give `Gam
 ```r
 Gamma_groups <- matrix(c(1, 0.2, 0.2, 1), 2,
                        dimnames = list(c("A", "B"), c("A", "B")))
-A <- makeA(pedigree, Gamma = Gamma_groups, groups = c("A", "A", "B"))
+founders <- pedigree$id[is.na(pedigree$sire) & is.na(pedigree$dam)]
+groups <- rep(c("A", "B"), length.out = length(founders))
+A <- makeA(pedigree, Gamma = Gamma_groups, groups = groups)
 ```
 
-`groups` can be named by founder ID or given in founder order. `animal_design()` passes both arguments through when it builds `A`:
+`groups` needs one label per founder, either in founder order or named by founder ID.
+
+`animal_design()` passes both arguments through when it builds `A`:
 
 ```r
 design <- animal_design(cbind(t1, t2) ~ sex, dat,
-                        pedigree = pedigree, Gamma = Gamma, groups = groups)
+                        pedigree = pedigree, Gamma = Gamma_groups,
+                        groups = groups)
 ```
 
 Only founders with both parents unknown receive founder relationships. An unknown parent of an individual that has one known parent is still treated as an unrelated founder; add it explicitly to the pedigree and assign a group if it belongs to the related base population. A genomic relationship matrix among founders can be used as `Gamma`, but it estimates realized rather than base-population relationships, so blending or shrinkage is advisable. See `?makeA` for details and the [Legarra et al. (2015)](https://doi.org/10.1534/genetics.115.177014) reference.
@@ -316,11 +323,11 @@ fit$summary("P")
 For many traits, the phenotypic covariance can instead use the same sparse factor structure as the animal model:
 
 ```r
-fit <- lm_phen_cov(Y, X, covariance_structure = "factor", n_factors = 3)
+fit <- lm_phen_cov(Y, X, covariance_structure = "factor", n_factors = 1)
 fit$summary(c("P", "loadings", "factor_magnitude"))
 ```
 
-`covariance_structure = "factor"` uses the regularized-horseshoe loadings, the sublinear `n_factors` default and `column_decay`. The factor fit reports `loadings`, `factor_magnitude`, `uniqueness` and `communality` in addition to `P`, `corrP` and `sigma_P`. `examples/factor_phenotypic_covariance.R` fits the full 35-trait mouse covariance matrix this way on the log-trait scale, and checks the fitted `P` against the OLS residual covariance.
+`covariance_structure = "factor"` uses the regularized-horseshoe loadings and `column_decay`, and `n_factors` falls back to a sublinear default when it is omitted (here the two traits leave room for one factor). The factor fit reports `loadings`, `factor_magnitude`, `uniqueness` and `communality` in addition to `P`, `corrP` and `sigma_P`. `examples/factor_phenotypic_covariance.R` fits the full 35-trait mouse covariance matrix this way on the log-trait scale, and checks the fitted `P` against the OLS residual covariance.
 
 Keep the factors on the observed trait scale. Rotating first (for instance to the size/shape scores of `size_shape()`) spreads every loading over all the traits, which removes the sparsity the prior is there to find, and turns the low-rank structure into the rotation itself: the score covariance is then almost diagonal, so the factor decomposition is left weakly identified.
 

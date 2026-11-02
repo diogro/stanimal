@@ -63,7 +63,17 @@ the residual standard deviations, so \code{P}, \code{corrP} and \code{sigma_P}
 describe the covariance of the residuals after the fixed effects, not the
 marginal covariance of \code{Y}.
 
-Factor fits add quantities that describe the decomposition:
+Factor fits add quantities that describe the decomposition. \code{communality}
+and \code{uniqueness} do not depend on how the factors are oriented, so they
+are identified by the data. \code{loadings} and \code{factor_magnitude} do:
+two solutions with the same \code{P} can differ by a rotation, a sign flip or
+a permutation of the columns, and nothing fixes that choice except the prior.
+A poor \code{Rhat} on those two is therefore not evidence that the fit
+failed, and their posterior means describe whichever orientations the chains
+visited. Judge convergence on \code{P}, \code{corrP}, \code{sigma_P},
+\code{communality} and \code{uniqueness}, and pin the orientation down by
+lowering \code{column_decay}, which orders the columns, or by asking for
+fewer factors.
 \itemize{
   \item \code{loadings}: the trait by factor loading matrix \eqn{\Lambda},
     on the correlation scale.
@@ -77,7 +87,8 @@ Factor fits add quantities that describe the decomposition:
     \code{sigma_P[k]^2} gives the unique phenotypic variance.
   \item \code{factor_magnitude}: for factor \eqn{m},
     \eqn{\sum_k \lambda_{km}^2}, the variance the factor contributes across
-    traits. It is a factor-level summary, not a per-trait quantity.
+    traits. It is a factor-level summary, not a per-trait quantity, and its
+    values only compare across columns once the orientation is fixed.
 }
 These are available from \code{fit$summary()} and from
 \code{\link{fit_draws}}: \code{loadings} is a trait by factor by draw array,

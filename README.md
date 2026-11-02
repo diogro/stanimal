@@ -263,6 +263,35 @@ fit <- lmm_animal(Y, X, A)
 
 Inbreeding is accounted for, so a pedigree with matings between relatives gives diagonal values above one. A parent that is not one of the pedigree's individuals is added as a founder, with a warning, rather than silently dropping the relationship; a pedigree where an individual is its own ancestor is an error.
 
+### Related founders and metafounders
+
+Founders are unrelated by default. If the base population has structure — multiple breeds or populations, or a known relationship among the founders — pass `Gamma`, the relationship matrix among founders, to `makeA()`:
+
+```r
+Gamma <- matrix(c(1, 0.25, 0.25, 1), 2,
+                dimnames = list(c("f1", "f2"), c("f1", "f2")))
+A <- makeA(pedigree, Gamma = Gamma)
+```
+
+Founders are individuals with both parents unknown. `Gamma` can be matched by founder IDs through its dimnames, or by founder order when it has no names. This is the \(A^\Gamma\) construction for related founders and metafounders (Legarra et al. 2015): the founder block is initialized from `Gamma` instead of the identity, and the tabular recursion propagates those relationships.
+
+For genetic groups or metafounders, assign each founder to a group and give `Gamma` one row and column per group:
+
+```r
+Gamma_groups <- matrix(c(1, 0.2, 0.2, 1), 2,
+                       dimnames = list(c("A", "B"), c("A", "B")))
+A <- makeA(pedigree, Gamma = Gamma_groups, groups = c("A", "A", "B"))
+```
+
+`groups` can be named by founder ID or given in founder order. `animal_design()` passes both arguments through when it builds `A`:
+
+```r
+design <- animal_design(cbind(t1, t2) ~ sex, dat,
+                        pedigree = pedigree, Gamma = Gamma, groups = groups)
+```
+
+Only founders with both parents unknown receive founder relationships. An unknown parent of an individual that has one known parent is still treated as an unrelated founder; add it explicitly to the pedigree and assign a group if it belongs to the related base population. A genomic relationship matrix among founders can be used as `Gamma`, but it estimates realized rather than base-population relationships, so blending or shrinkage is advisable. See `?makeA` for details and the [Legarra et al. (2015)](https://doi.org/10.1534/genetics.115.177014) reference.
+
 ## Genomic relationship matrix
 
 If you have marker genotypes instead of a pedigree, `genomic_relationship()` builds a VanRaden (2008) GRM to use as `A`:

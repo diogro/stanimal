@@ -92,9 +92,35 @@ residual with a *small* sample and many gaps is weakly identified: 60 individual
 with 20 gaps diverged on half the iterations, where 200 individuals with 60 gaps
 is clean. Documented in `?lmm_animal` and `AGENTS.md` rather than fixed.
 
-**Left over.** `plot_G_ellipses()` and `size_shape()` still assume complete `Y`;
-they error rather than dropping rows, which is acceptable but not warm. Nothing
-else downstream needed a change because the modals consume `G` and `P`, not `Y`.
+**Left over, now closed.** `plot_G_ellipses()` and `size_shape()` assumed a
+complete `Y` and errored rather than dropping rows. Both take gaps now.
+
+**Gaps downstream of the fit: `size_shape()`.** The two functions that earlier
+comment called "modals" do consume `G` and `P`, but the size/shape
+reparametrization consumes `Y` — and it is the one step that *cannot* work from
+a gap, because size is a mean of the traits and shape is a difference between
+them. So the response is completed before the transformation: a
+maximum-likelihood multivariate normal estimated from the values that were
+measured (EM, which is closed-form per pattern), and each gap replaced by its
+conditional mean given the traits that individual has.
+
+Three things worth remembering:
+
+- The formulas are linear in the traits, so the conditional *covariance* of a
+  row's gaps maps straight to the spread of its size and shape scores. That is
+  where `scores_sd` comes from, and it is why the honest answer needed no
+  simulation: an individual missing the trait that defines the smallest shape
+  axis ends up with a score whose standard deviation is the size of that axis.
+- The earlier idea of dropping incomplete rows instead was worse than it looked:
+  it would have silently changed what "size" means between individuals, because
+  a mean of three traits is not a mean of four.
+- Point completion again, but with a sharper caveat than `imputed_data()`: here
+  the *transformation* is also a point estimate, so a fit on the scores treats
+  everything as data. `AGENTS.md` says so, because it is the kind of thing a
+  later reader will otherwise assume was handled.
+
+The diagnostic in `animal_design()` uses the same EM covariance and is treated as
+advisory: a pattern it cannot complete is not a reason to fail a design.
 
 ### 2. Breeding values (BLUPs) — STEP 1 DONE (0.7.0)
 

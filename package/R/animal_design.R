@@ -11,7 +11,8 @@
 #'   effects.
 #' @param data Data frame holding the variables in \code{formula}. When
 #'   \code{pedigree} or \code{genotypes} are used, its row names must be the
-#'   individual IDs.
+#'   individual IDs (\code{rownames(data) <- data$id}); an error says so when
+#'   they were left to R.
 #' @param na.action How to handle rows with missing \emph{predictors}, passed to
 #'   \code{\link[stats]{model.frame}}; the default drops them, since a row with
 #'   an unknown fixed effect cannot be placed in the design. Missing values in
@@ -183,9 +184,10 @@ animal_design <- function(formula, data, na.action = stats::na.omit,
 
   out <- list(Y = Y, X = X)
   if (!is.null(pedigree) || !is.null(genotypes)) {
-    if (is.null(individuals))
-      stop("with pedigree or genotypes, the rows of data must be named with ",
-           "the individual IDs.", call. = FALSE)
+    if (.has_automatic_row_names(data))
+      stop("with `pedigree` or `genotypes`, the rows of `data` must be named ",
+           "with the individual IDs: `rownames(data) <- data$id`, for example.",
+           call. = FALSE)
     if (!is.null(pedigree)) {
       A <- makeA(pedigree, Gamma = Gamma, groups = groups)
       source <- "pedigree"
@@ -202,6 +204,18 @@ animal_design <- function(formula, data, na.action = stats::na.omit,
   structure(out,
             individuals = individuals,
             na.action = attr(frame, "na.action"))
+}
+
+# Whether a data frame still carries the row names R generated for it. Neither
+# `rownames()` nor `attr(, "row.names")` answers this: both return "1", "2", ...
+# either way, so the ids of a named data frame whose ids are 1:n look identical
+# to the automatic ones. `.row_names_info()` reports the internal form, which is
+# negative for automatic names and positive once anyone has set them.
+.has_automatic_row_names <- function(data) {
+  info <- tryCatch(.row_names_info(data), error = function(e) NULL)
+  if (is.null(info) || !length(info))
+    return(FALSE) # not a data frame, or a class we cannot inspect: leave it be
+  info[1L] < 0
 }
 
 # Keeps the individuals of Y, in the order of Y, from a named relationship

@@ -160,3 +160,29 @@ test_that("plot_G_ellipses reads G and beta from a CmdStan fit", {
   expect_s3_class(p2, "ggplot")
   expect_equal(ggplot2::ggplot_build(p2)$data[[1]], built[[1]])
 })
+
+test_that("a multivariate fit records the priors it ran with", {
+  sim <- simulate_animal(n_fam = 12, size = 6, G = G3, E = E3, seed = 23)
+  fit <- fit_G(sim, iter = 200, hs_global_scale = 1.5, hs_slab_scale = 3,
+               column_decay = 0.6)
+  # the fields a stored fit needs to be reconstructed without its call; the two
+  # fitters record the same set
+  expect_equal(attr(fit, "lkj_prior"), 2)
+  expect_equal(attr(fit, "beta_prior"), c(1, 1))
+  expect_equal(attr(fit, "hs_global_scale"), 1.5)
+  expect_equal(attr(fit, "hs_slab_scale"), 3)
+  expect_equal(attr(fit, "column_decay"), 0.6)
+  expect_equal(attr(fit, "genetic_structure"), "unstructured")
+  expect_equal(attr(fit, "residual_structure"), "unstructured")
+  expect_equal(attr(fit, "parametrization"), "variance")
+  expect_false(attr(fit, "custom_model"))
+})
+
+test_that("a univariate parametrization supplied for a multivariate fit warns", {
+  sim <- simulate_animal(n_fam = 10, size = 5, G = G3, E = E3, seed = 24)
+  # not through fit_G(), which suppresses warnings
+  expect_warning(lmm_animal(sim$Y, sim$X, sim$A, parametrization = "h2",
+                            iter = 100, chains = 1, cores = 1, seed = 1,
+                            refresh = 0, show_messages = FALSE),
+                 "`parametrization` is ignored")
+})

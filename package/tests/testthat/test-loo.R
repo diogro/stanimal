@@ -74,7 +74,8 @@ test_that("fits without a pointwise likelihood say so", {
   fit <- lmm_animal_gibbs(simulate_animal(n_fam = 5, size = 4, G = G3, E = E3,
                                           seed = 74)$Y,
                           A = make_A(5, 4), iter = 40, warmup = 20)
-  expect_error(fit_loo(fit), "does not report `log_lik`")
+  expect_error(fit_loo(fit), "does not support LOO or WAIC")
+  expect_error(fit_loo(fit), "for model comparison")
   expect_error(fit_loo(list(a = 1)), "must be a fit")
 })
 

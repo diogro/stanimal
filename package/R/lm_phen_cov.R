@@ -204,6 +204,9 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
   attr(fit, "lkj_prior") <- lkj_prior
   attr(fit, "column_decay") <- column_decay
   attr(fit, "custom_model") <- !is.null(model_file)
+  # the same prior metadata lmm_animal() records, so the two fitters agree
+  attr(fit, "hs_global_scale") <- hs_global_scale
+  attr(fit, "hs_slab_scale") <- hs_slab_scale
   # what the predictive check needs: the response as passed in and the design
   attr(fit, "stanimal_data") <- list(family = "phenotypic", Y = YX$Y_raw,
                                      X = X, A = NULL)

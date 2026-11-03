@@ -145,6 +145,20 @@ test_that("genotypes may cover individuals without records", {
   expect_equal(rownames(d$A), as.character(1:6))
 })
 
+test_that("a pedigree needs rows named with the individual IDs", {
+  bare <- dat                       # R's own row names, "1" to "8"
+  expect_error(animal_design(trait ~ x, bare, pedigree = ped6),
+               "must be named with the individual IDs")
+  expect_error(animal_design(trait ~ x, bare, genotypes = diag(8)),
+               "must be named with the individual IDs")
+  # naming them, even with the same numbers, is enough
+  named <- bare
+  rownames(named) <- as.character(named$id)[1:8]
+  expect_silent(animal_design(trait ~ x, named[1:6, ], pedigree = ped6))
+  # without a pedigree the row names do not matter
+  expect_silent(animal_design(trait ~ x, bare))
+})
+
 test_that("animal_design validates pedigrees and genotypes", {
   dat <- named_dat()
   set.seed(4)

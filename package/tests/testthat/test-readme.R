@@ -103,7 +103,15 @@ test_that("every example in the README runs", {
   env <- readme_context()
   for (block in blocks) {
     failure <- tryCatch({
-      utils::capture.output(eval(parse(text = block$code), envir = env))
+      withCallingHandlers(
+        utils::capture.output(eval(parse(text = block$code), envir = env)),
+        warning = function(w) {
+          # `loo` warns when the Pareto k diagnostics are poor. The README runs
+          # on a small example, where that is expected and already documented,
+          # so it is not a test warning. Anything else still is.
+          if (grepl("Pareto k diagnostic", conditionMessage(w)))
+            invokeRestart("muffleWarning")
+        })
       NULL
     }, error = function(e) conditionMessage(e))
     expect_true(is.null(failure),

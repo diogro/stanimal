@@ -20,6 +20,7 @@ Depends:
 Imports: 
     ggplot2,
     grid,
+    methods,
     posterior,
     stats,
     tools,

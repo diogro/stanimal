@@ -33,7 +33,7 @@
 #' @param A Finite symmetric positive-definite relationship matrix matching the rows of Y. A matrix that is only positive semidefinite (duplicated individuals, for example) is rejected; set \code{blend_A = TRUE} to regularize it. When \code{A} and \code{Y} both have row names, they are used to put \code{A} in the order of \code{Y}; names that disagree are an error. Without names the rows are matched by position.
 #' @param lkj_prior Shape parameter of the LKJ prior on the correlation matrices of the multivariate model. \code{1} is uniform over correlation matrices, values above \code{1} shrink correlations toward zero, and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits: at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of genetic correlations, a well-known problem in quantitative genetics. A finite number above 0. It is used only by multivariate models with \code{residual_structure = "unstructured"} and not \code{shared_factor}; explicitly supplying it in other configurations warns that it is ignored.
 #' @param beta_prior Parameters of the beta prior on h2. Used by the univariate model with \code{parametrization = "h2"} and by the shared-factor model for the factor heritabilities. The default \code{c(1, 1)} is flat on h2 and on each factor heritability. It is validated for every model; explicitly supplying it where it is not used warns that it is ignored.
-#' @param parametrization Univariate models only. \code{"variance"} (default) estimates the genetic and residual standard deviations with half-normal priors and derives h2. \code{"h2"} estimates a total standard deviation and h2 with a beta prior (\code{beta_prior}). If the variance version shows low E-BFMI, a warning suggests switching to \code{"h2"}. Ignored for multivariate fits.
+#' @param parametrization Univariate models only. \code{"variance"} (default) estimates the genetic and residual standard deviations with half-normal priors and derives h2. \code{"h2"} estimates a total standard deviation and h2 with a beta prior (\code{beta_prior}). If the variance version shows low E-BFMI, a warning suggests switching to \code{"h2"}. Multivariate fits always use the variance parametrization; explicitly supplying this argument for one warns that it is ignored.
 #' @param iter Number of MCMC iterations, a whole number.
 #' @param warmup Number of warmup iterations, a whole number smaller than \code{iter}.
 #' @param chains Number of chains to run, a whole number.
@@ -103,12 +103,13 @@
 #'     \eqn{m}, \eqn{h^2_m} is the fraction of that factor's variance that is
 #'     genetic: the genetic part is multiplied by \eqn{h^2_m} and the residual
 #'     part by \eqn{1-h^2_m}.
-#'   \item \code{s_G}: ordinary factor model only. The genetic standard
-#'     deviation of each trait on the standardized response scale, which is the
-#'     diagonal scale that moves the correlation-scale decomposition to the
-#'     original scale; multiplying it by the response standard deviation gives
-#'     the genetic standard deviations \code{sigma_G} on the data scale.
-#'     Shared-factor fits do not estimate \code{s_G}.
+#'   \item \code{s_G}: the genetic standard deviation of each trait on the
+#'     standardized response scale, which is the diagonal scale that moves the
+#'     correlation-scale decomposition to the original scale; multiplying it by
+#'     the response standard deviation gives the genetic standard deviations
+#'     \code{sigma_G} on the data scale. It is a parameter of every multivariate
+#'     fit except the shared-factor model, which scales its factors by
+#'     \code{sqrt_psi_G} and \code{sqrt_psi_E} instead.
 #' }
 #' These are available from \code{fit$summary()} and from
 #' \code{\link{fit_draws}}. The latter returns \code{loadings} as a trait by
@@ -116,7 +117,7 @@
 #' \code{factor_magnitude} as factor by draw matrices, and the uniqueness and
 #' communality vectors as trait by draw matrices.
 #'
-#' @details The models estimate the additive genetic and residual standard deviations (\code{sigma_G}, \code{sigma_E}) directly, with half-normal priors on the standardized response scale, and report \code{h2} as a derived quantity; there is no prior on h2 itself. The multivariate model estimates the additive genetic covariance matrix \code{G} and the residual covariance \code{E} directly, each as scales times an LKJ-distributed correlation matrix (\code{lkj_prior}), with half-normal priors on the scales of the standardized responses. With \code{genetic_structure = "factor"}, \code{G} is instead \eqn{\mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)}, where the loadings \eqn{\Lambda} have regularized-horseshoe priors and \eqn{\Psi} is diagonal on the correlation scale; the default global shrinkage is \code{hs_global_scale = 1}. With \code{residual_structure = "shared_factor"}, the same loadings enter both covariances: \eqn{G = \Lambda\mathrm{diag}(h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_G)} and \eqn{E = \Lambda\mathrm{diag}(1 - h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_E)}, with the beta prior on the factor heritabilities controlled by \code{beta_prior}. The optional \code{column_decay} multiplies the prior standard deviation of factor column \eqn{m} by \code{column_decay^(m - 1)}, which favours factors in decreasing order without adding a learned decay parameter. Breeding values are marginalized using the eigendecomposition of \code{A}, so the likelihood needs no per-individual random effects; only the eigenvalues of \code{A} are used, which is why a singular \code{A} can be fitted once it is regularized with \code{blend_A = TRUE}. Returned quantities (original response scale) are \code{G}, \code{E}, \code{P = G + E}, \code{corrG}, \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}.
+#' @details The models estimate the additive genetic and residual standard deviations (\code{sigma_G}, \code{sigma_E}) directly, with half-normal priors on the standardized response scale, and report \code{h2} as a derived quantity; there is no prior on h2 itself. The multivariate model estimates the additive genetic covariance matrix \code{G} and the residual covariance \code{E} directly, each as scales times an LKJ-distributed correlation matrix (\code{lkj_prior}), with half-normal priors on the scales of the standardized responses. With \code{genetic_structure = "factor"}, \code{G} is instead \eqn{\mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)}, where the loadings \eqn{\Lambda} have regularized-horseshoe priors and \eqn{\Psi} is diagonal on the correlation scale; the default global shrinkage is \code{hs_global_scale = 1}. With \code{residual_structure = "shared_factor"}, the same loadings enter both covariances: \eqn{G = \Lambda\mathrm{diag}(h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_G)} and \eqn{E = \Lambda\mathrm{diag}(1 - h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_E)}, with the beta prior on the factor heritabilities controlled by \code{beta_prior}. The optional \code{column_decay} multiplies the prior standard deviation of factor column \eqn{m} by \code{column_decay^(m - 1)}, which favours factors in decreasing order without adding a learned decay parameter. Breeding values are marginalized using the eigendecomposition of \code{A}: the response and the design are rotated by its eigenvectors and the likelihood is computed on the rotated records, with the eigenvalues entering through the per-record covariance. No per-individual random effects are needed, which is why a singular \code{A} can be fitted once it is regularized with \code{blend_A = TRUE}. Returned quantities (original response scale) are \code{G}, \code{E}, \code{P = G + E}, \code{corrG}, \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}.
 #'
 #' The per-individual likelihoods are whitened by the residual Cholesky factor and rotated into a single eigendecomposition of \code{E^{-1/2} G E^{-1/2}}, so each evaluation costs \code{O(N K^2 + K^3)} rather than \code{O(N K^3)}. This lets the multivariate model scale to dozens of traits without a Cholesky factorization per individual. When the eigenvalues of that matrix are nearly coincident (for example at initialization, or when \code{G} is roughly proportional to \code{E}) the model automatically falls back to a per-individual Cholesky evaluation, which has a well-behaved gradient.
 #'
@@ -205,6 +206,7 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   hs_global_scale_supplied <- !missing(hs_global_scale)
   hs_slab_scale_supplied <- !missing(hs_slab_scale)
   column_decay_supplied <- !missing(column_decay)
+  parametrization_supplied <- !missing(parametrization)
   residual_structure <- match.arg(residual_structure)
   genetic_structure <- match.arg(genetic_structure)
   parametrization <- match.arg(parametrization)
@@ -259,6 +261,7 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   factor_used <- factor_model
   .warn_ignored(beta_prior_supplied, beta_used, "beta_prior")
   .warn_ignored(lkj_prior_supplied, lkj_used, "lkj_prior")
+  .warn_ignored(parametrization_supplied, ncol(Y) == 1L, "parametrization")
   .warn_ignored(hs_global_scale_supplied, factor_used, "hs_global_scale")
   .warn_ignored(hs_slab_scale_supplied, factor_used, "hs_slab_scale")
   .warn_ignored(column_decay_supplied, factor_used, "column_decay")
@@ -384,6 +387,12 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   # a custom Stan file can use any prior it likes, so nothing below can be
   # recovered from the recorded arguments alone
   attr(fit, "custom_model") <- !is.null(model_file)
+  # record every prior the fit ran with, used or not, so that the two fitters
+  # expose the same metadata and a stored fit can be reconstructed without the
+  # call that produced it
+  attr(fit, "hs_global_scale") <- hs_global_scale
+  attr(fit, "hs_slab_scale") <- hs_slab_scale
+  attr(fit, "column_decay") <- column_decay
   if (factor_model) attr(fit, "n_factors") <- n_factors
   # what the predictive check needs, and what a breeding-value pass will need
   # later: the response as passed in, the design, and the relationship matrix

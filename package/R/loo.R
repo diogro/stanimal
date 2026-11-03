@@ -14,17 +14,22 @@
 # `loo` wants, and the chain each draw came from.
 .log_lik_draws <- function(fit) {
   if (.is_gibbs_draws(fit))
-    stop("`lmm_animal_gibbs()` does not report `log_lik`, so LOO and WAIC ",
-         "cannot be computed for it. Use `lmm_animal()` with `cmd_stan = FALSE` ",
-         "for a Stan fit of the same model.", call. = FALSE)
+    stop("`lmm_animal_gibbs()` does not support LOO or WAIC. Use "
+         , "`lmm_animal()` for model comparison.", call. = FALSE)
   if (inherits(fit, "stanfit")) {
-    draws <- tryCatch(as.array(fit, pars = "log_lik"),
-                      error = function(e) NULL)
+    # rstan keeps the declared parameters here, so this asks the fit instead of
+    # catching a failed extraction
+    draws <- if ("log_lik" %in% methods::slot(fit, "model_pars"))
+      as.array(fit, pars = "log_lik") else NULL
   } else if (inherits(fit, "CmdStanFit") ||
              (is.list(fit) && is.function(fit$draws))) {
-    draws <- tryCatch(
-      as.array(fit$draws(variables = "log_lik", format = "draws_array")),
-      error = function(e) NULL)
+    # ask the fit what it holds rather than catching a failure to read it: a
+    # genuine read error must not be reported as a missing `log_lik`
+    if (!"log_lik" %in% fit$metadata()$stan_variables)
+      draws <- NULL
+    else
+      draws <- as.array(fit$draws(variables = "log_lik",
+                                  format = "draws_array"))
   } else if (is.matrix(fit) && !is.null(colnames(fit))) {
     draws <- fit[, grep("^log_lik", colnames(fit)), drop = FALSE]
     return(list(log_lik = draws, chain_id = rep(1L, nrow(draws))))

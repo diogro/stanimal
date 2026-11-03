@@ -267,7 +267,7 @@ erroring. Do not read a warning about an unused prior as a failure.
 |---|---|
 | `G`, `E`, `P`, `corrG`, `corrP`, `sigma_G`, `sigma_E`, `h2` | no |
 | `communality`, `uniqueness` | no |
-| `s_G` (ordinary factor model) | no — it is each trait's genetic SD on the standardized response scale, and `communality + uniqueness = 1` makes it `sqrt(G_kk) / y_sd[k]` |
+| `s_G` (every multivariate fit except the shared-factor one) | no — it is each trait's genetic SD on the standardized response scale, and `communality + uniqueness = 1` makes it `sqrt(G_kk) / y_sd[k]` in a factor fit |
 | `loadings`, `factor_magnitude` | **yes.** In the ordinary factor model the likelihood depends on the loadings only through `ΛΛ'`, so it is flat along every rotation and only the prior picks a point |
 | `factor_heritability` | **partly.** The shared-factor likelihood is invariant to sign flips and column permutations, not to general rotations |
 

@@ -75,6 +75,8 @@ Y <- X %*% B +
 colnames(Y) <- traits
 
 dat <- data.frame(id = factor(ped$id), sex = X[, "sex"], age = X[, "age"], Y)
+# animal_design() needs the individual IDs as row names to line the pedigree up
+rownames(dat) <- as.character(dat$id)
 
 ## Comparison helpers --------------------------------------------------------
 

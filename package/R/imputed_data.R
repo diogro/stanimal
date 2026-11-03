@@ -164,7 +164,6 @@ imputed_data <- function(fit, ndraws = 100, seed = NULL) {
                       length(rows), length(missing)) %*% L
       filled <- cond_mean + noise
       # place the drawn values in the gap columns of this draw
-      wanted <- which(gaps$trait %in% missing)
       for (r in seq_along(rows)) {
         row_gaps <- which(gaps$individual == rows[r])
         if (!length(row_gaps)) next

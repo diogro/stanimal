@@ -22,7 +22,8 @@ effects.}
 
 \item{data}{Data frame holding the variables in \code{formula}. When
 \code{pedigree} or \code{genotypes} are used, its row names must be the
-individual IDs.}
+individual IDs (\code{rownames(data) <- data$id}); an error says so when
+they were left to R.}
 
 \item{na.action}{How to handle rows with missing \emph{predictors}, passed to
 \code{\link[stats]{model.frame}}; the default drops them, since a row with

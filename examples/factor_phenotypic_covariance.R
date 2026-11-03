@@ -63,19 +63,22 @@ fit <- lm_phen_cov(
 # a rank-k structure can do, not against zero: most of what is left is the
 # low-rank assumption rather than the sampler. Errors are on the correlation
 # scale, because an absolute RMSE on variances of about 0.001 says nothing.
+# relative_mse() is the definition the comparison scripts use; the square root is
+# printed, because that reads as a share of the size of the target.
 P_hat <- draws_mean(fit, "P")
 P_ols <- stats::cov(stats::lm.fit(X, Y)$residuals)
 corr_hat <- stats::cov2cor(P_hat)
 corr_ols <- stats::cov2cor(P_ols)
-relative_error <- function(estimate, target)
-  sqrt(mean((estimate - target)^2)) / sqrt(mean(target^2))
+relative_mse <- function(estimate, target)
+  mean((estimate - target)^2) / mean(target^2)
+relative_error <- function(estimate, target) sqrt(relative_mse(estimate, target))
 
 eigen_ols <- eigen(corr_ols, symmetric = TRUE)
 best_rank <- eigen_ols$vectors[, 1:2, drop = FALSE] %*%
   diag(eigen_ols$values[1:2], nrow = 2) %*%
   t(eigen_ols$vectors[, 1:2, drop = FALSE])
 diag(best_rank) <- 1
-cat("P relative error against the OLS correlations:",
+cat("P relative RMS error against the OLS correlations:",
     round(relative_error(corr_hat, corr_ols), 3),
     "(best a rank-2 approximation can do:",
     round(relative_error(best_rank, corr_ols), 3), ")\n")

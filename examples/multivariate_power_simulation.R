@@ -220,6 +220,11 @@ correlations <- do.call(rbind, lapply(fits, `[[`, "correlations"))
 heritability <- do.call(rbind, lapply(fits, `[[`, "heritability"))
 diagnostics <- do.call(rbind, lapply(fits, `[[`, "diagnostics"))
 
+# The error summarised below is an absolute RMSE, unlike the covariance
+# comparisons elsewhere in examples/, because genetic correlations and
+# heritabilities are already dimensionless and bounded: 0.05 is 0.05 whether the
+# trait varies little or a lot. A relative MSE would divide by a truth that can
+# sit near zero, which is exactly where these quantities are most interesting.
 group_key <- interaction(correlations$n, correlations$trait_i,
                          correlations$trait_j, drop = TRUE)
 correlation_summary <- do.call(rbind, lapply(split(correlations, group_key), function(group) {

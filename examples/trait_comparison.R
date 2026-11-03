@@ -113,22 +113,32 @@ sparse_ginv <- function(A) {
 h2_true <- diag(G) / diag(G + E)
 rG_true <- corr_of(G)
 
-# One row per engine: mean squared error of G, E, the heritabilities and the
-# genetic correlations, the minimum ESS of G, ESS per retained draw, and time.
+# Relative MSE divides the elementwise mean squared error by the mean squared
+# truth on the same scale. That is what makes the columns comparable across
+# quantities: a covariance entry can be 0.001, where a small absolute error is a
+# large relative one, while a heritability near 1 has the opposite problem.
+relative_mse <- function(estimate, truth)
+  mean((estimate - truth)^2) / mean(truth^2)
+
+# One row per engine: relative MSE of G, E, the heritabilities and the genetic
+# correlations, the minimum ESS of G, ESS per retained draw, and time.
 compare <- function(engine, G_hat, E_hat, elapsed = NA_real_,
                     min_ess = NA_real_, n_draws = NA_real_) {
   ok <- !is.null(G_hat) && !is.null(E_hat) &&
     !anyNA(G_hat) && !anyNA(E_hat)
   if (!ok)
-    return(data.frame(engine = engine, G_mse = NA_real_, E_mse = NA_real_,
-                      h2_mse = NA_real_, corrG_mse = NA_real_,
+    return(data.frame(engine = engine, G_relative_mse = NA_real_,
+                      E_relative_mse = NA_real_,
+                      h2_relative_mse = NA_real_,
+                      corrG_relative_mse = NA_real_,
                       min_ess = min_ess, ess_ratio = min_ess / n_draws,
                       time_s = elapsed))
   data.frame(engine = engine,
-             G_mse = mean((G_hat - G)^2),
-             E_mse = mean((E_hat - E)^2),
-             h2_mse = mean((diag(G_hat) / diag(G_hat + E_hat) - h2_true)^2),
-             corrG_mse = mean((corr_of(G_hat) - rG_true)^2),
+             G_relative_mse = relative_mse(G_hat, G),
+             E_relative_mse = relative_mse(E_hat, E),
+             h2_relative_mse = relative_mse(
+               diag(G_hat) / diag(G_hat + E_hat), h2_true),
+             corrG_relative_mse = relative_mse(corr_of(G_hat), rG_true),
              min_ess = min_ess, ess_ratio = min_ess / n_draws,
              time_s = elapsed)
 }
@@ -328,9 +338,10 @@ out[, "time_s"] <- round(results$time_s, 1)
 cat("\n", n_traits, "traits ,", n, "individuals \n", sep = "")
 print(out)
 
-# G_mse and E_mse are the elementwise mean squared errors against the simulated
-# matrices; h2_mse and corrG_mse compare the trait-level summaries (corrG uses
-# the upper triangle, since the diagonal is always 1). min_ess is the smallest
+# The four relative MSE columns divide each elementwise mean squared error by
+# the mean squared truth on the same scale, so they are comparable both across
+# quantities and across the number of traits; corrG uses the upper triangle,
+# since the diagonal is always 1. min_ess is the smallest
 # bulk effective sample size across the unique elements of G, and ess_ratio
 # divides it by the retained draws (4000 for stanimal, 1000 for MCMCglmm and
 # BGLR), so it measures mixing rather than chain length. REML engines have no

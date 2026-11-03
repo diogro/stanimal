@@ -12,7 +12,7 @@
 #
 # The shared-factor model uses the same latent factors for G and E; with a
 # truly diagonal E it should learn factor heritabilities near one. The
-# comparison follows examples/trait_comparison.R: elementwise MSE of G, E,
+# comparison follows examples/trait_comparison.R: relative MSE of G, E,
 # heritability and genetic correlations, the minimum bulk ESS of G, sampler
 # divergences, and the time each fit took. Run from the project root:
 #   Rscript examples/structure_comparison.R
@@ -79,7 +79,11 @@ corr_of <- function(S) {
 h2_true <- diag(G) / diag(G + E)
 rG_true <- corr_of(G)
 
-# One row per model: MSE of G, E, the heritabilities and the genetic
+# Relative MSE makes errors comparable across quantities with different scales.
+relative_mse <- function(estimate, truth)
+  mean((estimate - truth)^2) / mean(truth^2)
+
+# One row per model: relative MSE of G, E, the heritabilities and the genetic
 # correlations, the minimum ESS of G, ESS per retained draw, and time.
 compare <- function(model, G_hat, E_hat, elapsed = NA_real_,
                     min_ess = NA_real_, n_draws = NA_real_,
@@ -87,15 +91,18 @@ compare <- function(model, G_hat, E_hat, elapsed = NA_real_,
   ok <- !is.null(G_hat) && !is.null(E_hat) &&
     !anyNA(G_hat) && !anyNA(E_hat)
   if (!ok)
-    return(data.frame(model = model, G_mse = NA_real_, E_mse = NA_real_,
-                      h2_mse = NA_real_, corrG_mse = NA_real_,
+    return(data.frame(model = model, G_relative_mse = NA_real_,
+                      E_relative_mse = NA_real_,
+                      h2_relative_mse = NA_real_,
+                      corrG_relative_mse = NA_real_,
                       min_ess = min_ess, ess_ratio = min_ess / n_draws,
                       divergences = divergences, time_s = elapsed))
   data.frame(model = model,
-             G_mse = mean((G_hat - G)^2),
-             E_mse = mean((E_hat - E)^2),
-             h2_mse = mean((diag(G_hat) / diag(G_hat + E_hat) - h2_true)^2),
-             corrG_mse = mean((corr_of(G_hat) - rG_true)^2),
+             G_relative_mse = relative_mse(G_hat, G),
+             E_relative_mse = relative_mse(E_hat, E),
+             h2_relative_mse = relative_mse(
+               diag(G_hat) / diag(G_hat + E_hat), h2_true),
+             corrG_relative_mse = relative_mse(corr_of(G_hat), rG_true),
              min_ess = min_ess, ess_ratio = min_ess / n_draws,
              divergences = divergences, time_s = elapsed)
 }
@@ -179,12 +186,12 @@ cat("\n", n_traits, "traits,", n, "individuals,", n_factors,
     "true genetic factors \n", sep = "")
 print(out)
 
-# G_mse and E_mse are elementwise mean squared errors against the simulated
-# matrices. h2_mse and corrG_mse compare the trait-level summaries, with corrG
-# using the upper triangle because its diagonal is always 1. min_ess is the
-# smallest bulk ESS across the unique elements of G, and ess_ratio divides it
-# by the 4000 retained draws (4 chains x 1000), so it measures mixing rather
-# than chain length. The truth row has no draws and no time.
+# Relative MSE divides each elementwise mean squared error by the mean squared
+# truth on the same scale. The correlation comparison uses the upper triangle
+# because its diagonal is always 1. min_ess is the smallest bulk ESS across the
+# unique elements of G, and ess_ratio divides it by the 4000 retained draws
+# (4 chains x 1000), so it measures mixing rather than chain length. The truth
+# row has no draws and no time.
 #
 # Timings are a single run each, in seconds, and cover the lmm_animal() call
 # only. The first stanimal fit may include compilation when the model cache is

@@ -19,8 +19,8 @@ Rscript examples/univariate.R
 | `gibbs.R` | `lmm_animal_gibbs()`, the single-chain Gibbs sampler; its inverse-Wishart priors differ from `lmm_animal()` |
 | `multivariate_power_simulation.R` | Parallel simulation study of genetic-correlation recovery across sample sizes, writing summaries to `results/` |
 | `package_comparison.R` | The same bivariate animal model fitted with `stanimal`, `MCMCglmm`, `BGLR`, `sommer`, `lme4breeding` and ASReml-R, with estimates compared with the simulated truth, minimum ESS of `G` and timings |
-| `trait_comparison.R` | The same comparison for a user-chosen number of traits (first argument, default 5), reporting MSE of `G`, `E`, `h2` and `corrG`, minimum ESS of `G` and timings |
-| `structure_comparison.R` | The five `lmm_animal()` covariance structures (`G` unstructured/factor by `E` unstructured/diagonal/shared-factor) fitted to the same simulated factor-structured data, reporting MSE, minimum ESS, divergences and timings |
+| `trait_comparison.R` | The same comparison for a user-chosen number of traits (first argument, default 5), reporting relative MSE of `G`, `E`, `h2` and `corrG`, minimum ESS of `G` and timings |
+| `structure_comparison.R` | The five `lmm_animal()` covariance structures (`G` unstructured/factor by `E` unstructured/diagonal/shared-factor) fitted to the same simulated factor-structured data, reporting relative MSE, minimum ESS, divergences and timings |
 
 In the interval plots (`bayesplot::mcmc_recover_intervals()`), the filled circle
 is the posterior mean, the thick and thin segments are the 80% and 99% credible

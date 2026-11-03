@@ -30,7 +30,8 @@ matched to the draws by name, not by position.
 
 All scripts need `stanimal` installed and CmdStan available
 (`cmdstanr::install_cmdstan()`), except `gibbs.R`, which needs neither. The
-mouse data used by `ratones.R` and `phenotypic_covariance.R` ships with the
+mouse data used by `ratones.R`, `imputation.R`, `breeding_values.R`,
+`phenotypic_covariance.R` and `factor_phenotypic_covariance.R` ships with the
 package, so nothing is downloaded. The two comparison scripts install
 `MCMCglmm`, `BGLR`, `sommer` and `lme4breeding` if they are missing, and check
 for a licensed ASReml-R without trying to install it.

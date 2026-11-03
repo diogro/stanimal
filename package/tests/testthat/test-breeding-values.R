@@ -147,6 +147,24 @@ test_that("a univariate fit gives breeding values too", {
   expect_true(stats::sd(ebv$values[, 1]) <= stats::sd(multi$values[, 1]) + 0.2)
 })
 
+test_that("factor-structured fits predict from the G they report", {
+  sim <- simulate_animal(n_fam = 15, size = 6, G = G3, E = E3, seed = 35)
+  factor_fit <- ebv_fit(sim, iter = 600, genetic_structure = "factor",
+                        n_factors = 1)
+  ebv <- breeding_values(factor_fit)
+  expect_equal(dim(ebv$values), dim(sim$Y))
+  expect_true(all(ebv$reliability >= 0 & ebv$reliability <= 1))
+  # a factor fit reports G on the response scale like any other, so the pass
+  # uses it directly instead of needing the loadings
+  expect_true(all(ebv$se <= sqrt(rep(diag(G3), each = nrow(sim$Y))) + 1e-8))
+
+  shared_fit <- ebv_fit(sim, iter = 600, genetic_structure = "factor",
+                        residual_structure = "shared_factor", n_factors = 1)
+  shared <- breeding_values(shared_fit)
+  expect_equal(dim(shared$values), dim(sim$Y))
+  expect_true(all(shared$se > 0))
+})
+
 test_that("missing values are predicted through their conditional mean", {
   sim <- simulate_animal(n_fam = 20, size = 6, G = G3, E = E3, seed = 33)
   incomplete <- sim$Y

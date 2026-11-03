@@ -96,7 +96,7 @@ is clean. Documented in `?lmm_animal` and `AGENTS.md` rather than fixed.
 they error rather than dropping rows, which is acceptable but not warm. Nothing
 else downstream needed a change because the modals consume `G` and `P`, not `Y`.
 
-### 2. Breeding values (BLUPs)
+### 2. Breeding values (BLUPs) — STEP 1 DONE (0.7.0)
 
 **Today:** `u` is marginalized out for speed and never reported. Users get `h2`
 but no individual estimates, which is conspicuous for a breeding audience.
@@ -110,14 +110,56 @@ and the relationship matrix `A` the fit was given:
 - optional approximate standard errors from the posterior draws of `G`/`E`;
 - pure R, no Stan changes, so it ships without touching the model files.
 
+**What shipped.** `breeding_values(fit, se = TRUE, ndraws = 100, seed = NULL)`
+returns the conditional mean `(A ⊗ G) V^{-1} (y − Xβ)` with
+`V = A ⊗ G + I ⊗ E`, at the posterior means of `G`, `E` and `beta`, as
+individuals × traits on the response scale. With `A = Q diag(λ) Q'` the rotated
+records are independent and record *i* has covariance `λ_i G + E`, so the `N × N`
+system is never formed: it is one `k × k` solve per individual, and the
+conditional variance `Var(u | y)` comes back through the same rotation. From that
+fall out the two quantities a breeder actually reads:
+
+- `se`, the square root of the conditional variance at the posterior means;
+- `reliability` = `1 − Var(u_{nk} | y) / G_{kk}`, the share of a trait's additive
+  variance the prediction accounts for, in [0, 1].
+
+**Three decisions worth remembering**
+
+- *Missing values cost nothing.* The gaps are filled with their posterior mean
+  from `imputed_data()` and the prediction made from that. This is exact, not an
+  approximation: the predictor is linear in the response, so `E[u | y_obs]` is
+  the predictor applied to `E[y | y_obs]`. The alternative — a separate
+  conditional for each pattern — buys nothing.
+- *Univariate fits go through the same code.* `G` and `E` are rebuilt from
+  `sigma_G` and `sigma_E` when the fit reports standard deviations instead of
+  covariances, so there is one solver rather than two.
+- *The step-1 shortcut is stated, not hidden.* The `se` and `reliability` are
+  conditional on the posterior means, so the covariance uncertainty is missing
+  from them. That is what makes step 2 worth doing rather than merely tidier.
+
+**Validation, as run**
+- The solve against the definition, written out with `kronecker()` products:
+  values, conditional variance and reliability agree to 1e-10. This caught the
+  one real trap, which is that `vec()` of an individuals × traits response has
+  covariance `kron(G, A)` and not `kron(A, G)` — the wrong choice gives the right
+  numbers in the wrong order and fails only on ordering.
+- With `A = I` the prediction reduces to shrinking each residual by
+  `G (G + E)^{-1}`, which is the case a reader can check by hand.
+- On a simulation, the predictions correlate above 0.6 with the simulated `u`,
+  and their RMSE against the truth is lower than the RMSE of each individual's
+  own deviation from the fixed effects. The same test with six entries blanked
+  out of a 120-individual response predicts the individuals whose trait was
+  never measured, and gives them lower reliability than those that were.
+- `examples/breeding_values.R` on the mouse data: reliability 0.15–0.52 across
+  three traits, and only 4 of the top 10 by breeding value are in the top 10 by
+  measurement. That gap is the point of the feature.
+
 **Step 2 (later): proper posterior.** Per-draw conditional means of `u` in
 `generated quantities`, which is `O(N K^3)` per draw and stores `N * K` numbers
 per draw. Only worth it behind a flag (`return_breeding_values = FALSE` by
-default), and it needs a memory note in the docs.
-
-**Validation.** BLUPs from a well-specified simulation should correlate strongly
-with the simulated `u`, and the empirical-Bayes solution should be close to the
-posterior draw version on a small case.
+default), and it needs a memory note in the docs. The validation the plan asked
+for — empirical Bayes against a per-draw posterior — needs that work or the Gibbs
+sampler, which samples `u` explicitly but does not report it.
 
 ### 3. LOO / WAIC / posterior predictive — DONE (0.7.0)
 

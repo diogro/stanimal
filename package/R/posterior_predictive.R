@@ -40,15 +40,17 @@ utils::globalVariables("replicated")
 #'   reproducible. The sampler's seed does not cover this step.
 #' @param ... Unused; for method compatibility.
 #' @return An object of class \code{stanimal_yrep}: a list with
-#'   \code{yrep} (draws by individuals by traits, with the observed \code{y} on
-#'   the original response scale), the observed \code{y}, the trait names, and
-#'   the number of replicates. \code{print()} reports, for the trait means,
-#'   standard deviations and pairwise correlations, the observed value, the 95\%
-#'   interval of the replicates, and \code{p}: the share of replicates at or
-#'   above the observed value. A statistic the model reproduces has \code{p} near
-#'   0.5, because the observation is then one draw of the replicates' own
-#'   distribution; \code{p} near 0 or 1 is a feature the model does not
-#'   reproduce. \code{plot()} shows the replicate distributions.
+#'   \code{yrep} (individuals by traits by draws, the same layout as
+#'   \code{\link{fit_draws}}, with draws last), the observed \code{y} on the
+#'   original response scale, the trait names, and the number of replicates.
+#'   \code{print()} reports, for the trait means, standard deviations and
+#'   pairwise correlations, the observed value, the 95\% interval of the
+#'   replicates, and \code{p}: the share of replicates at or above the observed
+#'   value, a posterior predictive tail probability. Under a well-specified
+#'   model \code{p} is roughly uniform on (0, 1) rather than concentrated at any
+#'   value, so a \code{p} near 0 or 1 marks a feature the model does not
+#'   reproduce and a middling one says nothing either way. \code{plot()} shows
+#'   the replicate distributions.
 #' @details For an animal fit the replicate is
 #'   \eqn{X\beta + u + e} with \eqn{u \sim N(0, A \otimes G)} and
 #'   \eqn{e \sim N(0, I \otimes E)}; for a phenotypic fit it is
@@ -111,8 +113,10 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
     unique(round(seq(1, kept, length.out = ndraws)))
 
   L_A <- if (data$family == "animal") chol(data$A + .jitter(data$A)) else NULL
-  yrep <- array(NA_real_, c(length(take), n, k),
-                dimnames = list(NULL, rownames(Y), traits))
+  # individuals, then traits, then draws: the layout fit_draws() uses, so the
+  # draws are last in every array the package returns
+  yrep <- array(NA_real_, c(n, k, length(take)),
+                dimnames = list(rownames(Y), traits, NULL))
   for (s in seq_along(take)) {
     j <- take[s]
     # matrix(): a one-trait fit would otherwise drop the slice to a vector
@@ -120,7 +124,7 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
       .rmvn_chol(n, k, matrix(covariance[, , j], k, k))
     if (data$family == "animal")
       value <- value + L_A %*% .rmvn_chol(n, k, matrix(G[, , j], k, k))
-    yrep[s, , ] <- value
+    yrep[, , s] <- value
   }
   structure(list(yrep = yrep, y = Y, traits = traits, ndraws = length(take)),
             class = "stanimal_yrep")
@@ -166,23 +170,24 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
   out <- list()
   for (j in seq_len(k)) {
     observed <- y[, j]
+    # draws are the last dimension, so each statistic is taken over margin 3
     out[[length(out) + 1L]] <- data.frame(
       statistic = paste0("mean: ", traits[j]),
       observed = mean(observed, na.rm = TRUE),
-      replicated = apply(yrep[, , j, drop = FALSE], 1L,
+      replicated = apply(yrep[, j, , drop = FALSE], 3L,
                          mean, na.rm = TRUE))
     out[[length(out) + 1L]] <- data.frame(
       statistic = paste0("sd: ", traits[j]),
       observed = stats::sd(observed, na.rm = TRUE),
-      replicated = apply(yrep[, , j, drop = FALSE], 1L,
+      replicated = apply(yrep[, j, , drop = FALSE], 3L,
                          stats::sd, na.rm = TRUE))
   }
   if (k > 1L)
     for (a in seq_len(k - 1L)) for (b in (a + 1L):k) {
       r <- stats::cor(y[, a], y[, b], use = "complete.obs")
       if (!is.finite(r)) next
-      replicated <- vapply(seq_len(dim(yrep)[1L]),
-                           function(s) stats::cor(yrep[s, , a], yrep[s, , b]),
+      replicated <- vapply(seq_len(dim(yrep)[3L]),
+                           function(s) stats::cor(yrep[, a, s], yrep[, b, s]),
                            numeric(1))
       out[[length(out) + 1L]] <- data.frame(
         statistic = paste0("cor: ", traits[a], "-", traits[b]),
@@ -211,16 +216,18 @@ print.stanimal_yrep <- function(x, ...) {
   )
   names(out)[3:4] <- c("q2.5", "q97.5")
   # the posterior predictive tail probability: the share of replicates at or
-  # above the observation. A statistic the model reproduces lands near 0.5,
-  # because the observation is then one draw of the replicates' own
-  # distribution; near 0 or 1 it does not.
+  # above the observation. Under a correct model that is roughly uniform on
+  # (0, 1), so most statistics land somewhere in the middle and values near the
+  # ends are the ones to read.
   out$p <- vapply(seq_along(labels), function(i)
     .predictive_tail(replicated[[i]], observed[i]), numeric(1))
   print(out, digits = 3, row.names = FALSE)
   cat("\n`observed` is the data, `q2.5` and `q97.5` are the 95% interval of the\n",
       "replicates, and `p` is the share of replicates at or above the observed\n",
-      "value. A statistic the model reproduces has p near 0.5; a p near 0 or 1\n",
-      "is a feature the model does not reproduce.\n", sep = "")
+      "value: a posterior predictive tail probability. Under a well-specified\n",
+      "model it is roughly uniform on (0, 1), not concentrated at any value, so\n",
+      "read a `p` near 0 or 1 as a feature the model does not reproduce and leave\n",
+      "the middle alone.\n", sep = "")
   invisible(x)
 }
 

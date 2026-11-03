@@ -29,6 +29,8 @@ test_that("a well-specified fit does not flag the features it reproduces", {
   rows <- grep("^ +(mean|sd|cor): ", out, value = TRUE)
   expect_length(rows, 3L + 3L + 3L)
   p <- as.numeric(sub("^.* ([0-9.]+)$", "\\1", rows))
-  expect_true(all(p > 0.01 & p < 0.99))
-  expect_lt(mean(abs(p - 0.5)), 0.35)
+  # under a correct model these are roughly uniform, so no single value is
+  # informative: what a good fit cannot produce is p at the very ends
+  expect_equal(sum(p == 0 | p == 1), 0L)
+  expect_gte(sum(p > 0.1 & p < 0.9), 5L)
 })

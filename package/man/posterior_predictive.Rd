@@ -27,15 +27,17 @@ reproducible. The sampler's seed does not cover this step.}
 }
 \value{
 An object of class \code{stanimal_yrep}: a list with
-  \code{yrep} (draws by individuals by traits, with the observed \code{y} on
-  the original response scale), the observed \code{y}, the trait names, and
-  the number of replicates. \code{print()} reports, for the trait means,
-  standard deviations and pairwise correlations, the observed value, the 95\%
-  interval of the replicates, and \code{p}: the share of replicates at or
-  above the observed value. A statistic the model reproduces has \code{p} near
-  0.5, because the observation is then one draw of the replicates' own
-  distribution; \code{p} near 0 or 1 is a feature the model does not
-  reproduce. \code{plot()} shows the replicate distributions.
+  \code{yrep} (individuals by traits by draws, the same layout as
+  \code{\link{fit_draws}}, with draws last), the observed \code{y} on the
+  original response scale, the trait names, and the number of replicates.
+  \code{print()} reports, for the trait means, standard deviations and
+  pairwise correlations, the observed value, the 95\% interval of the
+  replicates, and \code{p}: the share of replicates at or above the observed
+  value, a posterior predictive tail probability. Under a well-specified
+  model \code{p} is roughly uniform on (0, 1) rather than concentrated at any
+  value, so a \code{p} near 0 or 1 marks a feature the model does not
+  reproduce and a middling one says nothing either way. \code{plot()} shows
+  the replicate distributions.
 }
 \description{
 Draws replicate datasets from the fitted model, one per posterior draw, so

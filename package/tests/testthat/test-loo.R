@@ -84,15 +84,17 @@ test_that("posterior_predictive replicates the response", {
   pp <- posterior_predictive(f$fit, ndraws = 20, seed = 5)
 
   expect_s3_class(pp, "stanimal_yrep")
-  expect_equal(dim(pp$yrep), c(20L, nrow(f$sim$Y), ncol(f$sim$Y)))
+  # individuals, traits, draws: draws last, as everywhere else in the package
+  expect_equal(dim(pp$yrep), c(nrow(f$sim$Y), ncol(f$sim$Y), 20L))
+  expect_equal(dimnames(pp$yrep)[[2]], pp$traits)
   expect_equal(pp$ndraws, 20L)
   expect_equal(pp$traits, colnames(f$sim$Y) %||% paste0("trait", 1:3))
   expect_true(all(is.finite(pp$yrep)))
   # the replicates centre where the data are, not at zero
-  expect_lt(abs(mean(pp$yrep[, , 1]) - mean(f$sim$Y[, 1])),
+  expect_lt(abs(mean(pp$yrep[, 1, ]) - mean(f$sim$Y[, 1])),
             0.25 * stats::sd(f$sim$Y[, 1]))
-  # replicates are draws, not copies
-  expect_gt(stats::sd(pp$yrep[, 1, 1]), 0)
+  # replicates are draws, not copies of one simulation
+  expect_gt(stats::sd(pp$yrep[1, 1, ]), 0)
 
   # print and plot summarise the covariance structure
   out <- capture.output(print(pp))
@@ -113,7 +115,7 @@ test_that("posterior_predictive keeps the observed gaps", {
   pp <- posterior_predictive(fit, ndraws = 5, seed = 1)
   expect_equal(sum(is.na(pp$y)), 1L)
   # the replicate is simulated for that entry even though the data lack it
-  expect_false(anyNA(pp$yrep[, 2, 3]))
+  expect_false(anyNA(pp$yrep[2, 3, ]))
 })
 
 test_that("posterior_predictive covers the univariate and phenotypic paths", {
@@ -125,7 +127,7 @@ test_that("posterior_predictive covers the univariate and phenotypic paths", {
                                      seed = 1, refresh = 0,
                                      show_messages = FALSE))
   pp_uni <- posterior_predictive(uni, ndraws = 8, seed = 1)
-  expect_equal(dim(pp_uni$yrep), c(8L, nrow(uni_sim$Y), 1L))
+  expect_equal(dim(pp_uni$yrep), c(nrow(uni_sim$Y), 1L, 8L))
   # the genetic deviations come out with the right spread: on the data scale the
   # replicates are as variable as sigma_G^2 + sigma_E^2 implies
   expect_gt(stats::var(as.vector(pp_uni$yrep)), 0)
@@ -134,7 +136,7 @@ test_that("posterior_predictive covers the univariate and phenotypic paths", {
   phen <- lm_phen_cov(phen_sim$Y, phen_sim$X, iter = 400, chains = 2, cores = 2,
                       seed = 1, refresh = 0, show_messages = FALSE)
   pp_phen <- posterior_predictive(phen, ndraws = 8, seed = 1)
-  expect_equal(dim(pp_phen$yrep), c(8L, nrow(phen_sim$Y), 3L))
+  expect_equal(dim(pp_phen$yrep), c(nrow(phen_sim$Y), 3L, 8L))
   expect_true(all(is.finite(pp_phen$yrep)))
 })
 

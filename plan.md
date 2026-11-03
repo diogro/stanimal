@@ -228,12 +228,14 @@ already an Import. `examples/structure_comparison.R` still compares by MSE; it
 could now use `loo_compare()` instead, which is a better demonstration than a
 simulated-truth MSE and is the obvious next example to rewrite.
 
-### 4. Univariate `log_lik`
+### 4. Univariate `log_lik` — DONE (0.7.0)
 
-`animalModelUni.stan` and `animalModelUniH2.stan` are the only models without a
-pointwise `log_lik`, so LOO is impossible for the fits people run most. Trivial
-generated-quantities addition; check that the `h2` parametrization reports it
-through the same density.
+`animalModelUni.stan` and `animalModelUniH2.stan` were the only models without a
+pointwise `log_lik`, so LOO was impossible for the fits people run most. Both
+now compute it in `generated quantities`, through the same density, so the two
+parametrizations report the same terms — which `test-log-lik-uni.R` checks
+against the density written out in R. Doing this first is what let the
+multivariate and phenotypic models inherit the same contract.
 
 ## Phase 2 — evolutionary analysis of `G`
 

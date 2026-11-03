@@ -223,10 +223,21 @@ it, although `AGENTS.md` claimed they did. Fixed there first, per pattern.
 - `posterior_predictive()` slices `beta[, , j]` and `G[, , j]`; with one trait R
   drops those to vectors, so every slice goes through `matrix(...)`.
 
+**The example the plan asked for.** `examples/structure_comparison.R` now ranks
+the same five fits twice: by relative MSE against the simulated truth, as before,
+and by held-out predictive density. The second ranking is the one that transfers
+to real data, where there is no truth to score against.
+
+What it showed, and the reason it was worth doing: with 500 individuals and five
+traits, LOO separates the *residual* structure — both unstructured-`E` models lose
+about 7 ELPD, against standard errors near 2.4 — and does not separate the
+*genetic* one, where factor and unstructured `G` are little more than 1 apart. The
+factor structure's case has to rest on `p_loo` (32 effective parameters against
+42) and on cost, not on the predictive density. That is a more useful lesson than
+another simulated-truth table, because it is the situation a user will meet.
+
 **Not done.** No `bayesplot` dependency: the plot method uses ggplot2, which was
-already an Import. `examples/structure_comparison.R` still compares by MSE; it
-could now use `loo_compare()` instead, which is a better demonstration than a
-simulated-truth MSE and is the obvious next example to rewrite.
+already an Import.
 
 ### 4. Univariate `log_lik` — DONE (0.7.0)
 

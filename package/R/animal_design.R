@@ -164,9 +164,10 @@ animal_design <- function(formula, data, na.action = stats::na.omit,
          "`Y` and `X`.", call. = FALSE)
 
   if (ncol(Y) >= 3L && nrow(Y) >= 3L) {
-    complete <- stats::complete.cases(Y)
-    pc1_share <- pc1_variance_share(Y[complete, , drop = FALSE])
-    if (pc1_share >= 0.8)
+    # a diagnostic, not a step of the design: an incomplete response is fine
+    # here, and a pattern that cannot be completed is not a reason to fail
+    pc1_share <- tryCatch(pc1_variance_share(Y), error = function(e) NULL)
+    if (!is.null(pc1_share) && pc1_share >= 0.8)
       warning("the first principal component of Y explains ",
               round(100 * pc1_share), "% of the variance. If these are raw ",
               "measurements, consider fitting size and shape scores instead ",

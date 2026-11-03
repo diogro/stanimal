@@ -13,6 +13,19 @@
   allowed in the animal model and an error elsewhere.
 * `animal_design()` no longer drops rows that miss only the response; it still
   drops rows with missing predictors, and `na.action` now applies to those.
+* `size_shape()` accepts a response with gaps, which it could not before: size is
+  a mean of the traits and shape is a difference between them, so neither is
+  defined for a row with a missing value. The response is completed first, by a
+  maximum-likelihood multivariate normal estimated from the values that were
+  measured (EM), and each gap becomes its conditional mean given the traits that
+  individual has. The rest of the transformation is unchanged. `$gaps` reports
+  how many entries were completed and `$scores_sd` the standard deviation of each
+  completed score, which is 0 for the individuals that were measured in full.
+  This is a point completion, so a fit on the resulting scores treats them as
+  data: the spread in `$scores_sd` does not travel into that posterior. A row
+  with nothing observed, and a pair of traits never measured together, are
+  errors. `pc1_variance_share()`, `plot_G_ellipses()` and the diagnostic
+  `animal_design()` runs on its response accept gaps for the same reason.
 * `imputed_data()` returns completed datasets, one per posterior draw: the
   observed entries as they are and the gaps filled on the response scale. An
   animal fit's gaps are the parameters it sampled; a phenotypic fit has none, so

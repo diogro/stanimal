@@ -19,7 +19,10 @@ plot_G_ellipses(
 or a \code{posterior} draws object containing \code{G} and, when
 \code{X} is given, the fixed effects \code{beta}.}
 
-\item{Y}{Matrix of the observed traits (the \code{Y} given to the fit).}
+\item{Y}{Matrix of the observed traits (the \code{Y} given to the fit).
+Missing values are allowed: the ellipses are built from the pairs of traits
+that were measured together, and a point is drawn only for the individuals
+that have both traits of its panel.}
 
 \item{trait_names}{Optional trait names; default are the column names of
 \code{Y}.}

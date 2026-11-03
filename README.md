@@ -351,6 +351,18 @@ The LKJ prior is not invariant under this change of traits: it acts on correlati
 
 Size is `rowMeans(Y)` and the shape axes are the principal components of `Y - size`, so `Y = scores %*% t(loadings)` up to the means and covariance matrices map exactly as $B M B^\top$. Keeping fewer axes (`n_shape`) gives a lower-rank, singular covariance in the original trait space. Heritabilities and genetic correlations are recomputed after the transformation, since neither is invariant under a change of traits; `beta` stays on the model scale. `back_transform()` also accepts an `lm_phen_cov()` fit, in which case it returns `P`, `corrP` and `sigma_P`.
 
+A gap in the traits is not a problem for the reparametrization, even though neither size nor shape is defined without every trait: `size_shape()` completes the response first. The mean and covariance of the traits are estimated by maximum likelihood from the values that were measured (EM under a multivariate normal), and a missing entry is replaced by its conditional mean given the traits that individual does have. `$gaps` says how many entries were completed, and `$scores_sd` gives the standard deviation of each completed score, which is worth reading before comparing an individual that was missing a trait with one that was not. It is one completion, not a multiple imputation: the scores are then treated as data by the model they are passed to.
+
+```r
+incomplete <- log_traits          # a copy, with one value removed
+incomplete[1, 2] <- NA
+ss_gaps <- size_shape(incomplete)
+ss_gaps$gaps                      # entries completed from the trait covariance
+range(ss_gaps$scores_sd)          # 0 for the individuals measured in full
+```
+
+A row with nothing observed is an error, as are two traits never measured on the same individual, because their covariance cannot be estimated.
+
 ## Pedigree relationship matrix
 
 `makeA()` turns a pedigree into the additive relationship matrix, using the tabular method, with parents allowed in any order and unknown parents coded `0`, `NA` or `""`:

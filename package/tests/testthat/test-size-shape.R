@@ -188,3 +188,131 @@ test_that("to_draws_list handles a phenotypic fit and validates its input", {
   expect_equal(as.numeric(as.matrix(draws$sigma_P)[1, ]), as.numeric(post$sigma_P[, 1]))
   expect_error(to_draws_list(list()), "size_shape_draws")
 })
+
+# Incomplete trait records.
+#
+# Size is a mean of all the traits and shape is a difference between them, so a
+# row with a gap has neither until the gap is filled. The fill is the
+# conditional mean under a multivariate normal whose mean and covariance are
+# estimated from the data, which leaves a complete response untouched.
+
+# 200 individuals on the same size gradient. The 40 rows of `Y4` are too few
+# for the gap tests: their sample covariance is itself noisy, so a completed
+# estimate could not be told apart from one that had gone wrong.
+set.seed(21)
+big_size <- rnorm(200)
+Ybig <- cbind(a = big_size + rnorm(200, sd = 0.3),
+              b = 2 * big_size + rnorm(200, sd = 0.3),
+              c = -big_size + rnorm(200, sd = 0.3),
+              d = big_size + rnorm(200, sd = 0.5))
+
+gappy <- function(Y, n_gaps, seed) {
+  original <- Y
+  set.seed(seed)
+  Y[sample(length(Y), n_gaps)] <- NA
+  # a row with nothing observed is an error by design, so keep one value
+  blank <- rowSums(is.na(Y)) == ncol(Y)
+  Y[blank, 1] <- original[blank, 1]
+  Y
+}
+
+test_that("the gap completion recovers the covariance of the complete data", {
+  Y <- gappy(Ybig, 64, seed = 22)
+  expect_gt(sum(is.na(Y)), 50)
+  fit <- stanimal:::.normal_em(Y)
+  expect_lt(max(abs(fit$mean - colMeans(Ybig))), 0.05)
+  # covariances are compared as a relative error: these entries differ by an
+  # order of magnitude, so an absolute difference means nothing on its own
+  truth <- stats::cov(Ybig)
+  expect_lt(max(abs(fit$covariance - truth) / abs(truth)), 0.08)
+  # observed entries are never replaced
+  completed <- stanimal:::.conditional_gaps(Y, fit$mean, fit$covariance)$Y
+  expect_equal(completed[!is.na(Y)], Y[!is.na(Y)])
+  expect_false(anyNA(completed))
+})
+
+test_that("size_shape completes the gaps and says so", {
+  Y <- gappy(Ybig, 64, seed = 23)
+  complete <- size_shape(Ybig)
+  ss <- size_shape(Y)
+
+  expect_equal(ss$gaps, sum(is.na(Y)))
+  expect_s3_class(ss, "size_shape")
+  expect_equal(dim(ss$scores), dim(complete$scores))
+  # only the completed rows carry a spread, and the spread depends on which
+  # traits are missing rather than on the values
+  gappy_rows <- which(rowSums(is.na(Y)) > 0)
+  expect_true(all(ss$scores_sd[-gappy_rows, ] == 0))
+  expect_true(all(ss$scores_sd[gappy_rows, ] > 0))
+  # the axes are estimated from all the individuals, so they hardly move. Signs
+  # are arbitrary, which is why the comparison is on magnitudes.
+  expect_lt(max(abs(abs(ss$loadings) - abs(complete$loadings))), 0.05)
+  # and the scores stay close to the ones the same mice would have had. The last
+  # shape axis carries the least variance and is the last to stabilise.
+  expect_gt(min(diag(stats::cor(ss$scores, complete$scores))[1:3]), 0.95)
+  expect_output(print(ss), "completed")
+})
+
+test_that("a complete response is left alone", {
+  ss <- size_shape(Y4)
+  expect_equal(ss$gaps, 0L)
+  expect_null(ss$scores_sd)
+  expect_output(print(ss), "complete")
+})
+
+test_that("the more traits are missing, the wider the completed score", {
+  one <- Ybig
+  one[1, 2] <- NA
+  three <- Ybig
+  three[1, c(1, 3, 4)] <- NA
+  expect_lt(sum(size_shape(one)$scores_sd[1, ]),
+            sum(size_shape(three)$scores_sd[1, ]))
+  expect_equal(unname(size_shape(one)$scores_sd[2, ]), rep(0, 4))
+})
+
+test_that("gaps that cannot be completed are an error", {
+  blank <- Y4
+  blank[3, ] <- NA
+  expect_error(size_shape(blank), "at least one observed trait")
+
+  no_trait <- Y4
+  no_trait[, "d"] <- NA
+  expect_error(size_shape(no_trait), "at least two observed values")
+
+  # the first half of the mice have no `a`, the second half no `b`
+  never <- Y4
+  never[1:20, "a"] <- NA
+  never[21:40, "b"] <- NA
+  expect_error(size_shape(never), "never measured on the same individual")
+
+  expect_error(size_shape(matrix(Inf, 5, 3)), "infinite")
+})
+
+test_that("pc1_variance_share takes an incomplete response", {
+  Y <- gappy(Ybig, 64, seed = 24)
+  expect_equal(pc1_variance_share(Y), pc1_variance_share(Ybig), tolerance = 0.02)
+  expect_error(pc1_variance_share(matrix(NA_real_, 5, 3)), "observed trait")
+})
+
+test_that("plot_G_ellipses drops the individuals with a trait missing", {
+  k <- 4
+  G <- matrix(0.2, k, k); diag(G) <- 1
+  m <- matrix(rep(as.vector(G), 3), 3, byrow = TRUE)
+  colnames(m) <- names_mat("G", k)
+  Y <- Y4
+  Y[c(1, 5), "a"] <- NA
+  p <- plot_G_ellipses(m, Y)
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("animal_design keeps a response with gaps and still diagnoses it", {
+  set.seed(9)
+  gradient <- rnorm(30)
+  dominant <- data.frame(a = gradient + rnorm(30, sd = 0.1),
+                         b = 2 * gradient + rnorm(30, sd = 0.1),
+                         c = -gradient + rnorm(30, sd = 0.1))
+  dominant$a[5] <- NA
+  expect_warning(design <- animal_design(cbind(a, b, c) ~ 1, dominant),
+                 "size_shape")
+  expect_true(is.na(design$Y[5, 1]))
+})

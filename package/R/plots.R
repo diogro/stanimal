@@ -270,6 +270,9 @@ plot_forest <- function(fit, trait_names = NULL, lkj_prior = NULL,
 #'   or a \code{posterior} draws object containing \code{G} and, when
 #'   \code{X} is given, the fixed effects \code{beta}.
 #' @param Y Matrix of the observed traits (the \code{Y} given to the fit).
+#'   Missing values are allowed: the ellipses are built from the pairs of traits
+#'   that were measured together, and a point is drawn only for the individuals
+#'   that have both traits of its panel.
 #' @param trait_names Optional trait names; default are the column names of
 #'   \code{Y}.
 #' @param n_show Number of posterior draws of G to draw, at least 1.
@@ -295,7 +298,7 @@ plot_G_ellipses <- function(fit, Y, trait_names = NULL, n_show = 100,
   n_show <- .check_count(n_show, "n_show")
   level <- .check_prob(level, "level")
   prob <- .check_prob(prob, "prob")
-  Y <- .check_numeric_matrix(Y, "Y")
+  Y <- .check_numeric_matrix(Y, "Y", allow_na = TRUE)
   k <- ncol(Y)
   if (k < 2L) stop("`Y` must have at least two traits.", call. = FALSE)
   trait_names <- trait_names %||% colnames(Y) %||% paste0("trait", seq_len(k))
@@ -324,14 +327,14 @@ plot_G_ellipses <- function(fit, Y, trait_names = NULL, n_show = 100,
   if (!is.matrix(corr)) corr <- matrix(corr, ncol = k * (k - 1) / 2)
   pairs <- .trait_pairs(trait_names)
   shown <- sample(dim(G)[1], min(n_show, dim(G)[1]))
-  P_obs <- stats::cov(Y)
-  centre <- colMeans(Y)
+  P_obs <- stats::cov(Y, use = "pairwise.complete.obs")
+  centre <- colMeans(Y, na.rm = TRUE)
   lab <- factor(trait_names, levels = trait_names)
 
   lower <- list(points = list(), lines = list())
   upper <- list(); diag_l <- list(); ranges <- list()
   for (c_ in seq_len(k)) {
-    r <- range(Y[, c_])
+    r <- range(Y[, c_], na.rm = TRUE)
     ranges[[c_]] <- r + c(-1, 1) * 0.35 * diff(r)
   }
   for (row in seq_len(k)) for (col in seq_len(k)) {
@@ -352,8 +355,11 @@ plot_G_ellipses <- function(fit, Y, trait_names = NULL, n_show = 100,
       mk <- function(S, group, draw = 1L)
         data.frame(row = row_f, col = col_f, group = group, draw = draw,
                    .ellipse(S[idx, idx], centre[idx], level))
-      lower$points[[length(lower$points) + 1L]] <- data.frame(
-        row = row_f, col = col_f, x = Y[, col], y = Y[, row])
+      pair_points <- data.frame(row = row_f, col = col_f,
+                                x = Y[, col], y = Y[, row])
+      # an individual with either trait of this panel unmeasured has no point
+      lower$points[[length(lower$points) + 1L]] <-
+        pair_points[stats::complete.cases(pair_points), , drop = FALSE]
       lower$lines <- c(lower$lines,
         lapply(shown, function(s) mk(G[s, , ], "G draws", s)),
         list(mk(mean_G, "Posterior mean G"), mk(P_obs, p_label)))

@@ -1,3 +1,128 @@
+# Gaps in the traits, for the reparametrization.
+#
+# Size and shape are a linear map of the traits: size is their mean and shape is
+# the residual after it, whose principal components are the shape axes. So
+# neither step needs the traits individually, and a missing value is not a
+# problem in itself. What is a problem is that a row with a gap has no mean, and
+# that the axes need a covariance of the shape space. Both are supplied by one
+# model: the traits are multivariate normal, and the mean and covariance are
+# estimated by maximum likelihood from whatever was measured (EM, which is exact
+# here because every pattern is a linear constraint). A gap is then filled with
+# its conditional mean given the traits of the same individual, which is the
+# completed value the rest of this file works with.
+#
+# The completion is a point estimate, so `size_shape()` reports the conditional
+# standard deviation of every score it completes (`scores_sd`). It is one
+# completion, not a multiple imputation: fitting the scores treats them as data,
+# and the uncertainty about the gaps does not travel into that fit.
+
+# A trait never observed, or a pair of traits never observed together, leaves
+# part of the covariance unidentified. Say which, rather than let EM return NaN.
+.check_gap_pattern <- function(Y) {
+  observed <- !is.na(Y)
+  blank <- which(rowSums(observed) == 0L)
+  if (length(blank))
+    stop("every individual needs at least one observed trait, and ",
+         length(blank), " row(s) have none (rows ",
+         paste(utils::head(blank, 5L), collapse = ", "),
+         if (length(blank) > 5L) ", ..." else "", "). Drop them, or leave them ",
+         "out of `Y`.", call. = FALSE)
+  traits <- .trait_labels(Y)
+  rare <- which(colSums(observed) < 2L)
+  if (length(rare))
+    stop("every trait needs at least two observed values for its variance to be ",
+         "estimated: ", paste(traits[rare], collapse = ", "), ".",
+         call. = FALSE)
+  together <- crossprod(observed + 0)
+  diag(together) <- Inf
+  thin <- which(together < 2L, arr.ind = TRUE)
+  if (nrow(thin)) {
+    pairs <- unique(t(apply(thin, 1L, function(ij)
+      sort(c(traits[ij[1L]], traits[ij[2L]])))))
+    shown <- utils::head(seq_len(nrow(pairs)), 3L)
+    stop("traits that are never measured on the same individual have no ",
+         "estimable covariance: ",
+         paste(vapply(shown, function(r) paste(pairs[r, ], collapse = " and "),
+                      character(1)), collapse = "; "),
+         if (nrow(pairs) > 3L) "; and others" else "", ".", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+# Maximum likelihood mean and covariance of the traits under a multivariate
+# normal, by EM. The estimates divide by n rather than by n - 1; the completion
+# below uses the covariances only as ratios and the axes are eigenvectors, so
+# the difference never reaches the output.
+.normal_em <- function(Y, tol = 1e-10, max_iter = 500) {
+  missing <- is.na(Y)
+  n <- nrow(Y)
+  k <- ncol(Y)
+  key <- apply(missing, 1L, function(row) paste(as.integer(row), collapse = ""))
+  patterns <- lapply(unique(key), function(pattern) {
+    rows <- which(key == pattern)
+    list(rows = rows, missing = which(missing[rows[1L], ]))
+  })
+
+  mean <- colMeans(Y, na.rm = TRUE)
+  covariance <- stats::cov(Y, use = "pairwise.complete.obs")
+  for (iteration in seq_len(max_iter)) {
+    total <- numeric(k)
+    product <- matrix(0, k, k)
+    for (pattern in patterns) {
+      gaps <- pattern$missing
+      observed <- setdiff(seq_len(k), gaps)
+      rows <- pattern$rows
+      completed <- matrix(0, length(rows), k)
+      completed[, observed] <- Y[rows, observed, drop = FALSE]
+      extra <- matrix(0, k, k)
+      if (length(gaps)) {
+        # E[y_missing | y_observed] and the covariance left over after it
+        gain <- solve(covariance[observed, observed, drop = FALSE],
+                      covariance[observed, gaps, drop = FALSE])
+        centred <- Y[rows, observed, drop = FALSE] -
+          matrix(mean[observed], length(rows), length(observed), byrow = TRUE)
+        completed[, gaps] <- sweep(centred %*% gain, 2L, mean[gaps], "+")
+        extra[gaps, gaps] <- covariance[gaps, gaps, drop = FALSE] -
+          covariance[gaps, observed, drop = FALSE] %*% gain
+      }
+      total <- total + colSums(completed)
+      product <- product + crossprod(completed) + length(rows) * extra
+    }
+    new_mean <- total / n
+    new_covariance <- product / n - tcrossprod(new_mean)
+    converged <- max(abs(new_covariance - covariance)) <
+      tol * max(1, max(abs(new_covariance)))
+    mean <- new_mean
+    covariance <- new_covariance
+    if (converged)
+      return(list(mean = mean, covariance = covariance, iterations = iteration))
+  }
+  list(mean = mean, covariance = covariance, iterations = max_iter)
+}
+
+# Each row completed with its conditional mean, and the conditional covariance
+# of its gaps, which is what the standard deviation of a completed score needs.
+# Observed entries are left exactly as they were.
+.conditional_gaps <- function(Y, mean, covariance) {
+  missing <- is.na(Y)
+  n <- nrow(Y)
+  k <- ncol(Y)
+  completed <- Y
+  residual_covariance <- array(0, c(n, k, k))
+  for (i in which(rowSums(missing) > 0L)) {
+    gaps <- which(missing[i, ])
+    observed <- setdiff(seq_len(k), gaps)
+    gain <- solve(covariance[observed, observed, drop = FALSE],
+                  covariance[observed, gaps, drop = FALSE])
+    completed[i, gaps] <- mean[gaps] +
+      drop((Y[i, observed] - mean[observed]) %*% gain)
+    residual_covariance[i, gaps, gaps] <-
+      covariance[gaps, gaps, drop = FALSE] -
+      covariance[gaps, observed, drop = FALSE] %*% gain
+  }
+  list(Y = completed, covariance = residual_covariance)
+}
+
 #' Share of variance explained by the first principal component
 #'
 #' Diagnostic for the size and shape reparametrization: when a single component
@@ -5,7 +130,9 @@
 #' size and shape scores is a much better behaved model than fitting all of the
 #' raw traits.
 #'
-#' @param Y Numeric matrix of traits, individuals in rows.
+#' @param Y Numeric matrix of traits, individuals in rows. \code{NA} is allowed
+#'   and is not discarded: the correlations are estimated from the available
+#'   values, as described in \code{\link{size_shape}}.
 #' @return The share of the total variance taken by the first principal
 #'   component of the correlation matrix of \code{Y}, between \code{1 / ncol(Y)}
 #'   and 1 (1 for a single trait).
@@ -24,8 +151,11 @@
 #' @export
 pc1_variance_share <- function(Y) {
   Y <- as.matrix(Y)
-  if (!is.numeric(Y) || any(!is.finite(Y)))
-    stop("`Y` must be a finite numeric matrix of traits.", call. = FALSE)
+  if (!is.numeric(Y))
+    stop("`Y` must be a numeric matrix of traits.", call. = FALSE)
+  if (any(is.infinite(Y)))
+    stop("`Y` must not contain infinite values; use `NA` for a trait that was ",
+         "not measured.", call. = FALSE)
   k <- ncol(Y)
   if (is.null(k) || k < 1L)
     stop("`Y` must have at least one column of traits.", call. = FALSE)
@@ -33,9 +163,15 @@ pc1_variance_share <- function(Y) {
     return(1)
   if (nrow(Y) < 3L)
     stop("`Y` must have at least three individuals.", call. = FALSE)
-  if (any(apply(Y, 2L, stats::sd) == 0))
-    stop("every trait in `Y` must vary.", call. = FALSE)
-  eigenvalues <- eigen(stats::cor(Y), symmetric = TRUE, only.values = TRUE)$values
+  if (anyNA(Y)) {
+    .check_gap_pattern(Y)
+    correlation <- stats::cov2cor(.normal_em(Y)$covariance)
+  } else {
+    if (any(apply(Y, 2L, stats::sd) == 0))
+      stop("every trait in `Y` must vary.", call. = FALSE)
+    correlation <- stats::cor(Y)
+  }
+  eigenvalues <- eigen(correlation, symmetric = TRUE, only.values = TRUE)$values
   eigenvalues[1L] / sum(eigenvalues)
 }
 
@@ -48,7 +184,8 @@ pc1_variance_share <- function(Y) {
 #' so nothing is lost, but the sampler works on well-separated axes.
 #'
 #' @param Y Numeric matrix of traits, individuals in rows and traits in columns.
-#'   Log-transformed measurements are the usual input.
+#'   Log-transformed measurements are the usual input. Missing values
+#'   (\code{NA}) are allowed and are not discarded: see Details.
 #' @param n_shape Number of shape axes to keep, between 1 and
 #'   \code{ncol(Y) - 1}. The default keeps all of them, so the transformation is
 #'   a bijection; fewer axes give a lower-rank (singular) covariance in the
@@ -61,7 +198,12 @@ pc1_variance_share <- function(Y) {
 #'     \code{Y = scores \%*\% t(B)};}
 #'   \item{traits}{names of the model traits (\code{size}, \code{shape1}, ...);}
 #'   \item{raw_traits}{names of the original traits;}
-#'   \item{centre}{column means removed from the shape axes.}
+#'   \item{centre}{column means removed from the shape axes;}
+#'   \item{gaps}{number of entries that were not measured, and so were
+#'     completed before the transformation (\code{0} for a complete response);}
+#'   \item{scores_sd}{standard deviation of each completed score, on the same
+#'     layout as \code{scores}, or \code{NULL} when nothing was completed.
+#'     Observed individuals have \code{0}.}
 #' @details Size is the mean of the traits, \code{rowMeans(Y)}, i.e. the log
 #'   geometric mean for log measurements. Shape is \code{Y - size}, which sums
 #'   to zero within each individual and therefore lives in an
@@ -84,7 +226,32 @@ pc1_variance_share <- function(Y) {
 #'   correlations are expected to be small; a larger \code{lkj_prior} than for
 #'   the same traits fitted raw (stronger shrinkage towards zero correlation) is
 #'   therefore reasonable, and it can also make the model cheaper to sample.
-#' @seealso \code{\link{back_transform}}, \code{\link{animal_design}}
+#'
+#'   \strong{Missing values.} Size is a mean of all the traits and shape is a
+#'   difference between them, so a row with a gap has neither. The gap is
+#'   therefore filled first: the mean and covariance of the traits are
+#'   estimated by maximum likelihood from the values that were measured (an EM
+#'   fit of a multivariate normal, which needs no other information), and a
+#'   missing entry is replaced by its conditional mean given the traits that
+#'   individual does have. The rest of the transformation then runs unchanged,
+#'   which is exact for the observed values and a conditional estimate for the
+#'   completed ones.
+#'
+#'   Because those completed scores are estimates, \code{scores_sd} reports the
+#'   standard deviation each one carries, and it is worth reading before
+#'   comparing a mouse that was missing a trait with one that was not: an entry
+#'   completed from a single measured trait is mostly the model's prediction. A
+#'   row with nothing observed carries no information and is an error, and two
+#'   traits never measured on the same individual make their covariance
+#'   unidentifiable, which is also an error.
+#'
+#'   The completion is a point estimate, not a multiple imputation: the scores
+#'   are then treated as data by the model they are passed to, and the
+#'   uncertainty in \code{scores_sd} does not travel into that fit. It is the
+#'   transformation that is estimated once, exactly as it is for a complete
+#'   response.
+#' @seealso \code{\link{back_transform}}, \code{\link{animal_design}},
+#'   \code{\link{imputed_data}}
 #' @examples
 #' set.seed(1)
 #' G <- random_covariance(3, method = "factor", integration = 0.8)
@@ -93,11 +260,18 @@ pc1_variance_share <- function(Y) {
 #' ss <- size_shape(Y)
 #' head(ss$scores)
 #' ss$loadings
+#'
+#' # a gap in one trait is completed from the other two
+#' Y[2, "b"] <- NA
+#' size_shape(Y)$scores[2, ]
 #' @export
 size_shape <- function(Y, n_shape = NULL) {
   Y <- as.matrix(Y)
-  if (!is.numeric(Y) || any(!is.finite(Y)))
-    stop("`Y` must be a finite numeric matrix of traits.", call. = FALSE)
+  if (!is.numeric(Y))
+    stop("`Y` must be a numeric matrix of traits.", call. = FALSE)
+  if (any(is.infinite(Y)))
+    stop("`Y` must not contain infinite values; use `NA` for a trait that was ",
+         "not measured.", call. = FALSE)
   k <- ncol(Y)
   if (is.null(k) || k < 2L)
     stop("`Y` must have at least two traits.", call. = FALSE)
@@ -109,6 +283,15 @@ size_shape <- function(Y, n_shape = NULL) {
   if (n_shape > k - 1L)
     stop("`n_shape` must be at most ncol(Y) - 1 (", k - 1L, ").",
          call. = FALSE)
+
+  gaps <- is.na(Y)
+  completed <- NULL
+  if (any(gaps)) {
+    .check_gap_pattern(Y)
+    fit <- .normal_em(Y)
+    completed <- .conditional_gaps(Y, fit$mean, fit$covariance)
+    Y <- completed$Y
+  }
 
   size <- rowMeans(Y)
   shape <- Y - size
@@ -123,8 +306,25 @@ size_shape <- function(Y, n_shape = NULL) {
   rownames(B) <- raw_traits
   rownames(scores) <- rownames(Y)
 
+  # size is the mean of the traits and each shape axis is a zero-sum combination
+  # of them, so every model trait is a linear function of the k raw traits. That
+  # map turns the conditional covariance of a row's gaps into the uncertainty of
+  # its scores.
+  scores_sd <- NULL
+  if (!is.null(completed)) {
+    map <- t(cbind(rep(1 / k, k), B_shape))
+    scores_sd <- matrix(0, nrow(Y), ncol(scores))
+    for (i in which(rowSums(gaps) > 0L)) {
+      conditional <- map %*% completed$covariance[i, , ] %*% t(map)
+      scores_sd[i, ] <- sqrt(pmax(diag(conditional), 0))
+    }
+    dimnames(scores_sd) <- dimnames(scores)
+  }
+
   structure(list(scores = scores, loadings = B, traits = colnames(scores),
-                 raw_traits = raw_traits, centre = colMeans(shape)),
+                 raw_traits = raw_traits, centre = colMeans(shape),
+                 gaps = if (any(gaps)) sum(gaps) else 0L,
+                 scores_sd = scores_sd),
             class = "size_shape")
 }
 
@@ -135,6 +335,13 @@ print.size_shape <- function(x, ...) {
       "raw traits\n")
   cat("model traits:", paste(x$traits, collapse = ", "), "\n")
   cat("raw traits:  ", paste(x$raw_traits, collapse = ", "), "\n")
+  if (is.null(x$scores_sd))
+    cat("the response was complete\n")
+  else
+    cat(x$gaps, " entries were not measured and were completed from the trait ",
+        "covariance;\n", sum(rowSums(x$scores_sd > 0) > 0),
+        " individual(s) have a completed score, with the spread in $scores_sd\n",
+        sep = "")
   invisible(x)
 }
 

@@ -152,6 +152,26 @@ Practical consequences:
 - The gap parameters are latent, so a high `Rhat` on `Y_mis` says little on its
   own; judge convergence on `G`, `E`, `P` and `h2` as usual.
 
+Before the traits reach a model they may pass through something else, and those
+take gaps too:
+
+- `size_shape()` completes the response first, because neither size (a mean of
+  the traits) nor shape (a difference between them) is defined for a row with a
+  gap. The completion is a maximum-likelihood multivariate normal (EM), and a
+  gap becomes its conditional mean given the traits that individual has. The
+  object records `gaps` and `scores_sd`, the latter being the standard deviation
+  of each completed score: it is `0` for rows that were fully measured, and it is
+  the reason a score should not be compared across individuals without it.
+- This is *point* completion, unlike `imputed_data()`. The scores are then
+  passed to a model that treats them as data, so the uncertainty in
+  `scores_sd` does not reach that model's posterior. Say so if asked why the
+  intervals from a fit on completed scores look narrow.
+- `pc1_variance_share()` and `plot_G_ellipses()` take gaps as well: the share
+  comes from the same EM covariance, and a panel of the ellipse plot draws only
+  the individuals that have both of its traits. `animal_design()` keeps a
+  response with gaps and warns about the dominant component from the incomplete
+  data rather than from the complete rows only.
+
 ## Model comparison and predictive checks
 
 Every model reports `log_lik`, so all of them can be compared.

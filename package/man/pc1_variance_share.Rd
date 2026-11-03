@@ -7,7 +7,9 @@
 pc1_variance_share(Y)
 }
 \arguments{
-\item{Y}{Numeric matrix of traits, individuals in rows.}
+\item{Y}{Numeric matrix of traits, individuals in rows. \code{NA} is allowed
+and is not discarded: the correlations are estimated from the available
+values, as described in \code{\link{size_shape}}.}
 }
 \value{
 The share of the total variance taken by the first principal

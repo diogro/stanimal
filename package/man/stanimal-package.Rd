@@ -9,12 +9,20 @@
 Bayesian animal models in Stan, focused on estimating the
 additive genetic (G) and phenotypic (P) covariance matrices.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/diogro/stanimal}
+  \item Report bugs at \url{https://github.com/diogro/stanimal/issues}
+}
+
+}
 \author{
-\strong{Maintainer}: Diogo Melo \email{diogro@gmail.com}
+\strong{Maintainer}: Diogo Melo \email{diogro@gmail.com} (\href{https://orcid.org/0000-0002-7603-0092}{ORCID})
 
 Authors:
 \itemize{
-  \item Diogo Melo \email{diogro@gmail.com}
+  \item Diogo Melo \email{diogro@gmail.com} (\href{https://orcid.org/0000-0002-7603-0092}{ORCID})
 }
 
 }

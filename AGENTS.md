@@ -72,15 +72,20 @@ functions record different things:
 
 | fit | quantities |
 |---|---|
-| univariate | `sigma_G`, `sigma_E`, `h2`, `beta` |
+| univariate | `sigma_G`, `sigma_E`, `h2`, `beta`, `log_lik` |
 | multivariate, unstructured | `G`, `E`, `P`, `corrG`, `sigma_G`, `sigma_E`, `h2`, `beta`, `log_lik` |
 | factor `G` | + `loadings`, `uniqueness`, `communality`, `factor_magnitude`, `s_G` |
 | shared factor | + `loadings`, `uniqueness`, `communality`, `factor_magnitude`, `factor_heritability`, `genetic_uniqueness`, `residual_uniqueness` |
 | `lm_phen_cov()` | `P`, `corrP`, `sigma_P`, `beta`, `log_lik` (+ `loadings`, `uniqueness`, `communality`, `factor_magnitude` for `"factor"`) |
 
-`h2` exists only for animal fits. `log_lik` is per individual, for LOO/WAIC, and
-only the multivariate and `lm_phen_cov()` models report it — univariate fits do
-not, so LOO cannot be computed for them.
+`h2` exists only for animal fits. Every model reports `log_lik`, one term per row
+of the response, and the terms sum to the joint log density. The basis is the
+catch: the model block works on the eigen-rotation of `A`, where the records are
+independent, so term `n` belongs to rotated record `n` and not to individual `n`.
+With `A = I` the two coincide; otherwise the sum is still the exact joint log
+likelihood, but leave-one-out over rotated records is not leave-one-individual-out.
+`loo` will run on the matrix — read the result as a model-comparison criterion
+rather than an individual-level predictive check.
 
 ### Reading the draws
 

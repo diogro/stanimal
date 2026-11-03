@@ -1,3 +1,16 @@
+# stanimal 0.7.0
+
+## New features
+
+* Univariate fits report pointwise `log_lik`, so every model in the package now
+  exposes the per-record terms that `loo` and `waic` need. The h2 and variance
+  parametrizations describe the same model and report the same density.
+
+## Documentation
+
+* `AGENTS.md` states what each configuration reports, how the priors behave, and
+  which quantities a factor model can and cannot identify.
+
 # stanimal 0.6.0
 
 ## New features

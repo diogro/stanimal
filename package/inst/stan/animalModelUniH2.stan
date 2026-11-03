@@ -90,4 +90,14 @@ model {
 generated quantities {
   real sigma_G = y_sd * s_total * sqrt(h2);
   real sigma_E = y_sd * s_total * sqrt(1 - h2);
+  // Pointwise log likelihood, through the same density as the variance
+  // parametrization so the two agree on the same data. Term n belongs to rotated
+  // record n, which is individual n only when A has a trivial eigenbasis.
+  vector[N] log_lik;
+  {
+    vector[N] mu = Xs * beta_scaled;
+    vector[N] sd_rotated = s_total * sqrt(lambda * h2 + (1 - h2));
+    for (n in 1:N)
+      log_lik[n] = normal_lpdf(Ys[n] | mu[n], sd_rotated[n]);
+  }
 }

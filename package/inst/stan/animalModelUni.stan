@@ -90,4 +90,14 @@ generated quantities {
   real sigma_G = y_sd * s_G;
   real sigma_E = y_sd * s_E;
   real h2 = square(s_G) / (square(s_G) + square(s_E));
+  // Pointwise log likelihood: the rotated records are independent, so the terms
+  // sum to the joint log density. Term n belongs to rotated record n, which is
+  // individual n only when A has a trivial eigenbasis.
+  vector[N] log_lik;
+  {
+    vector[N] mu = Xs * beta_scaled;
+    vector[N] sd_rotated = sqrt(lambda * square(s_G) + square(s_E));
+    for (n in 1:N)
+      log_lik[n] = normal_lpdf(Ys[n] | mu[n], sd_rotated[n]);
+  }
 }

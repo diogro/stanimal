@@ -75,6 +75,15 @@ Multivariate fits report \code{G}, \code{E}, \code{P = G + E}, \code{corrG},
 \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}, plus the
 fixed effects \code{beta[trait, j]}.
 
+Every fit reports \code{log_lik}, one term per row of the response, and the
+terms sum to the joint log density. The basis is the catch: the model block
+works on the eigen-rotation of \code{A}, where the records are independent, so
+term \code{n} belongs to rotated record \code{n} and not to individual
+\code{n}. With \code{A} equal to the identity the two coincide. Otherwise the
+sum is still the exact joint log likelihood, but leave-one-out over rotated
+records is not leave-one-individual-out, so treat \code{loo} results as a
+model-comparison criterion rather than an individual-level predictive check.
+
 Factor fits add quantities that describe the factor decomposition. They come
 in two groups. \code{communality}, \code{uniqueness} and
 \code{factor_heritability} do not depend on how the factors are oriented, so

@@ -162,38 +162,43 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
 
 # Observed and replicated values of the summaries that describe a covariance
 # structure: trait means, trait standard deviations and pairwise correlations.
+#
+# Grouped by kind rather than by trait, so all the means sit together and can be
+# compared down the column, then all the standard deviations, then all the
+# correlations. Both the printed table and the facets of the plot follow this
+# order, which is why it is decided here and not in either of them.
 .yrep_statistics <- function(x) {
   y <- x$y
   yrep <- x$yrep
   traits <- x$traits
   k <- length(traits)
-  out <- list()
-  for (j in seq_len(k)) {
-    observed <- y[, j]
-    # draws are the last dimension, so each statistic is taken over margin 3
-    out[[length(out) + 1L]] <- data.frame(
-      statistic = paste0("mean: ", traits[j]),
-      observed = mean(observed, na.rm = TRUE),
-      replicated = apply(yrep[, j, , drop = FALSE], 3L,
-                         mean, na.rm = TRUE))
-    out[[length(out) + 1L]] <- data.frame(
-      statistic = paste0("sd: ", traits[j]),
-      observed = stats::sd(observed, na.rm = TRUE),
-      replicated = apply(yrep[, j, , drop = FALSE], 3L,
-                         stats::sd, na.rm = TRUE))
+
+  # draws are the last dimension, so each statistic is taken over margin 3
+  across_draws <- function(f, j) {
+    apply(yrep[, j, , drop = FALSE], 3L, f, na.rm = TRUE)
   }
+  per_trait <- function(prefix, f) {
+    do.call(rbind, lapply(seq_len(k), function(j) data.frame(
+      statistic = paste0(prefix, traits[j]),
+      observed = f(y[, j], na.rm = TRUE),
+      replicated = across_draws(f, j))))
+  }
+  means <- per_trait("mean: ", mean)
+  sds <- per_trait("sd: ", stats::sd)
+
+  cors <- list()
   if (k > 1L)
     for (a in seq_len(k - 1L)) for (b in (a + 1L):k) {
       r <- stats::cor(y[, a], y[, b], use = "complete.obs")
       if (!is.finite(r)) next
-      replicated <- vapply(seq_len(dim(yrep)[3L]),
-                           function(s) stats::cor(yrep[, a, s], yrep[, b, s]),
-                           numeric(1))
-      out[[length(out) + 1L]] <- data.frame(
+      cors[[length(cors) + 1L]] <- data.frame(
         statistic = paste0("cor: ", traits[a], "-", traits[b]),
-        observed = r, replicated = replicated)
+        observed = r,
+        replicated = vapply(seq_len(dim(yrep)[3L]),
+                            function(s) stats::cor(yrep[, a, s], yrep[, b, s]),
+                            numeric(1)))
     }
-  do.call(rbind, out)
+  do.call(rbind, c(list(means, sds), cors))
 }
 
 #' @rdname posterior_predictive
@@ -236,6 +241,9 @@ print.stanimal_yrep <- function(x, ...) {
 #' @export
 plot.stanimal_yrep <- function(x, ...) {
   s <- .yrep_statistics(x)
+  # the rows of the table are already grouped by kind, so keeping that order as
+  # the factor levels puts all the means in the first row of facets, then the
+  # standard deviations, then the correlations
   s$statistic <- factor(s$statistic, levels = unique(s$statistic))
   observed <- s[!duplicated(s$statistic), c("statistic", "observed")]
   ggplot2::ggplot(s, ggplot2::aes(x = replicated)) +
@@ -244,7 +252,7 @@ plot.stanimal_yrep <- function(x, ...) {
                         ggplot2::aes(xintercept = observed),
                         colour = "firebrick", linewidth = 0.7) +
     ggplot2::facet_wrap(~statistic, scales = "free", ncol = 3) +
-    ggplot2::labs(x = "replicated", y = "replicates",
+    ggplot2::labs(x = "replicated", y = "count of replicates",
                   title = "Posterior predictive check",
                   subtitle = "red line: the observed data") +
     ggplot2::theme_minimal()

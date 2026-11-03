@@ -30,9 +30,12 @@ An object of class \code{stanimal_yrep}: a list with
   \code{yrep} (draws by individuals by traits, with the observed \code{y} on
   the original response scale), the observed \code{y}, the trait names, and
   the number of replicates. \code{print()} reports, for the trait means,
-  standard deviations and pairwise correlations, the observed value and the
-  posterior predictive interval, with the proportion of replicates beyond the
-  observed value. \code{plot()} shows the replicate distributions.
+  standard deviations and pairwise correlations, the observed value, the 95\%
+  interval of the replicates, and \code{p}: the share of replicates at or
+  above the observed value. A statistic the model reproduces has \code{p} near
+  0.5, because the observation is then one draw of the replicates' own
+  distribution; \code{p} near 0 or 1 is a feature the model does not
+  reproduce. \code{plot()} shows the replicate distributions.
 }
 \description{
 Draws replicate datasets from the fitted model, one per posterior draw, so

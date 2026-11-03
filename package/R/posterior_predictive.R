@@ -43,9 +43,12 @@ utils::globalVariables("replicated")
 #'   \code{yrep} (draws by individuals by traits, with the observed \code{y} on
 #'   the original response scale), the observed \code{y}, the trait names, and
 #'   the number of replicates. \code{print()} reports, for the trait means,
-#'   standard deviations and pairwise correlations, the observed value and the
-#'   posterior predictive interval, with the proportion of replicates beyond the
-#'   observed value. \code{plot()} shows the replicate distributions.
+#'   standard deviations and pairwise correlations, the observed value, the 95\%
+#'   interval of the replicates, and \code{p}: the share of replicates at or
+#'   above the observed value. A statistic the model reproduces has \code{p} near
+#'   0.5, because the observation is then one draw of the replicates' own
+#'   distribution; \code{p} near 0 or 1 is a feature the model does not
+#'   reproduce. \code{plot()} shows the replicate distributions.
 #' @details For an animal fit the replicate is
 #'   \eqn{X\beta + u + e} with \eqn{u \sim N(0, A \otimes G)} and
 #'   \eqn{e \sim N(0, I \otimes E)}; for a phenotypic fit it is
@@ -137,8 +140,7 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
 
 # A covariance reported as a matrix when the fit has one, and rebuilt from the
 # standard deviations when it only reports those (the univariate models).
-.as_matrix_draws <- function(matrices, standard_deviations, k) {
-  if (!is.null(matrices))
+.as_matrix_draws <- function(matrices, standard_deviations, k) {  if (!is.null(matrices))
     return(matrices)
   if (is.null(standard_deviations))
     return(NULL)
@@ -147,6 +149,12 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
                   if (k == 1L) numeric(1) else matrix(0, k, k))
   array(draws, dim = c(k, k, ncol(standard_deviations)))
 }
+
+# The posterior predictive tail probability: the share of replicates at or above
+# the observation. A statistic the model reproduces has about half the
+# replicates above it, so a value near 0 or 1 is a feature the model does not
+# reproduce.
+.predictive_tail <- function(replicated, observed) mean(replicated >= observed)
 
 # Observed and replicated values of the summaries that describe a covariance
 # structure: trait means, trait standard deviations and pairwise correlations.
@@ -202,18 +210,17 @@ print.stanimal_yrep <- function(x, ...) {
     check.names = FALSE
   )
   names(out)[3:4] <- c("q2.5", "q97.5")
-  # how often a replicate sits at least as far from the centre of its own
-  # distribution as the observation does: near 0 or 1 means the model does not
-  # produce something like the data
-  out$p <- vapply(seq_along(labels), function(i) {
-    r <- replicated[[i]]
-    mean(abs(r - observed[i]) >= abs(observed[i] - mean(r)))
-  }, numeric(1))
+  # the posterior predictive tail probability: the share of replicates at or
+  # above the observation. A statistic the model reproduces lands near 0.5,
+  # because the observation is then one draw of the replicates' own
+  # distribution; near 0 or 1 it does not.
+  out$p <- vapply(seq_along(labels), function(i)
+    .predictive_tail(replicated[[i]], observed[i]), numeric(1))
   print(out, digits = 3, row.names = FALSE)
-  cat("\n`observed` is the data, the quantiles are the replicates, and `p` is\n",
-      "the share of replicates at least as far from their own centre as the\n",
-      "observation is from theirs. A p near 0 or 1 is a feature the model does\n",
-      "not reproduce.\n", sep = "")
+  cat("\n`observed` is the data, `q2.5` and `q97.5` are the 95% interval of the\n",
+      "replicates, and `p` is the share of replicates at or above the observed\n",
+      "value. A statistic the model reproduces has p near 0.5; a p near 0 or 1\n",
+      "is a feature the model does not reproduce.\n", sep = "")
   invisible(x)
 }
 

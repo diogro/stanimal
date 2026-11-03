@@ -214,7 +214,7 @@ pp        # observed means, SDs and correlations against the replicates
 plot(pp)  # the replicate distributions
 ```
 
-The replicate is `X beta + u + e` for an animal fit, with `u ~ N(0, A ⊗ G)` and `e ~ N(0, I ⊗ E)`, and `X beta + e` with `e ~ N(0, P)` for a phenotypic one, using the draws the fit reports. `print()` reports a `p` for each summary — the share of replicates at least as far from their own centre as the observation is from theirs — so a `p` near 0 or 1 marks a feature the model does not reproduce.
+The replicate is `X beta + u + e` for an animal fit, with `u ~ N(0, A ⊗ G)` and `e ~ N(0, I ⊗ E)`, and `X beta + e` with `e ~ N(0, P)` for a phenotypic one, using the draws the fit reports. `print()` compares the observed trait means, standard deviations and pairwise correlations with the replicate distributions: the 95% interval of the replicates, and `p`, the share of replicates at or above the observation. A statistic the model reproduces has `p` near 0.5, since the observation is then one draw from the replicates' own distribution; a `p` near 0 or 1 marks a feature the model does not reproduce.
 
 ## Formula interface
 

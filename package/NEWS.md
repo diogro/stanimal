@@ -13,6 +13,14 @@
   allowed in the animal model and an error elsewhere.
 * `animal_design()` no longer drops rows that miss only the response; it still
   drops rows with missing predictors, and `na.action` now applies to those.
+* `imputed_data()` returns completed datasets, one per posterior draw: the
+  observed entries as they are and the gaps filled on the response scale. An
+  animal fit's gaps are the parameters it sampled; a phenotypic fit has none, so
+  its gaps are drawn from the normal conditional distribution given that row's
+  observed traits. `print()` reports each gap with its 95% interval. These are
+  multiple imputations, not a single fill, and `fit$draws("Y_mis")` alone is not
+  enough to reconstruct them: it is on the standardized scale and says nothing
+  about which individual and trait each value belongs to.
 * `lm_phen_cov()` reports pointwise `log_lik` for the unstructured and factor
   fits, so `loo` and `waic` work for every model in the package. It is the
   density on the standardized response, as in the animal models.

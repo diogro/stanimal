@@ -274,7 +274,18 @@ Y_missing <- cbind(size = c(1.2, NA, 0.9), shape = c(0.4, 0.7, NA))
 The two engines handle the gaps differently, and the difference shows up in the output:
 
 - `lm_phen_cov()` has no relatedness, so the records are independent and a row's missing values can be integrated out analytically: its density is the normal on its observed subvector, with the matching submatrix of `P`. Rows are grouped by which traits they observe, one Cholesky factor per group, and no parameters are added. A row with nothing observed carries no likelihood, so it is an error.
-- `lmm_animal()` cannot do that: with relatedness a missing value is informed by every relative's observed traits, so the marginal does not factorize over rows. The gaps become parameters on the standardized response scale, reported as `Y_mis`, and a flat prior on them makes the posterior over `G`, `E` and `beta` the exact marginal over the observed data. `fit$draws("Y_mis")` is therefore the imputed data, and a record with nothing observed is allowed, since its relatives still inform it.
+- `lmm_animal()` cannot do that: with relatedness a missing value is informed by every relative's observed traits, so the marginal does not factorize over rows. The gaps become parameters on the standardized response scale, reported as `Y_mis`, and a flat prior on them makes the posterior over `G`, `E` and `beta` the exact marginal over the observed data. A record with nothing observed is allowed here, since its relatives still inform it.
+
+Either way the completed data come out through `imputed_data()`, one dataset per posterior draw:
+
+```r
+# on a fit whose response had NAs:
+# imp <- imputed_data(fit, ndraws = 100)
+# imp                 # each gap: imputed value and its 95% interval
+# dim(imp$Y)          # individuals x traits x draws
+```
+
+The observed entries are the data in every draw; only the cells nobody measured vary, which is the whole point — these are multiple imputations, so do not collapse them into one filled-in matrix and treat it as data. For an animal fit each gap is the parameter the sampler produced; a phenotypic fit has no such parameter, so `imputed_data()` draws each gap from its conditional distribution given that row's observed traits. `fit$draws("Y_mis")` on its own is not enough: it is on the standardized scale and does not say which individual and trait each value belongs to.
 
 The cost is that the animal model has one parameter per gap: a few hundred is nothing, tens of thousands is noticeable. Dropping the incomplete rows instead is the cheap alternative, and it discards every trait that *was* measured on those individuals; with 20% of the entries missing at random, only about half the rows survive.
 

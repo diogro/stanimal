@@ -22,6 +22,7 @@ for anyone *using* the package. Worked examples live in `README.md` and
 | `G` and `E` should share the same latent factors | add `residual_structure = "shared_factor"` (needs `"factor"`) |
 | No pedigree, only the phenotypic covariance | `lm_phen_cov(Y, X)` |
 | Several traits, some values missing | pass the `NA`s straight in — see below |
+| The completed data, for follow-up analyses | `imputed_data(fit)` |
 | Phenotypic covariance of many traits | `lm_phen_cov(Y, X, covariance_structure = "factor")` |
 | Build `Y`/`X` from a formula, with `A` | `animal_design(formula, data, pedigree = ...)` |
 | Pedigree with related founders/metafounders | `makeA(pedigree, Gamma = , groups = )` |
@@ -125,7 +126,15 @@ The two engines do it differently, for a reason that matters when reading output
   rows and there is no cheap per-pattern factor. The gaps become parameters
   (`Y_mis`, on the standardized response scale) with a flat prior, which makes
   the posterior over `G`, `E` and `beta` the exact marginal over the observed
-  data. They are reported, so `fit$draws("Y_mis")` is the imputed data.
+  data.
+
+Either way the completed data come out through `imputed_data(fit)`, not from the
+raw draws: `fit$draws("Y_mis")` is on the standardized scale and carries no key
+to which individual and trait each value belongs to. `imputed_data()` returns
+individuals by traits by draws with the gaps filled on the response scale, and
+draws the phenotypic model's gaps from their conditional distribution, since that
+model has no gap parameters to report. These are multiple imputations: do not
+collapse them to one filled-in matrix and treat it as data.
 
 Practical consequences:
 

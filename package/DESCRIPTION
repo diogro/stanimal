@@ -26,6 +26,7 @@ Imports:
     utils
 Suggests:
     cmdstanr,
+    loo,
     nadiv,
     rstan (>= 2.18.1),
     testthat (>= 3.0.0)

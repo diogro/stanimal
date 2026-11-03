@@ -385,6 +385,10 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   # recovered from the recorded arguments alone
   attr(fit, "custom_model") <- !is.null(model_file)
   if (factor_model) attr(fit, "n_factors") <- n_factors
+  # what the predictive check needs, and what a breeding-value pass will need
+  # later: the response as passed in, the design, and the relationship matrix
+  attr(fit, "stanimal_data") <- list(family = "animal", Y = YX$Y_raw, X = X,
+                                     A = A)
   return(fit)
 }
 
@@ -403,6 +407,7 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
 .check_response_design <- function(Y, X, require_constant = TRUE,
                                    allow_na = FALSE, allow_empty_rows = FALSE) {
   Y <- .check_numeric_matrix(Y, "Y", allow_na = allow_na)
+  Y_raw <- Y # with the gaps still in place, for the predictive checks
   if (is.null(X))
     X <- matrix(1, nrow(Y), 1L, dimnames = list(NULL, "(Intercept)"))
   X <- .check_numeric_matrix(X, "X")
@@ -423,7 +428,8 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
            "cannot be reported: include an intercept column, or the 0/1 ",
            "indicator columns of every level of a factor.", call. = FALSE)
   }
-  list(Y = Y, X = X, x_mean_weight = weights, missing = missing)
+  list(Y = Y, X = X, x_mean_weight = weights, missing = missing,
+       Y_raw = Y_raw)
 }
 
 # A trait without variance cannot be standardized, and gives no variance to

@@ -19,6 +19,17 @@
 * Univariate fits report pointwise `log_lik`, so every model in the package now
   exposes the per-record terms that `loo` and `waic` need. The h2 and variance
   parametrizations describe the same model and report the same density.
+* `fit_loo()` compares fits by leave-one-out cross-validation, wrapping the `loo`
+  package on the `log_lik` draws with the chain structure kept; `criterion =
+  "waic"` gives WAIC, and `loo(fit)` dispatches to it once `loo` is loaded. The
+  terms are the model block's, one per record of the rotated response, so this
+  compares model structures on the same data rather than leaving out one
+  individual. `loo` is a new Suggests.
+* `posterior_predictive()` replicates the response from the posterior using the
+  reported `G`, `E` or `P`, and reports the observed trait means, standard
+  deviations and pairwise correlations against the replicates, with a tail
+  probability for each (`print()`) and the distributions themselves (`plot()`).
+  This is the individual-level check that `fit_loo()` is not.
 
 ## Documentation
 

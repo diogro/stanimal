@@ -27,6 +27,8 @@ for anyone *using* the package. Worked examples live in `README.md` and
 | Pedigree with related founders/metafounders | `makeA(pedigree, Gamma = , groups = )` |
 | Markers instead of a pedigree | `genomic_relationship(M)` → pass as `A` |
 | How many factors? | `suggest_n_factors(Y, X)` + `scree_eigenvalues(Y, X)` |
+| Which of two models fits better? | `loo::loo_compare(fit_loo(a), fit_loo(b))` |
+| Does the model reproduce the data? | `posterior_predictive(fit)` |
 | Many correlated traits on one size gradient | `size_shape()` then `back_transform()` — but only around an **unstructured** model, see the anti-patterns |
 
 `A` is the third positional argument of `lmm_animal()`, so `lmm_animal(Y, X, A)`.
@@ -139,6 +141,39 @@ Practical consequences:
   present.
 - The gap parameters are latent, so a high `Rhat` on `Y_mis` says little on its
   own; judge convergence on `G`, `E`, `P` and `h2` as usual.
+
+## Model comparison and predictive checks
+
+Every model reports `log_lik`, so all of them can be compared.
+
+```r
+fit_loo(fit)                                   # PSIS-LOO
+loo::loo(fit)                                  # same thing, via the method
+loo::loo_compare(fit_loo(a), fit_loo(b))       # differences in ELPD
+posterior_predictive(fit)                      # replicates of the response
+```
+
+- `fit_loo()` wraps `loo::loo` on the `log_lik` draws, with the chain structure
+  kept so the effective-sample-size correction works. `criterion = "waic"` gives
+  WAIC instead. It needs the `loo` package (a Suggests).
+- **What LOO means here is not leave-one-individual-out.** The terms come from
+  the model block, one per record of the rotated response, which is where the
+  records are independent. Their sum is the exact joint log density, so the
+  criterion is valid, but with a non-identity `A` a term is not one animal. Use
+  it to compare model structures on the same data, not to make statements about
+  predicting a particular individual; for that, use `posterior_predictive()`.
+- The terms are the density of the *standardized* response, so the absolute ELPD
+  carries a constant that depends on the data. It cancels between fits to the
+  same response, which is what `loo_compare()` uses.
+- Check `fit_loo(fit)$diagnostics$pareto_k` before trusting a comparison. With a
+  few dozen individuals, k above 0.7 is common and `loo` says so itself; the fix
+  is a longer run or reading the comparison as indicative.
+- `posterior_predictive()` is the individual-level check: it simulates the
+  response from each of `ndraws` posterior draws using the reported `G`, `E`
+  (animal) or `P` (phenotypic). `print()` shows the observed trait means, standard
+  deviations and pairwise correlations against the replicate distributions, with
+  a `p` that is near 0 or 1 when the model does not reproduce that feature, and
+  `plot()` shows the distributions.
 
 ## Choosing the model
 

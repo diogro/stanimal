@@ -180,6 +180,7 @@ With `cmd_stan = FALSE` the fit is a `stanfit` object from `rstan`, with `beta` 
 d <- fit_draws(fit)
 d$G                                # traits x traits x draws
 d$E
+d$corrG
 d$corrE                            # derived from the E draws
 d$h2                               # traits x draws
 d$beta                             # traits x terms x draws
@@ -190,6 +191,30 @@ draws_quantile(fit, "corrG", probs = c(0.05, 0.95))   # 90% interval per element
 ```
 
 `fit_draws()` also accepts `lmm_animal_gibbs()` fits (returning its `R` as `E`), `lm_phen_cov()` fits, `posterior` draws objects and the output of `back_transform()`. Quantities the fit does not report, such as `corrE` or `P`, are derived from the ones it does.
+
+## Comparing models, and checking that one fits
+
+Every model reports a pointwise `log_lik`, so any two fits to the same response can be compared with the [`loo`](https://mc-stan.org/loo/) package:
+
+```r
+fit_loo(fit)                                   # PSIS-LOO
+# with a second fit to the same response:
+# loo::loo_compare(fit_loo(fit), fit_loo(fit2))
+```
+
+`fit_loo()` also takes `criterion = "waic"`, and `loo(fit)` works if `stanimal` and `loo` are both loaded.
+
+One caveat matters for a quantitative geneticist: **the terms are not per individual.** The likelihood is evaluated where the records are independent, which is the eigen-rotation of `A`, so a term belongs to a rotated record rather than to one animal. The sum is the exact joint log density, so the criterion is valid for comparing model structures — unstructured against factor, different trait sets, different fixed effects — but leave-one-out here does not mean "predict this individual". The ELPD's absolute value also carries a constant from the standardization; it cancels between fits to the same data, which is all `loo_compare()` uses. Check `fit_loo(fit)$diagnostics$pareto_k` before trusting a comparison.
+
+For the individual-level question — would the data look like this if the model were true — replicate the response from the posterior:
+
+```r
+pp <- posterior_predictive(fit, ndraws = 100)
+pp        # observed means, SDs and correlations against the replicates
+plot(pp)  # the replicate distributions
+```
+
+The replicate is `X beta + u + e` for an animal fit, with `u ~ N(0, A ⊗ G)` and `e ~ N(0, I ⊗ E)`, and `X beta + e` with `e ~ N(0, P)` for a phenotypic one, using the draws the fit reports. `print()` reports a `p` for each summary — the share of replicates at least as far from their own centre as the observation is from theirs — so a `p` near 0 or 1 marks a feature the model does not reproduce.
 
 ## Formula interface
 

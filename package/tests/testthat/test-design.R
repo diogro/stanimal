@@ -108,11 +108,21 @@ test_that("the pedigree may contain ancestors without records", {
 })
 
 test_that("A follows the rows kept when phenotypes are missing", {
+  # a missing response keeps the row: the value is integrated out, not dropped
   pheno <- rnorm(6)
   pheno[3] <- NA
   d <- animal_design(trait ~ 1, named_dat(pheno), pedigree = ped6)
-  expect_equal(nrow(d$Y), 5L)
-  expect_equal(rownames(d$A), c("1", "2", "4", "5", "6"))
+  expect_equal(nrow(d$Y), 6L)
+  expect_equal(rownames(d$A), as.character(1:6))
+  expect_true(is.na(d$Y["3", 1]))
+
+  # a missing predictor does remove the row, because the design cannot hold it,
+  # and A follows the rows that remain
+  dat <- named_dat()
+  dat$x[2] <- NA
+  d2 <- animal_design(trait ~ x, dat, pedigree = ped6)
+  expect_equal(nrow(d2$Y), 5L)
+  expect_equal(rownames(d2$A), c("1", "3", "4", "5", "6"))
 })
 
 test_that("animal_design builds A from genotypes", {

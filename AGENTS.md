@@ -21,6 +21,7 @@ for anyone *using* the package. Worked examples live in `README.md` and
 | Many traits, `G` needs to be sparse/low-rank | `lmm_animal(Y, X, A, genetic_structure = "factor")` |
 | `G` and `E` should share the same latent factors | add `residual_structure = "shared_factor"` (needs `"factor"`) |
 | No pedigree, only the phenotypic covariance | `lm_phen_cov(Y, X)` |
+| Several traits, some values missing | pass the `NA`s straight in — see below |
 | Phenotypic covariance of many traits | `lm_phen_cov(Y, X, covariance_structure = "factor")` |
 | Build `Y`/`X` from a formula, with `A` | `animal_design(formula, data, pedigree = ...)` |
 | Pedigree with related founders/metafounders | `makeA(pedigree, Gamma = , groups = )` |
@@ -102,6 +103,42 @@ to_draws_list(fit)                 # one posterior draws matrix per quantity
 `traits` argument to relabel. Factor extras keep their natural shape:
 `loadings` is **trait × factor × draw**, and `factor_magnitude` and
 `factor_heritability` are **factor × draw**.
+
+## Incomplete trait records
+
+Put the `NA`s in `Y` and fit. Nothing is dropped: a row survives if it has at
+least one observed trait, and the missing values are handled by the likelihood.
+Every trait needs at least two observed values, since it has to be standardized.
+
+The two engines do it differently, for a reason that matters when reading output.
+
+- **`lm_phen_cov()` — per pattern.** Without relatedness the records are
+  independent, so a row's missing values can be integrated out analytically: its
+  density is the normal on the observed subvector, with the matching submatrix of
+  `P`. Rows are grouped by which traits they observe (a *pattern*), one Cholesky
+  per pattern, no extra parameters. A row with nothing observed carries no
+  likelihood and is an error.
+- **`lmm_animal()` — imputation parameters.** With relatedness a gap is informed
+  by every relative's observed traits, so the marginal does not factorize over
+  rows and there is no cheap per-pattern factor. The gaps become parameters
+  (`Y_mis`, on the standardized response scale) with a flat prior, which makes
+  the posterior over `G`, `E` and `beta` the exact marginal over the observed
+  data. They are reported, so `fit$draws("Y_mis")` is the imputed data.
+
+Practical consequences:
+
+- `lmm_animal()` has one parameter per gap. That is fine at a few hundred gaps
+  and noticeable at tens of thousands; `lm_phen_cov()` adds none.
+- A fully missing record is allowed for `lmm_animal()` (its relatives inform it)
+  but not for `lm_phen_cov()`.
+- Drop rows with missing *predictors*: `animal_design()` still does that, since a
+  row with an unknown fixed effect cannot be placed in the design. Missing
+  responses are kept.
+- `residual_structure = "diagonal"` with a small sample and many gaps is weakly
+  identified and can mix badly. Use `"unstructured"` (the default) when gaps are
+  present.
+- The gap parameters are latent, so a high `Rhat` on `Y_mis` says little on its
+  own; judge convergence on `G`, `E`, `P` and `h2` as usual.
 
 ## Choosing the model
 

@@ -28,7 +28,7 @@
 #' Fit linear mixed animal model
 #' 
 #' Fits a univariate or multivariate linear mixed animal model using a known relatedness matrix
-#' @param Y response variable, univariate or multivariate. Every trait must vary: constant traits cannot be standardized and are an error.
+#' @param Y response variable, univariate or multivariate. Every trait must vary: constant traits cannot be standardized and are an error. Missing values (\code{NA}) are allowed and are not discarded: see Details.
 #' @param X Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.
 #' @param A Finite symmetric positive-definite relationship matrix matching the rows of Y. A matrix that is only positive semidefinite (duplicated individuals, for example) is rejected; set \code{blend_A = TRUE} to regularize it. When \code{A} and \code{Y} both have row names, they are used to put \code{A} in the order of \code{Y}; names that disagree are an error. Without names the rows are matched by position.
 #' @param lkj_prior Shape parameter of the LKJ prior on the correlation matrices of the multivariate model. \code{1} is uniform over correlation matrices, values above \code{1} shrink correlations toward zero, and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits: at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of genetic correlations, a well-known problem in quantitative genetics. A finite number above 0. It is used only by multivariate models with \code{residual_structure = "unstructured"} and not \code{shared_factor}; explicitly supplying it in other configurations warns that it is ignored.
@@ -122,6 +122,25 @@
 #'
 #' The cost that grows with the number of individuals is the dense relationship matrix: \code{A} is passed in full and each chain eigendecomposes it before sampling (\code{O(N^3)} time and \code{O(N^2)} memory per chain). That cost is paid once, so with many traits sampling dominates and the decomposition is a small share of the fit, while with few traits and short runs it can be most of it. The models are intended for many traits on hundreds to a few thousand individuals. For cohorts of tens of thousands, where that matrix is the bottleneck, an engine that uses the sparse inverse of \code{A} (such as ASReml) is the better tool.
 #'
+#' Incomplete records are used rather than dropped. A missing value is not
+#' discarded, because with relatedness it carries information: the value is
+#' informed by every relative's observed traits. The gaps are filled by
+#' parameters on the standardized response scale, drawn with the rest of the
+#' model and reported as \code{Y_mis}, and a flat prior on them makes the
+#' posterior over the other parameters the exact marginal over the observed
+#' data. Each gap is one parameter, so the cost grows with the number of gaps;
+#' a record with nothing observed is allowed, since its relatives still inform
+#' it. Dropping incomplete rows instead is the alternative, and it throws away
+#' the rows that are complete for the other traits.
+#'
+#' Two configurations are worth avoiding when many values are missing. A
+#' \code{residual_structure = "diagonal"} model with a small sample is weakly
+#' identified once gaps loosen the residual structure, and can mix badly:
+#' prefer \code{"unstructured"}, which is the default and what the missing-data
+#' machinery is tested against. And \code{loo} on a fit with gaps compares
+#' models over the rotated records, as it does for complete data, so the terms
+#' are not leave-one-individual-out.
+#'
 #' The LKJ shape \code{lkj_prior} (default 2) deliberately shrinks correlations toward zero. With many traits, an unstructured correlation matrix fit under a flat prior tends to overestimate the magnitude of correlations, especially genetic correlations between traits with limited information, so a shape above 1 acts as a mild regularizer; increase it for stronger shrinkage. Note that fitting many traits remains expensive: the likelihood is cheap, but an unstructured \code{G} for \code{K = 40} traits has on the order of 1700 parameters and NUTS needs many leapfrog steps, so a single fit can take an hour or more. Fewer iterations, a larger \code{lkj_prior}, or \code{residual_structure = "diagonal"} all make fits faster.
 #'
 #' Continuous predictors are centered and divided by their sample standard deviation inside Stan. Constant and 0/1 indicator columns are not centered or scaled. Standardized slopes have \code{normal(0, 1)} priors; the intercept contribution has a wider \code{normal(0, 2.5)} prior. Returned \code{beta} coefficients are backtransformed to original predictor and response units, including restoring the response mean to the intercept; \code{beta_scaled} draws are also available.
@@ -199,9 +218,10 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   cmd_stan <- .check_flag(cmd_stan, "cmd_stan")
   .check_iterations(iter, warmup)
   .check_sampler_size(chains, cores)
-  YX <- .check_response_design(Y, X)
+  YX <- .check_response_design(Y, X, allow_na = TRUE, allow_empty_rows = TRUE)
   Y <- YX$Y
   X <- YX$X
+  missing <- YX$missing
   A <- as.matrix(A)
 
   factor_model <- genetic_structure == "factor"
@@ -264,6 +284,9 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                      X = X,
                      Y = as.numeric(Y),
                      A = A,
+                     miss = as.integer(missing$miss),
+                     n_missing = missing$n_missing,
+                     mis_row = as.array(missing$mis_row),
                      x_mean_weight = YX$x_mean_weight)
     uni_file <- if(parametrization == "h2") "animalModelUniH2.stan" else "animalModelUni.stan"
     if(parametrization == "h2")
@@ -293,6 +316,12 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                      X = X,
                      Y = Y,
                      A = A,
+                     miss = missing$miss,
+                     n_missing = missing$n_missing,
+                     # as.array: a one-element R vector is read as a scalar by
+                     # rstan, and these are declared as arrays of the gap count
+                     mis_row = as.array(missing$mis_row),
+                     mis_col = as.array(missing$mis_col),
                      x_mean_weight = YX$x_mean_weight)
     if (shared_factor_model) {
       stan_data$M <- n_factors
@@ -366,8 +395,14 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
 # X is optional. Without one the model is intercept only: a single column of
 # ones, named as model.matrix() names the intercept, so the beta draws and the
 # reported means come out of the same code path as an explicit intercept column.
-.check_response_design <- function(Y, X, require_constant = TRUE) {
-  Y <- .check_numeric_matrix(Y, "Y")
+#
+# allow_na is set by the model functions that can handle incomplete traits, and
+# those use the `missing` entry of the result to tell Stan where the gaps are.
+# allow_empty_rows goes with it: the animal models impute from relatives, so a
+# record with nothing observed is still informative.
+.check_response_design <- function(Y, X, require_constant = TRUE,
+                                   allow_na = FALSE, allow_empty_rows = FALSE) {
+  Y <- .check_numeric_matrix(Y, "Y", allow_na = allow_na)
   if (is.null(X))
     X <- matrix(1, nrow(Y), 1L, dimnames = list(NULL, "(Intercept)"))
   X <- .check_numeric_matrix(X, "X")
@@ -377,7 +412,9 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
          "columns.", call. = FALSE)
   if (qr(X)$rank < p)
     stop("`X` must have full column rank.", call. = FALSE)
-  .check_traits_vary(Y)
+  missing <- .missing_response(Y, allow_empty_rows = allow_empty_rows)
+  Y <- missing$Y
+  .check_traits_vary(Y, missing$miss)
   weights <- NULL
   if (require_constant) {
     weights <- .intercept_weights(X)
@@ -386,19 +423,28 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
            "cannot be reported: include an intercept column, or the 0/1 ",
            "indicator columns of every level of a factor.", call. = FALSE)
   }
-  list(Y = Y, X = X, x_mean_weight = weights)
+  list(Y = Y, X = X, x_mean_weight = weights, missing = missing)
 }
 
 # A trait without variance cannot be standardized, and gives no variance to
-# split into genetic and residual parts.
-.check_traits_vary <- function(Y) {
-  constant <- apply(Y, 2L, stats::sd) <= 0
+# split into genetic and residual parts. `miss` is the indicator matrix from
+# .missing_response(), so each trait is judged on its observed values only.
+.check_traits_vary <- function(Y, miss = NULL) {
+  observed_sd <- if (is.null(miss)) {
+    apply(Y, 2L, stats::sd)
+  } else {
+    vapply(seq_len(ncol(Y)),
+           function(k) {
+             present <- miss[, k] == 0L
+             if (sum(present) < 2L) 0 else stats::sd(Y[present, k])
+           },
+           numeric(1))
+  }
+  constant <- observed_sd <= 0
   if (!any(constant))
     return(invisible(NULL))
-  labels <- colnames(Y) %||% rep("", ncol(Y))
-  blank <- is.na(labels) | !nzchar(labels)
-  labels[blank] <- paste("column", which(blank))
-  stop("every trait in `Y` must vary: ", paste(labels[constant], collapse = ", "),
+  stop("every trait in `Y` must vary: ",
+       paste(.trait_labels(Y)[constant], collapse = ", "),
        ". A constant trait has no additive or residual variance to estimate.",
        call. = FALSE)
 }

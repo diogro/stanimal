@@ -12,8 +12,11 @@
 #' @param data Data frame holding the variables in \code{formula}. When
 #'   \code{pedigree} or \code{genotypes} are used, its row names must be the
 #'   individual IDs.
-#' @param na.action How to handle missing values, passed to
-#'   \code{\link[stats]{model.frame}}; the default drops incomplete rows.
+#' @param na.action How to handle rows with missing \emph{predictors}, passed to
+#'   \code{\link[stats]{model.frame}}; the default drops them, since a row with
+#'   an unknown fixed effect cannot be placed in the design. Missing values in
+#'   the response are kept: a trait that was not measured on an individual is
+#'   information the model can use, and \code{lmm_animal()} integrates it out.
 #' @param pedigree Optional pedigree, used to compute the additive relationship
 #'   matrix \code{A} with \code{\link{makeA}}. A data frame
 #'   whose first three columns are the individual, its sire and its dam, with
@@ -121,7 +124,18 @@ animal_design <- function(formula, data, na.action = stats::na.omit,
          call. = FALSE)
 
   formula <- .drop_random_terms(formula)
-  frame <- stats::model.frame(formula, data = data, na.action = na.action,
+  # Two frames: the predictors decide which rows can be used at all, and the
+  # response keeps its gaps, which the model integrates out.
+  predictor_frame <- stats::model.frame(stats::delete.response(stats::terms(formula)),
+                                        data = data, na.action = na.action,
+                                        drop.unused.levels = TRUE)
+  kept <- seq_len(nrow(data))
+  dropped <- attr(predictor_frame, "na.action")
+  if (!is.null(dropped))
+    kept <- kept[-as.integer(dropped)]
+  frame <- stats::model.frame(formula,
+                              data = data[kept, , drop = FALSE],
+                              na.action = stats::na.pass,
                               drop.unused.levels = TRUE)
   response <- stats::model.response(frame)
   if (is.null(response))
@@ -141,15 +155,16 @@ animal_design <- function(formula, data, na.action = stats::na.omit,
   if (!is.numeric(Y))
     stop("the response must be numeric: a single trait or `cbind()` of traits.",
          call. = FALSE)
-  if (any(!is.finite(Y)))
-    stop("`Y` must contain only finite numeric values.", call. = FALSE)
+  if (any(is.infinite(Y)))
+    stop("`Y` must not contain infinite values.", call. = FALSE)
 
   if (nrow(frame) < 2L)
-    stop("`data` must have at least two complete rows to build `Y` and `X`.",
-         call. = FALSE)
+    stop("`data` must have at least two rows with complete predictors to build ",
+         "`Y` and `X`.", call. = FALSE)
 
   if (ncol(Y) >= 3L && nrow(Y) >= 3L) {
-    pc1_share <- pc1_variance_share(Y)
+    complete <- stats::complete.cases(Y)
+    pc1_share <- pc1_variance_share(Y[complete, , drop = FALSE])
     if (pc1_share >= 0.8)
       warning("the first principal component of Y explains ",
               round(100 * pc1_share), "% of the variance. If these are raw ",

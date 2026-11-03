@@ -29,7 +29,7 @@ lmm_animal(
 )
 }
 \arguments{
-\item{Y}{response variable, univariate or multivariate. Every trait must vary: constant traits cannot be standardized and are an error.}
+\item{Y}{response variable, univariate or multivariate. Every trait must vary: constant traits cannot be standardized and are an error. Missing values (\code{NA}) are allowed and are not discarded: see Details.}
 
 \item{X}{Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.}
 
@@ -147,6 +147,25 @@ The models estimate the additive genetic and residual standard deviations (\code
 The per-individual likelihoods are whitened by the residual Cholesky factor and rotated into a single eigendecomposition of \code{E^{-1/2} G E^{-1/2}}, so each evaluation costs \code{O(N K^2 + K^3)} rather than \code{O(N K^3)}. This lets the multivariate model scale to dozens of traits without a Cholesky factorization per individual. When the eigenvalues of that matrix are nearly coincident (for example at initialization, or when \code{G} is roughly proportional to \code{E}) the model automatically falls back to a per-individual Cholesky evaluation, which has a well-behaved gradient.
 
 The cost that grows with the number of individuals is the dense relationship matrix: \code{A} is passed in full and each chain eigendecomposes it before sampling (\code{O(N^3)} time and \code{O(N^2)} memory per chain). That cost is paid once, so with many traits sampling dominates and the decomposition is a small share of the fit, while with few traits and short runs it can be most of it. The models are intended for many traits on hundreds to a few thousand individuals. For cohorts of tens of thousands, where that matrix is the bottleneck, an engine that uses the sparse inverse of \code{A} (such as ASReml) is the better tool.
+
+Incomplete records are used rather than dropped. A missing value is not
+discarded, because with relatedness it carries information: the value is
+informed by every relative's observed traits. The gaps are filled by
+parameters on the standardized response scale, drawn with the rest of the
+model and reported as \code{Y_mis}, and a flat prior on them makes the
+posterior over the other parameters the exact marginal over the observed
+data. Each gap is one parameter, so the cost grows with the number of gaps;
+a record with nothing observed is allowed, since its relatives still inform
+it. Dropping incomplete rows instead is the alternative, and it throws away
+the rows that are complete for the other traits.
+
+Two configurations are worth avoiding when many values are missing. A
+\code{residual_structure = "diagonal"} model with a small sample is weakly
+identified once gaps loosen the residual structure, and can mix badly:
+prefer \code{"unstructured"}, which is the default and what the missing-data
+machinery is tested against. And \code{loo} on a fit with gaps compares
+models over the rotated records, as it does for complete data, so the terms
+are not leave-one-individual-out.
 
 The LKJ shape \code{lkj_prior} (default 2) deliberately shrinks correlations toward zero. With many traits, an unstructured correlation matrix fit under a flat prior tends to overestimate the magnitude of correlations, especially genetic correlations between traits with limited information, so a shape above 1 acts as a mild regularizer; increase it for stronger shrinkage. Note that fitting many traits remains expensive: the likelihood is cheap, but an unstructured \code{G} for \code{K = 40} traits has on the order of 1700 parameters and NUTS needs many leapfrog steps, so a single fit can take an hour or more. Fewer iterations, a larger \code{lkj_prior}, or \code{residual_structure = "diagonal"} all make fits faster.
 

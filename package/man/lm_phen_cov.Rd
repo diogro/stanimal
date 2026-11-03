@@ -24,7 +24,7 @@ lm_phen_cov(
 )
 }
 \arguments{
-\item{Y}{Numeric response vector or matrix, with individuals in rows. Every trait must vary: constant traits cannot be standardized and are an error.}
+\item{Y}{Numeric response vector or matrix, with individuals in rows. Every trait must vary: constant traits cannot be standardized and are an error. Missing values (\code{NA}) are allowed and are not discarded: see Details.}
 
 \item{X}{Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.}
 
@@ -103,6 +103,19 @@ genetic component, and uses the same priors, scaling and outputs.
 }
 \details{
 The unstructured model estimates \code{P} as scales times an LKJ-distributed correlation matrix, with half-normal priors on the scales of the standardized responses. With \code{covariance_structure = "factor"}, \code{P} is instead \eqn{\mathrm{diag}(\sigma_P)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(\sigma_P)}, with regularized-horseshoe loadings and deterministic column decay. The factor fit reports \code{loadings}, \code{factor_magnitude}, \code{uniqueness} and \code{communality} in addition to \code{P}, \code{corrP}, \code{sigma_P} and the fixed effects. Returned quantities are on the original response scale.
+
+Incomplete records are used rather than dropped. Without relatedness the
+records are independent, so a row that misses some traits is evaluated on the
+traits it does have: its marginal density is the multivariate normal on that
+subvector, with the matching submatrix of \code{P}. Rows are grouped by which
+traits they observe, each group gets its own Cholesky factor, and the missing
+values are integrated out analytically, so they cost no parameters. A record
+with nothing observed carries no likelihood and is an error instead. The count
+of groups grows with the number of distinct patterns, at most one per row.
+
+The pointwise \code{log_lik} is the density the model block evaluates, on the
+standardized response; the raw-scale density differs from it by a constant,
+which does not affect comparisons between fits to the same data.
 
 The likelihood is computed by whitening the residuals with the Cholesky factor of \code{P} in a single triangular solve, at \code{O(N K^2 + K^3)} per evaluation rather than a per-individual loop, so the model scales to dozens of traits.
 

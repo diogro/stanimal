@@ -2,6 +2,20 @@
 
 ## New features
 
+* Incomplete trait records are used instead of discarded. `Y` may contain `NA`
+  in `lmm_animal()` and `lm_phen_cov()`: a record is kept as long as it has one
+  observed trait, and the missing values no longer require dropping the row and
+  losing the traits that were measured. `lm_phen_cov()` evaluates each
+  missingness pattern on its observed subvector of `P`, so the gaps are
+  integrated out and cost no parameters; `lmm_animal()` fills them with
+  parameters (`Y_mis`, reported in the draws), which is the exact marginal over
+  the observed data and lets relatives inform a gap. A fully missing record is
+  allowed in the animal model and an error elsewhere.
+* `animal_design()` no longer drops rows that miss only the response; it still
+  drops rows with missing predictors, and `na.action` now applies to those.
+* `lm_phen_cov()` reports pointwise `log_lik` for the unstructured and factor
+  fits, so `loo` and `waic` work for every model in the package. It is the
+  density on the standardized response, as in the animal models.
 * Univariate fits report pointwise `log_lik`, so every model in the package now
   exposes the per-record terms that `loo` and `waic` need. The h2 and variance
   parametrizations describe the same model and report the same density.

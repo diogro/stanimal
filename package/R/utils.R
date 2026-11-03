@@ -9,13 +9,98 @@
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
 # A matrix of finite numbers, with NA allowed only where the data can have
-# missing values (marker genotypes). Vectors become one-column matrices.
+# missing values (marker genotypes, incomplete trait records). Vectors become
+# one-column matrices.
 .check_numeric_matrix <- function(x, arg, allow_na = FALSE) {
   x <- as.matrix(x)
   if (!is.numeric(x) || any(is.infinite(x)) || (!allow_na && anyNA(x)))
     stop("`", arg, "` must contain only finite numeric values",
-         if (allow_na) ", or NA for missing", ".", call. = FALSE)
+         if (allow_na) ", or NA for a missing value", ".", call. = FALSE)
   x
+}
+
+# Missing-response bookkeeping shared by the model entry points.
+#
+# Rows are grouped by which traits they observe: a *pattern*. The phenotypic
+# models evaluate a pattern's density on the observed subvector of the
+# covariance, so they need each pattern's observed columns and a row order that
+# makes every pattern contiguous, which lets Stan slice it with a range. The
+# animal models cannot do that: with relatedness a missing value is informed by
+# every relative's observed traits, so the marginal does not factorize over rows.
+# They fill the gaps with parameters instead, and only need the position of each.
+#
+# `Y` comes back with the gaps set to zero, so that no NA reaches Stan. The
+# observed entries are the ones the standardisation and the likelihood use, and
+# both skip the rest explicitly rather than relying on zero standing for a value.
+#
+# allow_empty_rows is for the models that fill the gaps with parameters. Such a
+# model can take a record with nothing observed, because its values are still
+# informed by the individual's relatives; one that evaluates each pattern's own
+# subvector cannot, because an empty pattern has no likelihood to contribute.
+.missing_response <- function(Y, allow_empty_rows = FALSE) {
+  miss <- is.na(Y)
+  n <- nrow(Y)
+  k <- ncol(Y)
+
+  no_data_trait <- which(colSums(!miss) == 0L)
+  if (length(no_data_trait))
+    stop("every trait in `Y` needs at least one observed value; there is none "
+         , "for "
+         , paste(.trait_labels(Y)[no_data_trait], collapse = ", ")
+         , ". A trait with no data cannot be standardized and has nothing to "
+         , "estimate.", call. = FALSE)
+  no_data_row <- which(rowSums(!miss) == 0L)
+  if (length(no_data_row) && !allow_empty_rows)
+    stop("every row of `Y` needs at least one observed trait; row(s) "
+         , paste(utils::head(no_data_row, 5L), collapse = ", ")
+         , if (length(no_data_row) > 5L) ", ..."
+         , " have none. Drop those rows before fitting."
+         , call. = FALSE)
+
+  # One key per row, then the distinct keys are the patterns.
+  key <- apply(!miss, 1L, function(observed) paste(as.integer(observed), collapse = ""))
+  pattern_key <- unique(key)
+  n_pattern <- length(pattern_key)
+  pattern_id <- match(key, pattern_key)
+  pattern_obs <- unname(t(vapply(
+    pattern_key,
+    function(s) as.integer(strsplit(s, "", fixed = TRUE)[[1L]]),
+    integer(k))))
+
+  # Rows grouped by pattern: pattern p occupies rows first_row[p] to
+  # first_row[p] + n_rows[p] - 1 of the reordered response.
+  row_order <- order(pattern_id)
+  sorted <- pattern_id[row_order]
+  first_row <- which(!duplicated(sorted))
+  n_rows <- tabulate(sorted, nbins = n_pattern)
+
+  Y_observed <- Y
+  Y_observed[miss] <- 0
+  n_missing <- sum(miss)
+  mis_pos <- integer(n * k)
+  mis_pos[miss] <- seq_len(n_missing)
+  dim(mis_pos) <- dim(miss)
+  miss_int <- matrix(as.integer(miss), n, k, dimnames = dimnames(miss))
+
+  list(Y = Y_observed,
+       miss = miss_int,
+       n_missing = n_missing,
+       mis_pos = mis_pos,
+       mis_row = row(miss)[miss],
+       mis_col = col(miss)[miss],
+       n_pattern = n_pattern,
+       pattern_obs = pattern_obs,
+       row_order = row_order,
+       n_rows = n_rows,
+       first_row = first_row)
+}
+
+# Trait names for a message, falling back to positions.
+.trait_labels <- function(Y) {
+  labels <- colnames(Y) %||% rep("", ncol(Y))
+  blank <- is.na(labels) | !nzchar(labels)
+  labels[blank] <- paste("column", which(blank))
+  labels
 }
 
 .check_flag <- function(x, arg) {

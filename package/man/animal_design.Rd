@@ -24,8 +24,11 @@ effects.}
 \code{pedigree} or \code{genotypes} are used, its row names must be the
 individual IDs.}
 
-\item{na.action}{How to handle missing values, passed to
-\code{\link[stats]{model.frame}}; the default drops incomplete rows.}
+\item{na.action}{How to handle rows with missing \emph{predictors}, passed to
+\code{\link[stats]{model.frame}}; the default drops them, since a row with
+an unknown fixed effect cannot be placed in the design. Missing values in
+the response are kept: a trait that was not measured on an individual is
+information the model can use, and \code{lmm_animal()} integrates it out.}
 
 \item{pedigree}{Optional pedigree, used to compute the additive relationship
 matrix \code{A} with \code{\link{makeA}}. A data frame

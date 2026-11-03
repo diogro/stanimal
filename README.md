@@ -203,7 +203,7 @@ fit <- lmm_animal(design$Y, design$X, A)
 - the left-hand side is a single response or a `cbind()` of several traits, and the columns of `Y` are named after them;
 - `X` is the fixed-effects design matrix, so its columns match the `beta` draws reported by the fit; factors are dummy-coded and the intercept is kept unless the formula removes it, which is only allowed when the remaining columns still sum to a constant (the 0/1 indicators of a factor, for example, but not `y ~ 0 + x`), because the models centres the responses and report their mean back through the design;
 - random-effect terms such as `(1 | animal)` are ignored, so `lme4`-style formulas can be reused unchanged — relatedness is supplied through `A`;
-- rows with missing values are dropped (`na.action = stats::na.omit` by default), and the individuals kept, in row order, are returned in `attr(design, "individuals")`. Because `Y` keeps them as row names, a named `A` is reordered to match automatically:
+- rows with missing *predictors* are dropped (`na.action = stats::na.omit` by default), and the individuals kept, in row order, are returned in `attr(design, "individuals")`. Missing *responses* are kept: a trait that was not measured is information the model can use, so it is integrated out rather than thrown away. Because `Y` keeps them as row names, a named `A` is reordered to match automatically:
 
 ```r
 rownames(dat) <- dat$id
@@ -235,6 +235,23 @@ fit <- lmm_animal(design$Y, design$X, design$A)
 design <- animal_design(cbind(t1, t2) ~ age + sex, dat, genotypes = M, blend = 0.01)
 fit <- lmm_animal(design$Y, design$X, design$A)
 ```
+
+## Incomplete trait records
+
+Traits are not always measured on everyone. Pass the `NA`s straight in: a record is used as long as it has one observed trait, and the missing values are never dropped.
+
+```r
+Y_missing <- cbind(size = c(1.2, NA, 0.9), shape = c(0.4, 0.7, NA))
+# lm_phen_cov(Y_missing)              # each row is evaluated on what it has
+# lmm_animal(Y_missing, design$X, A)  # or imputed from the individual's relatives
+```
+
+The two engines handle the gaps differently, and the difference shows up in the output:
+
+- `lm_phen_cov()` has no relatedness, so the records are independent and a row's missing values can be integrated out analytically: its density is the normal on its observed subvector, with the matching submatrix of `P`. Rows are grouped by which traits they observe, one Cholesky factor per group, and no parameters are added. A row with nothing observed carries no likelihood, so it is an error.
+- `lmm_animal()` cannot do that: with relatedness a missing value is informed by every relative's observed traits, so the marginal does not factorize over rows. The gaps become parameters on the standardized response scale, reported as `Y_mis`, and a flat prior on them makes the posterior over `G`, `E` and `beta` the exact marginal over the observed data. `fit$draws("Y_mis")` is therefore the imputed data, and a record with nothing observed is allowed, since its relatives still inform it.
+
+The cost is that the animal model has one parameter per gap: a few hundred is nothing, tens of thousands is noticeable. Dropping the incomplete rows instead is the cheap alternative, and it discards every trait that *was* measured on those individuals; with 20% of the entries missing at random, only about half the rows survive.
 
 ## Size and shape reparametrization (use this when one PC dominates)
 

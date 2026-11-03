@@ -4,7 +4,7 @@
 #' after accounting for fixed effects, for data with no relatedness or genomic
 #' information. It is the counterpart of \code{\link{lmm_animal}} without the
 #' genetic component, and uses the same priors, scaling and outputs.
-#' @param Y Numeric response vector or matrix, with individuals in rows. Every trait must vary: constant traits cannot be standardized and are an error.
+#' @param Y Numeric response vector or matrix, with individuals in rows. Every trait must vary: constant traits cannot be standardized and are an error. Missing values (\code{NA}) are allowed and are not discarded: see Details.
 #' @param X Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.
 #' @param lkj_prior Shape parameter of the LKJ prior on the correlation matrix. \code{1} is uniform; values above \code{1} shrink correlations toward zero and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits, because at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of correlations. A finite number above 0. It is used only by \code{covariance_structure = "unstructured"}; explicitly supplying it for the factor model warns that it is ignored.
 #' @param covariance_structure Covariance structure for the phenotypic model: "unstructured" (default, scales times an LKJ correlation matrix) or "factor", which uses \eqn{P = \mathrm{diag}(\sigma_P)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(\sigma_P)} with regularized-horseshoe loadings, where \eqn{\sigma_P} are the residual standard deviations, estimated with the same half-normal prior as the unstructured model.
@@ -60,6 +60,19 @@
 #' communality vectors are trait by draw matrices.
 #' @details The unstructured model estimates \code{P} as scales times an LKJ-distributed correlation matrix, with half-normal priors on the scales of the standardized responses. With \code{covariance_structure = "factor"}, \code{P} is instead \eqn{\mathrm{diag}(\sigma_P)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(\sigma_P)}, with regularized-horseshoe loadings and deterministic column decay. The factor fit reports \code{loadings}, \code{factor_magnitude}, \code{uniqueness} and \code{communality} in addition to \code{P}, \code{corrP}, \code{sigma_P} and the fixed effects. Returned quantities are on the original response scale.
 #'
+#' Incomplete records are used rather than dropped. Without relatedness the
+#' records are independent, so a row that misses some traits is evaluated on the
+#' traits it does have: its marginal density is the multivariate normal on that
+#' subvector, with the matching submatrix of \code{P}. Rows are grouped by which
+#' traits they observe, each group gets its own Cholesky factor, and the missing
+#' values are integrated out analytically, so they cost no parameters. A record
+#' with nothing observed carries no likelihood and is an error instead. The count
+#' of groups grows with the number of distinct patterns, at most one per row.
+#'
+#' The pointwise \code{log_lik} is the density the model block evaluates, on the
+#' standardized response; the raw-scale density differs from it by a constant,
+#' which does not affect comparisons between fits to the same data.
+#'
 #' The likelihood is computed by whitening the residuals with the Cholesky factor of \code{P} in a single triangular solve, at \code{O(N K^2 + K^3)} per evaluation rather than a per-individual loop, so the model scales to dozens of traits.
 #'
 #' Continuous predictors are centered and divided by their sample standard deviation inside Stan. Constant and 0/1 indicator columns are not centered or scaled. Standardized slopes have \code{normal(0, 1)} priors; the intercept contribution has a wider \code{normal(0, 2.5)} prior. Returned \code{beta} coefficients are backtransformed to original predictor and response units, including restoring the response mean to the intercept; \code{beta_scaled} draws are also available.
@@ -108,9 +121,10 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
   cmd_stan <- .check_flag(cmd_stan, "cmd_stan")
   .check_iterations(iter, warmup)
   .check_sampler_size(chains, cores)
-  YX <- .check_response_design(Y, X)
+  YX <- .check_response_design(Y, X, allow_na = TRUE)
   Y <- YX$Y
   X <- YX$X
+  missing <- YX$missing
 
   if (factor_model) {
     if (ncol(Y) < 2L)
@@ -146,6 +160,14 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
                    N = nrow(Y),
                    X = X,
                    Y = Y,
+                   miss = missing$miss,
+                   n_pattern = missing$n_pattern,
+                   pattern_obs = missing$pattern_obs,
+                   # as.array: a one-element R vector is read as a scalar by
+                   # rstan, and these are declared as arrays of the pattern count
+                   row_order = as.array(missing$row_order),
+                   n_rows = as.array(missing$n_rows),
+                   first_row = as.array(missing$first_row),
                    x_mean_weight = YX$x_mean_weight)
   if (factor_model) {
     stan_data$M <- n_factors

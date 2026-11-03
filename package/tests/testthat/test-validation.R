@@ -5,8 +5,12 @@ A <- sim$A
 
 # The checks run before any Stan code, so these are fast.
 test_that("lmm_animal validates Y and X", {
-  Yna <- Y; Yna[1, 1] <- NA
-  expect_error(lmm_animal(Yna, X, A), "`Y` must contain only finite")
+  Yinf <- Y; Yinf[1, 1] <- Inf
+  expect_error(lmm_animal(Yinf, X, A), "`Y` must contain only finite")
+  # missing values are allowed, a trait with nothing observed is not
+  Yblank <- Y; Yblank[, 2] <- NA
+  expect_error(lmm_animal(Yblank, X, A), "at least one observed value")
+  expect_no_error(stanimal:::.check_response_design(Y, X, allow_na = TRUE))
   Xinf <- X; Xinf[2, 2] <- Inf
   expect_error(lmm_animal(Y, Xinf, A), "`X` must contain only finite")
   expect_error(lmm_animal(Y, X[-1, ], A), "same number of rows")
@@ -67,15 +71,22 @@ test_that("X defaults to an intercept-only design", {
   expect_equal(dim(fit$beta), c(1, 1, 100))
   expect_equal(dimnames(fit$beta)[[2]], "(Intercept)")
   # every model takes X as optional: the check on Y is what fails next
+  Yinf <- Y; Yinf[1, 1] <- Inf
+  expect_error(lmm_animal(Yinf, A = A), "`Y` must contain only finite")
+  expect_error(lm_phen_cov(Yinf), "`Y` must contain only finite")
+  expect_error(lmm_animal_gibbs(Yinf, A = A), "`Y` must contain only finite")
+  # the Gibbs sampler still needs complete records
   Yna <- Y; Yna[1, 1] <- NA
-  expect_error(lmm_animal(Yna, A = A), "`Y` must contain only finite")
-  expect_error(lm_phen_cov(Yna), "`Y` must contain only finite")
   expect_error(lmm_animal_gibbs(Yna, A = A), "`Y` must contain only finite")
 })
 
 test_that("lm_phen_cov validates Y and X", {
-  Yna <- Y; Yna[1, 1] <- NA
-  expect_error(lm_phen_cov(Yna, X), "`Y` must contain only finite")
+  Yinf <- Y; Yinf[1, 1] <- Inf
+  expect_error(lm_phen_cov(Yinf, X), "`Y` must contain only finite")
+  # a record with nothing observed has no likelihood to contribute here, because
+  # without relatedness nothing else informs it
+  Ynone <- Y; Ynone[1, ] <- NA
+  expect_error(lm_phen_cov(Ynone, X), "at least one observed trait")
   expect_error(lm_phen_cov(Y, X[-1, ]), "same number of rows")
   expect_error(lm_phen_cov(Y, cbind(X, X[, 2])), "full column rank")
 })

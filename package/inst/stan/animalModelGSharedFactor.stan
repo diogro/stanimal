@@ -4,13 +4,29 @@
 // The factor variances sum to one, so h2_factor is each factor's heritability.
 // E is therefore low-rank plus diagonal, and the same factors explain genetic
 // and residual covariance.
+functions {
+  // The rotated response with the gaps filled in. See animalModelG.stan for why
+  // incomplete traits need parameters here instead of per-pattern marginals: a
+  // missing value in individual n shifts every rotated record by Q[n, i].
+  matrix rotated_response(matrix Ys_observed, matrix Q, vector Y_mis,
+                          array[] int mis_row, array[] int mis_col) {
+    matrix[rows(Ys_observed), cols(Ys_observed)] Ys = Ys_observed;
+    for (j in 1:size(Y_mis))
+      Ys[, mis_col[j]] += Q[mis_row[j]]' * Y_mis[j];
+    return Ys;
+  }
+}
 data {
   int<lower=1> K; // number of traits
   int<lower=1> J; // number of fixed effects
   int<lower=2> N; // number of individuals
   int<lower=1, upper=K - 1> M; // number of shared factors
   matrix[N, J] X; // fixed effects design matrix
-  matrix[N, K] Y; // response variables
+  matrix[N, K] Y; // response variables, with missing entries set to zero
+  array[N, K] int<lower=0, upper=1> miss; // 1 where that trait is missing
+  int<lower=0> n_missing; // number of gaps; each is one parameter
+  array[n_missing] int<lower=1, upper=N> mis_row; // row of each gap
+  array[n_missing] int<lower=1, upper=K> mis_col; // trait of each gap
   matrix[N, N] A; // known relationship matrix (symmetric, PSD)
   vector[J] x_mean_weight; // X * x_mean_weight is a column of ones
   real<lower=0> hs_global_scale; // half-Cauchy scale for the global shrinkage
@@ -31,7 +47,7 @@ transformed data {
   vector[J] beta_prior_sd;
   array[J] int x_is_constant;
   vector[J] x_constant_value;
-  matrix[N, K] Ys;
+  matrix[N, K] Ys_observed; // rotated standardized responses, gaps at zero
   matrix[N, J] Xs;
 
   for (m in 1:M)
@@ -47,9 +63,24 @@ transformed data {
     matrix[N, K] Y_std;
     matrix[N, J] X_std;
     for (k in 1:K) {
-      y_sd[k] = sd(Y[, k]);
-      y_mean[k] = mean(Y[, k]);
-      Y_std[, k] = (Y[, k] - y_mean[k]) / y_sd[k];
+      int present = 0;
+      real total = 0;
+      for (n in 1:N)
+        if (miss[n, k] == 0) {
+          present += 1;
+          total += Y[n, k];
+        }
+      // Centre and scale on the observed values only.
+      y_mean[k] = total / present;
+      real sum_sq = 0;
+      for (n in 1:N)
+        if (miss[n, k] == 0)
+          sum_sq += square(Y[n, k] - y_mean[k]);
+      y_sd[k] = sqrt(sum_sq / (present - 1));
+      // A gap is a parameter. Here it only needs a placeholder, because the
+      // rotation below is linear and its contribution is added back per draw.
+      for (n in 1:N)
+        Y_std[n, k] = miss[n, k] == 1 ? 0 : (Y[n, k] - y_mean[k]) / y_sd[k];
     }
     for (j in 1:J) {
       int is_indicator = 1;
@@ -74,13 +105,14 @@ transformed data {
         beta_prior_sd[j] = 2.5 / abs(x_constant_value[j]);
       X_std[, j] = (X[, j] - x_center[j]) * x_scale_inv[j];
     }
-    Ys = Q' * Y_std;
+    Ys_observed = Q' * Y_std;
     Xs = Q' * X_std;
   }
 }
 parameters {
   matrix[K, J] beta_scaled; // fixed effects on scaled predictors
   vector<lower=0>[K] sqrt_psi_G; // trait-specific genetic sds
+  vector[n_missing] Y_mis; // the gaps, on the standardized response scale
   vector<lower=0>[K] sqrt_psi_E; // trait-specific residual sds
   vector<lower=0, upper=1>[M] h2_factor; // heritability of each factor
   matrix[K, M] loadings_raw; // non-centred loadings
@@ -121,6 +153,7 @@ transformed parameters {
   }
 }
 model {
+  matrix[N, K] Ys = rotated_response(Ys_observed, Q, Y_mis, mis_row, mis_col);
   vector[M] h2_f = h2_factor;
   vector[M] h2_c = 1 - h2_factor;
   matrix[K, K] G_std = loadings_tp * diag_matrix(h2_f) * loadings_tp' +
@@ -215,6 +248,9 @@ generated quantities {
     factor_magnitude[m] = dot_product(loadings[, m], loadings[, m]);
 
   {
+    // The rotated response belongs here, not to the saved quantities: it is a
+    // derived matrix the size of the data, and saving it would bloat every draw.
+    matrix[N, K] Ys = rotated_response(Ys_observed, Q, Y_mis, mis_row, mis_col);
     matrix[K, K] L_E = cholesky_decompose(E_std);
     matrix[K, K] L_G = cholesky_decompose(G_std);
     vector[K] log_diag_E = log(diagonal(L_E));

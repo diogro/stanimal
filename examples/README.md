@@ -21,7 +21,7 @@ Rscript examples/univariate.R
 | `multivariate_power_simulation.R` | Parallel simulation study of genetic-correlation recovery across sample sizes, writing summaries to `results/` |
 | `package_comparison.R` | The same bivariate animal model fitted with `stanimal`, `MCMCglmm`, `BGLR`, `sommer`, `lme4breeding` and ASReml-R, with estimates compared with the simulated truth, minimum ESS of `G` and timings |
 | `trait_comparison.R` | The same comparison for a user-chosen number of traits (first argument, default 5), reporting relative MSE of `G`, `E`, `h2` and `corrG`, minimum ESS of `G` and timings |
-| `structure_comparison.R` | The five `lmm_animal()` covariance structures (`G` unstructured/factor by `E` unstructured/diagonal/shared-factor) fitted to the same simulated factor-structured data, reporting relative MSE, minimum ESS, divergences and timings |
+| `structure_comparison.R` | The five `lmm_animal()` covariance structures (`G` unstructured/factor by `E` unstructured/diagonal/shared-factor) fitted to the same simulated factor-structured data, reporting relative MSE, minimum ESS, divergences and timings, then ranking the same fits by held-out predictive density with `loo_compare()` — the comparison that does not need a simulated truth |
 
 In the interval plots (`bayesplot::mcmc_recover_intervals()`), the filled circle
 is the posterior mean, the thick and thin segments are the 80% and 99% credible
@@ -29,9 +29,11 @@ intervals, and the simulated value is the hollow triangle. The true values are
 matched to the draws by name, not by position.
 
 All scripts need `stanimal` installed and CmdStan available
-(`cmdstanr::install_cmdstan()`), except `gibbs.R`, which needs neither. The
-mouse data used by `ratones.R`, `imputation.R`, `breeding_values.R`,
-`phenotypic_covariance.R` and `factor_phenotypic_covariance.R` ships with the
-package, so nothing is downloaded. The two comparison scripts install
-`MCMCglmm`, `BGLR`, `sommer` and `lme4breeding` if they are missing, and check
-for a licensed ASReml-R without trying to install it.
+(`cmdstanr::install_cmdstan()`), except `gibbs.R`, which needs neither.
+`structure_comparison.R` also needs the `loo` package for the predictive
+comparison. The mouse data used by `ratones.R`, `imputation.R`,
+`breeding_values.R`, `phenotypic_covariance.R` and
+`factor_phenotypic_covariance.R` ships with the package, so nothing is
+downloaded. The two comparison scripts install `MCMCglmm`, `BGLR`, `sommer` and
+`lme4breeding` if they are missing, and check for a licensed ASReml-R without
+trying to install it.

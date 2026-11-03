@@ -89,20 +89,22 @@ cat("mean |r|:", round(mean(abs(corr_hat[upper.tri(corr_hat)])), 3),
     "for the factor model and",
     round(mean(abs(corr_ols[upper.tri(corr_ols)])), 3), "for OLS\n")
 
-# The factor summaries only mean something because the factors live on the
-# observed trait scale: communality is the share of a trait's variance taken by
-# the common factors, uniqueness is its complement, and a small uniqueness for a
-# handful of traits is the sparse module the prior is looking for. Loadings and
-# factor magnitudes are not rotation invariant, so read them only after P has
-# converged; communality and uniqueness are invariant.
+# A factor's sign is unidentified: flipping one loading column leaves P
+# unchanged, so a chain can visit both orientations and averaging them cancels
+# the factor out of the posterior mean. fit_draws(), and therefore draws_mean(),
+# aligns every draw to the trait with the largest mean absolute loading before
+# returning the loadings, so nothing needs to be done here.
 lambda <- draws_mean(fit, "loadings")
+
+# Communality is the share of a trait's variance taken by the common factors,
+# uniqueness is its complement, and a small uniqueness for a handful of traits
+# is the sparse module the prior is looking for. Loadings and factor magnitudes
+# are not rotation invariant, so read them only after P has converged;
+# communality and uniqueness are invariant.
 cat("\nposterior mean loadings, first five traits:\n")
 print(round(lambda[1:5, ], 3))
-# factor_magnitude is not rotation invariant. These three factors are of
-# comparable size, so their labels exchange between chains and the per-factor
-# magnitudes mix the modes: that is what the high Rhat and small ESS below
-# report, and it is not a sign that P failed. The rotation-invariant summary of
-# the same information is the total common variance, sum(communality).
+# factor_magnitude is not rotation invariant; the total common variance,
+# sum(communality), is invariant to factor labels.
 cat("\ntotal common variance (sum of communality):",
     round(sum(draws_mean(fit, "communality")), 2), "\n")
 print(fit$summary("factor_magnitude")[, c("variable", "mean", "sd",
@@ -118,5 +120,5 @@ pdf("examples/figures/factor_phenotypic_covariance.pdf",
     width = 12, height = 12)
 print(plot_corr(corr_hat, "Factor P: posterior mean correlations"))
 print(plot_corr(corr_ols, "OLS residual correlations"))
-print(plot_corr(t(lambda), "Posterior mean loadings (correlation scale)"))
+print(plot_corr(lambda, "Posterior mean loadings (sign-aligned)"))
 dev.off()

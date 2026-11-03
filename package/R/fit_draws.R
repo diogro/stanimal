@@ -56,6 +56,18 @@
 #'   returned as \code{E} so that the two engines give the same names. The
 #'   priors differ between the engines, so the draws themselves are not
 #'   interchangeable.
+#'
+#'   \code{loadings} comes back **sign-aligned**: a column of \eqn{\Lambda} is
+#'   identified only up to its sign, so a chain may visit both orientations, and
+#'   averaging the raw draws then cancels the factor out of the posterior mean and
+#'   out of any heatmap built from it. Each draw is flipped so that the trait with
+#'   the largest mean absolute loading on that factor is positive, which is a
+#'   property of the whole posterior rather than of one draw. Nothing else is
+#'   changed: \code{communality}, \code{uniqueness}, \code{factor_magnitude} and
+#'   the covariances are invariant to the sign anyway. A permutation of the
+#'   columns or a genuine rotation between draws is *not* repaired, which is why
+#'   those are read on \code{G} and \code{communality} instead. For the draws
+#'   exactly as the sampler wrote them, use \code{fit$draws("loadings")}.
 #' @seealso \code{\link{draws_mean}}, \code{\link{draws_quantile}},
 #'   \code{\link{animal_parameter_draws}}
 #' @examples
@@ -332,7 +344,40 @@ draws_quantile <- function(x, parameter = NULL, probs = c(0.025, 0.975),
                dimnames = list(traits, paste0("factor", seq_len(n_factors)),
                                NULL))
   for (v in seq_along(vars)) out[row[v], col[v], ] <- m[, vars[v]]
-  out
+  .align_loading_signs(out)
+}
+
+# Loadings are identified only up to a sign: flipping a whole column of Lambda
+# leaves the covariance it produces unchanged, so a chain is free to visit both
+# orientations, and even to switch within a run. Averaging those draws cancels
+# the factor out, which is how a genuine factor can vanish from a posterior mean
+# and from a heatmap of the loadings.
+#
+# Align every draw to a common orientation before anything is summarised. The
+# anchor for a factor is the trait with the largest mean absolute loading, which
+# is picked once from all the draws rather than per draw: a per-draw argmax can
+# land on a different trait in different draws, and then "positive" no longer
+# means the same thing across the posterior. Each draw is flipped when its anchor
+# loading is negative.
+#
+# Only sign is repaired. A permutation of the columns is not, and neither is a
+# genuine rotation between draws; both show up as a poor `Rhat` on the loadings
+# and are the reason those two are not used to judge convergence.
+.align_loading_signs <- function(x) {
+  n_traits <- dim(x)[1L]
+  for (m in seq_len(dim(x)[2L])) {
+    # matrix(): a one-trait fit or a single draw would otherwise drop a dimension
+    column <- matrix(x[, m, ], nrow = n_traits)
+    anchor <- which.max(rowMeans(abs(column), na.rm = TRUE))
+    if (!length(anchor)) next
+    flip <- column[anchor, ] < 0
+    flip[is.na(flip)] <- FALSE
+    if (any(flip)) {
+      column[, flip] <- -column[, flip]
+      x[, m, ] <- as.vector(column)
+    }
+  }
+  x
 }
 
 # Factor heritabilities and magnitudes are indexed by factor, not by trait.

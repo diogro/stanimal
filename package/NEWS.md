@@ -39,6 +39,17 @@
   probability for each (`print()`) and the distributions themselves (`plot()`).
   This is the individual-level check that `fit_loo()` is not.
 
+## Changes
+
+* `fit_draws()`, `draws_mean()` and `draws_quantile()` now sign-align the factor
+  loadings. A loading column is identified only up to its sign, so a chain can
+  visit both orientations, and the average of the raw draws then cancels the
+  factor out of a posterior mean or a heatmap. Each draw is flipped so that the
+  trait with the largest mean absolute loading is positive, chosen once over the
+  whole posterior. `fit$draws("loadings")` still returns the draws as the sampler
+  wrote them; nothing else is reoriented, since column permutations and rotations
+  are a different problem and are judged on `G` and `communality`.
+
 ## Documentation
 
 * `AGENTS.md` states what each configuration reports, how the priors behave, and

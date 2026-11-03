@@ -49,6 +49,18 @@ The Gibbs sampler calls its residual covariance \code{R}; it is
   returned as \code{E} so that the two engines give the same names. The
   priors differ between the engines, so the draws themselves are not
   interchangeable.
+
+  \code{loadings} comes back **sign-aligned**: a column of \eqn{\Lambda} is
+  identified only up to its sign, so a chain may visit both orientations, and
+  averaging the raw draws then cancels the factor out of the posterior mean and
+  out of any heatmap built from it. Each draw is flipped so that the trait with
+  the largest mean absolute loading on that factor is positive, which is a
+  property of the whole posterior rather than of one draw. Nothing else is
+  changed: \code{communality}, \code{uniqueness}, \code{factor_magnitude} and
+  the covariances are invariant to the sign anyway. A permutation of the
+  columns or a genuine rotation between draws is *not* repaired, which is why
+  those are read on \code{G} and \code{communality} instead. For the draws
+  exactly as the sampler wrote them, use \code{fit$draws("loadings")}.
 }
 \examples{
 k <- 2

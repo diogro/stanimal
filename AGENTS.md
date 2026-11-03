@@ -277,6 +277,15 @@ clean `G`/`communality` is an orientation that moved, not a broken fit. A high
 `Rhat` on `communality` **is** a real problem: it means genuinely different
 decompositions were visited, so reduce `n_factors`.
 
+**Sign flips are handled for you.** `fit_draws()` — and therefore `draws_mean()`
+and `draws_quantile()` — flips each draw so that the trait with the largest mean
+absolute loading on a factor is positive, chosen once over the whole posterior.
+Without that, a chain that visited both orientations averages to zero and the
+factor silently disappears from a mean or a heatmap. `fit$draws("loadings")` is
+still the raw, unaligned output. Signs are the only thing repaired: a permutation
+of the columns, or a genuine rotation between draws, is not, which is why those
+are judged on `G` and `communality`.
+
 Triage when a factor fit looks bad, in order: check `P`/`G` and `communality`
 `Rhat` → if those are clean, ignore the loadings → if not, lower `n_factors` →
 then lower `column_decay`.

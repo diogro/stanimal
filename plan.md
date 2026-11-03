@@ -119,19 +119,46 @@ default), and it needs a memory note in the docs.
 with the simulated `u`, and the empirical-Bayes solution should be close to the
 posterior draw version on a small case.
 
-### 3. LOO / WAIC / posterior predictive
+### 3. LOO / WAIC / posterior predictive — DONE (0.7.0)
 
-`log_lik` already exists for every multivariate and phenotypic fit, and
-`examples/structure_comparison.R` uses only MSE against a simulated truth.
+**What shipped.** `fit_loo(x, criterion = c("loo", "waic"))` hands the `log_lik`
+draws to the `loo` package with the chain structure kept, so
+`loo::relative_eff()` has what it needs; `loo(fit)` and `loo_compare()` work on
+the result. `posterior_predictive(fit, ndraws)` simulates the response from each
+posterior draw and returns replicates that `print()` (observed means, SDs,
+correlations against the replicates, with a tail probability) and `plot()`
+(histograms with the observation marked) summarise.
 
-- `loo()` method on the fit, wrapping the `loo` package and pointing at the
-  `log_lik` draws.
-- One posterior-predictive helper: simulate replicate responses from the
-  posterior and return a data frame or a `bayesplot`-style check.
-- Documentation must say what LOO means here: individual-level predictive
-  adequacy, so it compares model structures, not fixed effects.
+**The documentation point the plan asked for, stated properly.** LOO here
+compares model structures, and the reason is sharper than "it is not
+individual-level adequacy": the terms come from the model block, one per record
+of the *rotated* response, which is where the records are independent. Their sum
+is the exact joint log density, so the criterion is valid, but with a
+non-identity `A` a term is not one animal. The absolute ELPD also carries a
+constant from the standardization, which cancels between fits to the same
+response. Both facts are in `?fit_loo` and `AGENTS.md`.
 
-Add `loo` to `Suggests`.
+**A correction to the plan's premise.** It said `log_lik` already existed for
+every multivariate and phenotypic fit. It did not exist for the phenotypic
+models: `phenotypicModel.stan` and `phenotypicModelFactor.stan` never computed
+it, although `AGENTS.md` claimed they did. Fixed there first, per pattern.
+
+**Mechanics worth remembering**
+- `loo` is a Suggests, so `S3method(loo, CmdStanMCMC)` in NAMESPACE makes the
+  package fail to load (`object 'loo' not found`). The methods are registered in
+  `.onLoad` instead, with `setHook(packageEvent("loo", "onLoad"))` for the case
+  where `loo` loads afterwards. `pkgload::load_all()` does not run `.onLoad`, so
+  the test calls it explicitly.
+- Both fitters now attach `stanimal_data` (the response as passed in, `X`, and
+  `A`) to the fit. The posterior predictive needs it, and the breeding-value pass
+  will too.
+- `posterior_predictive()` slices `beta[, , j]` and `G[, , j]`; with one trait R
+  drops those to vectors, so every slice goes through `matrix(...)`.
+
+**Not done.** No `bayesplot` dependency: the plot method uses ggplot2, which was
+already an Import. `examples/structure_comparison.R` still compares by MSE; it
+could now use `loo_compare()` instead, which is a better demonstration than a
+simulated-truth MSE and is the obvious next example to rewrite.
 
 ### 4. Univariate `log_lik`
 

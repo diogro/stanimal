@@ -16,12 +16,12 @@
 utils::globalVariables("replicated")
 
 # The response, design and relationship matrix the fit was given.
-.stanimal_data <- function(fit) {
+.stanimal_data <- function(fit, what = "the response cannot be replicated") {
   data <- attr(fit, "stanimal_data")
   if (is.null(data))
-    stop("this fit does not carry the data it was fitted to, so the response ",
-         "cannot be replicated. Fits from `lmm_animal()` and `lm_phen_cov()` ",
-         "do; `lmm_animal_gibbs()` and other objects do not.", call. = FALSE)
+    stop("this fit does not carry the data it was fitted to, so ", what, ". ",
+         "Fits from `lmm_animal()` and `lm_phen_cov()` do; ",
+         "`lmm_animal_gibbs()` and other objects do not.", call. = FALSE)
   data
 }
 

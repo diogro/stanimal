@@ -216,6 +216,32 @@ plot(pp)  # the replicate distributions
 
 The replicate is `X beta + u + e` for an animal fit, with `u ~ N(0, A ⊗ G)` and `e ~ N(0, I ⊗ E)`, and `X beta + e` with `e ~ N(0, P)` for a phenotypic one, using the draws the fit reports. `print()` compares the observed trait means, standard deviations and pairwise correlations with the replicate distributions: the 95% interval of the replicates, and `p`, the share of replicates at or above the observation — a posterior predictive tail probability. Under a well-specified model `p` is roughly uniform on (0, 1) rather than concentrated at any value, so a `p` near 0 or 1 marks a feature the model does not reproduce and a middling one says nothing either way.
 
+## Breeding values
+
+An animal model estimates the covariance structure. It does not report what any individual's additive value is, because the breeding values are integrated out of the likelihood — which is what makes the model scale to many individuals and many traits. `breeding_values()` puts them back from the fitted covariance:
+
+```r
+# ebv <- breeding_values(fit)
+# ebv                # the first individuals, with standard errors and reliability
+# ebv$values         # individuals x traits, on the response scale
+# ebv$reliability    # 1 - Var(u | y) / diag(G), between 0 and 1
+```
+
+The prediction is the conditional mean
+
+$$
+\hat u = (A \otimes G)\,V^{-1}(y - X\beta), \qquad V = A \otimes G + I \otimes E,
+$$
+
+evaluated at the posterior means of `G`, `E` and `beta`. That makes it an empirical Bayes estimate: the uncertainty in the covariance parameters is not propagated, and `se` is conditional on them. The eigendecomposition of `A` is what keeps it cheap — one `k` by `k` solve per individual instead of an `N` by `N` system.
+
+Two consequences of the formula are worth knowing before reading the numbers.
+
+- **The predictions are shrunk.** Each one sits between the individual's own deviation from the fixed effects and the mean of its relatives, and moves toward the middle as the information about it thins out: a lone individual with one record lands near `h2` times its deviation, one with many measured relatives moves toward their average. This is why the ranking by breeding value is not the ranking by measurement, and why it is the better one to select on.
+- **Missing values are not a problem.** A gap is filled with its conditional mean and the prediction made from that, which is exact rather than approximate here: the predictor is linear in the response, so `E[u | y_obs]` is the predictor applied to `E[y | y_obs]`.
+
+`reliability` is the share of a trait's additive variance that the prediction accounts for, between 0 and 1, and is the usual quantity for deciding how far to trust a candidate. It is a conditional variance at the posterior means, not a posterior distribution of `u`: a per-draw version would sample `u` in `generated quantities` at `O(N K^3)` per draw and store `N K` numbers per draw, which is a different feature.
+
 ## Formula interface
 
 `animal_design()` builds `Y` and `X` from a formula and a data frame, for when you would rather write the model the usual way than assemble the matrices by hand:

@@ -36,7 +36,8 @@ simulate_animal <- function(n_fam = 25, size = 8, G = NULL, E = NULL,
              c(1, -0.5, 0.3)[seq_len(K)])
   u <- if (genetic) t(chol(A)) %*% rmvn(n, G) else 0
   Y <- X %*% B + u + rmvn(n, E)
-  list(Y = Y, X = X, A = A, B = B, G = G, E = E, P = if (genetic) G + E else E)
+  list(Y = Y, X = X, A = A, B = B, G = G, E = E, u = u,
+       P = if (genetic) G + E else E)
 }
 
 G3 <- matrix(c(1.0, 0.5, 0.2,

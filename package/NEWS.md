@@ -38,6 +38,16 @@
   deviations and pairwise correlations against the replicates, with a tail
   probability for each (`print()`) and the distributions themselves (`plot()`).
   This is the individual-level check that `fit_loo()` is not.
+* `breeding_values()` predicts each individual's additive genetic value, which
+  the animal models integrate out and never report. It is the conditional mean
+  `(A %x% G) V^-1 (y - X beta)` at the posterior means of `G`, `E` and `beta`,
+  computed per individual through the eigendecomposition of `A`, and returns the
+  predictions on the response scale with an optional standard error and the
+  reliability `1 - Var(u | y) / diag(G)`. Being empirical Bayes, it does not
+  propagate the uncertainty in the covariance parameters. Missing values are
+  filled by their conditional mean first, which is exact for this linear
+  predictor. Fits from `lmm_animal()` carry the data it needs; `lm_phen_cov()`
+  and `lmm_animal_gibbs()` do not.
 
 ## Changes
 

@@ -14,6 +14,7 @@ Rscript examples/univariate.R
 | `factor_model.R` | `lmm_animal(genetic_structure = "factor")`: a sparse nine-factor `G` for twelve traits with a hierarchical size/block/sub-block structure, regularized-horseshoe loadings, column decay, and posterior summaries |
 | `ratones.R` | `lmm_animal()` on real data: four log cranial distances of 329 mice, with `A` from the bundled pedigree (`ratones_morpho` and `ratones_pedigree`) |
 | `imputation.R` | Incomplete records: entries blanked out of the mouse data, fitted with the gaps in place instead of dropping rows, then `imputed_data()` puts them back. The deleted values are known, so the recovery is scored, and the plot shows each imputation against the value that was removed |
+| `breeding_values.R` | `breeding_values()` on the mouse data: predicted additive values, their standard errors and reliability, the ranking of candidates by breeding value against the ranking by measurement, and the shrinkage that separates the two |
 | `phenotypic_covariance.R` | `lm_phen_cov()` with no pedigree, plus `size_shape()` and `back_transform()`, on the same mouse data |
 | `factor_phenotypic_covariance.R` | `lm_phen_cov(covariance_structure = "factor")` on the full 35-trait mouse covariance matrix, on the log-trait scale: a scree plot and parallel analysis to choose `n_factors`, sparse loadings, factor magnitudes, communality and uniqueness, an OLS residual-covariance check and correlation heatmaps |
 | `gibbs.R` | `lmm_animal_gibbs()`, the single-chain Gibbs sampler; its inverse-Wishart priors differ from `lmm_animal()` |

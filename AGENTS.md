@@ -30,6 +30,7 @@ for anyone *using* the package. Worked examples live in `README.md` and
 | How many factors? | `suggest_n_factors(Y, X)` + `scree_eigenvalues(Y, X)` |
 | Which of two models fits better? | `loo::loo_compare(fit_loo(a), fit_loo(b))` |
 | Does the model reproduce the data? | `posterior_predictive(fit)` |
+| Each individual's breeding value | `breeding_values(fit)` |
 | Many correlated traits on one size gradient | `size_shape()` then `back_transform()` — but only around an **unstructured** model, see the anti-patterns |
 
 `A` is the third positional argument of `lmm_animal()`, so `lmm_animal(Y, X, A)`.
@@ -183,6 +184,36 @@ posterior_predictive(fit)                      # replicates of the response
   deviations and pairwise correlations against the replicate distributions, with
   a `p` that is near 0 or 1 when the model does not reproduce that feature, and
   `plot()` shows the distributions.
+
+## Breeding values
+
+The animal fit integrates `u` out, so the fit reports `h2` but not what any
+individual's additive value is. `breeding_values()` post-processes the fit:
+
+```r
+ebv <- breeding_values(fit)
+ebv$values        # individuals x traits, response scale
+                   # deviations from the fixed effects
+ebv$se            # conditional SD, at the posterior means of G, E and beta
+ebv$reliability   # 1 - Var(u | y) / diag(G), in [0, 1]
+```
+
+- It is the conditional mean `(A ⊗ G) V^-1 (y - X beta)` with
+  `V = A ⊗ G + I ⊗ E`, evaluated at the **posterior means** of `G`, `E` and
+  `beta`. That is empirical Bayes: uncertainty in the covariance parameters is
+  not propagated, and `se` is conditional on them. It is not a posterior of `u`.
+- It needs the `stanimal_data` attribute both fitters attach. `lmm_animal_gibbs()`
+  and `lm_phen_cov()` fits do not have one, so they are refused rather than
+  silently given a different `A`.
+- Missing traits are fine: the gaps are replaced by their posterior mean from
+  `imputed_data()` first, which is exact for this predictor because it is linear
+  in the response.
+- Use it as a check as well as an output: with `A = I` the prediction reduces to
+  shrinking each individual's own residual by `G (G + E)^-1`, and a prediction
+  that is not correlated with a simulated `u` means the fit, not the prediction,
+  is wrong.
+- `se = FALSE` skips the conditional variance, which is the only part that costs
+  `O(N^2)`; the predictions themselves are `O(N K^3)`.
 
 ## Choosing the model
 

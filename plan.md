@@ -1,6 +1,7 @@
 # stanimal roadmap — 0.7.0
 
-Working plan for the next functionality release. Current state is 0.6.0: the
+Working plan for the next functionality release. Current state is 0.6.0 on
+`master`, with 0.7.0 under way on `feature/0.7.0`: the
 modelling core (animal and phenotypic models, three `A` constructions, size/shape
 rotation, factor selection tooling) is in place and `R CMD check` is clean.
 
@@ -40,42 +41,60 @@ Rationale for the order: 1 changes what problems the package can be pointed at,
 3 depends on 4 (LOO for univariate fits needs its `log_lik`), so do 4 first if 3
 comes early.
 
-### 1. Missing trait values
+### 1. Missing trait values — DONE (0.7.0)
 
-**Today:** `Y` must be complete. `.check_numeric_matrix(Y)` rejects `NA`, and
-`animal_design(na.action = stats::na.omit)` drops incomplete rows. Dropping rows
-is the wrong answer when traits are correlated — the animal model can borrow
-strength across traits.
+**Was:** `Y` had to be complete. Dropping rows is the wrong answer when traits
+are correlated — the animal model can borrow strength across traits, and a row
+deleted for one missing trait also loses the traits that *were* measured.
 
-**Approach.** Group rows by which traits are observed. A complete pattern keeps
-the current fast path untouched. An incomplete pattern evaluates its likelihood on
-the observed subvector, using the corresponding principal submatrix: with
-`P = block-cholesky(P)` in transformed data, each pattern gets one Cholesky of its
-own size, and the whitening is a solve against that factor.
+**What shipped.** Two mechanisms, because only one of them is valid everywhere.
 
-**Changes**
-- `utils.R`: allow `NA` in `Y` for the model entry points (`allow_na = TRUE` is
-  already a hook there), with a clear error when a row has no observed trait or
-  when an all-missing trait appears.
-- `animalModelG`, `animalModelGFactor`, `phenotypicModel`, `phenotypicModelFactor`:
-  add a pattern index and the per-pattern submatrix Cholesky to `transformed data`;
-  the multivariate rotation path applies to complete patterns only.
-- `animal_design()`: stop dropping rows by default; return the missingness mask
-  alongside `Y`.
-- Downstream: `pc1_variance_share()`, `size_shape()`, `scree_eigenvalues()` and
-  `plot_G_ellipses()` either handle `NA` or error clearly; `plot_G_ellipses()`
-  only uses `Y` for data ellipses, so it can skip incomplete rows.
+- **Phenotypic models: per pattern.** No relatedness, so the records are
+  independent and a row's missing values integrate out analytically: its density
+  is the normal on the observed subvector, with the matching principal submatrix
+  of `P`. Rows are grouped by which traits they observe; each pattern gets one
+  Cholesky of its own submatrix and adds no parameters. A pattern with nothing
+  observed has no likelihood and is an error.
+- **Animal models: data augmentation.** This is where the plan was wrong. With
+  relatedness a gap is informed by every relative's observed traits, so the
+  observed-data marginal does not factorize over rows: restricted to a pattern it
+  is `A[I,I] ⊗ G[O,O] + I ⊗ E[O,O]`, whose factor needs an eigendecomposition of
+  `A[I,I]` per pattern — `O(N³)` each. The eigen-rotation does not escape this
+  either, because a missing original value is a linear combination of *all*
+  rotated records. So the gaps became parameters on the standardized response
+  scale (`Y_mis`, reported), with a flat prior, which makes the posterior over
+  `G`, `E` and `beta` the exact marginal over the observed data. The contribution
+  of a gap is one outer product with a column of `Q`, not a re-rotation, so an
+  evaluation stays `O(N·n_missing)`.
 
-**Validation**
-- Simulate with a known `G`/`E`, delete 20% of entries at random, and check that
-  recovery is better than the row-deletion fit on the same data, and close to the
-  complete-data fit.
-- Test: one trait entirely missing in a few rows; one row with a single trait;
-  patterns that differ only by which trait is absent.
+**Also changed**
+- `animal_design()` no longer drops rows that miss only the response; `na.action`
+  now applies to predictors, which is the only place it can.
+- Univariate fits take missing records too, so the API does not change shape
+  between one trait and several.
+- `lm_phen_cov()` gained the pointwise `log_lik` it was documented as having.
+- rstan reads a one-element R vector as a scalar, so the pattern index arrays are
+  passed through `as.array()`.
 
-**Risks.** The number of distinct patterns can explode (2^K in principle) —
-cap it and merge rare patterns or error, rather than silently building hundreds of
-blocks.
+**Validation, as run**
+- Density identity, the decisive check: the pointwise terms at one draw equal the
+  joint density computed independently in R from the same draws — per pattern on
+  the observed subvector for the phenotypic model, and through
+  `kronecker(G, A) + kronecker(E, I)` for the animal model. Agreement to 1e-6.
+- 20% of entries deleted at random, `N = 200`, `K = 3`: `P` from the missing-data
+  fit is 2.4% from the complete-data fit, while the row-deletion fit (which keeps
+  only 106 of 200 rows) is 21.5% away.
+- Both factor structures and the shared-factor model take gaps.
+
+**Risk that materialised.** Not pattern explosion — that one is bounded by `N`
+and only affects the phenotypic models. The risk is instead that a diagonal
+residual with a *small* sample and many gaps is weakly identified: 60 individuals
+with 20 gaps diverged on half the iterations, where 200 individuals with 60 gaps
+is clean. Documented in `?lmm_animal` and `AGENTS.md` rather than fixed.
+
+**Left over.** `plot_G_ellipses()` and `size_shape()` still assume complete `Y`;
+they error rather than dropping rows, which is acceptable but not warm. Nothing
+else downstream needed a change because the modals consume `G` and `P`, not `Y`.
 
 ### 2. Breeding values (BLUPs)
 

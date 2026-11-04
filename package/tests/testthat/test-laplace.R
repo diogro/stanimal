@@ -49,28 +49,34 @@ test_that("lmm_animal_laplace returns a summary and no draws to use", {
 test_that("the data and model code match what the sampler would use", {
   skip_if_not_installed("cmdstanr")
   d <- small_animal_data()
-  cap <- file.path(tempdir(), "stanimal_laplace_capture.rds")
-  ns <- asNamespace("stanimal")
+  seen <- new.env(parent = emptyenv())
 
-  trace("cstan", where = ns, print = FALSE,
-        tracer = quote(saveRDS(list(code = model_code, data = data),
-                               file.path(tempdir(),
-                                         "stanimal_laplace_capture.rds"))))
-  lmm_animal(d$Y, d$X, d$A, iter = 100, warmup = 50, chains = 1, cores = 1,
-             refresh = 0, seed = 1)
-  untrace("cstan", where = ns)
-  sampler <- readRDS(cap)
+  # Both engines are stubbed out, so nothing is compiled or sampled. What this
+  # test checks is the pair of arguments each entry point hands to the Stan
+  # engine, and running a real chain would make the result depend on whether
+  # CmdStan's initialization happens to survive its LKJ Cholesky check. With one
+  # or two chains that check failing takes the whole fit down, and the report
+  # would be a missing output CSV rather than anything about the arguments.
+  local_mocked_bindings(
+    cstan = function(model_code, data, ...) {
+      seen$sampler <- list(code = model_code, data = data)
+      stop("stanimal_capture")
+    },
+    .package = "stanimal"
+  )
+  expect_error(lmm_animal(d$Y, d$X, d$A), "stanimal_capture")
 
-  trace(".laplace_fit", where = ns, print = FALSE,
-        tracer = quote(saveRDS(list(code = model_code, data = stan_data),
-                               file.path(tempdir(),
-                                         "stanimal_laplace_capture.rds"))))
-  invisible(lmm_animal_laplace(d$Y, d$X, d$A, draws = 10, seed = 1))
-  untrace(".laplace_fit", where = ns)
-  laplace <- readRDS(cap)
+  local_mocked_bindings(
+    .laplace_fit = function(model_code, stan_data, ...) {
+      seen$laplace <- list(code = model_code, data = stan_data)
+      stop("stanimal_capture")
+    },
+    .package = "stanimal"
+  )
+  expect_error(lmm_animal_laplace(d$Y, d$X, d$A), "stanimal_capture")
 
-  expect_identical(laplace$code, sampler$code)
-  expect_equal(laplace$data, sampler$data)
+  expect_identical(seen$laplace$code, seen$sampler$code)
+  expect_equal(seen$laplace$data, seen$sampler$data)
 })
 
 test_that("univariate, factor and phenotypic Laplace fits work", {

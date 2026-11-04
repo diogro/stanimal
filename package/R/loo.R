@@ -13,6 +13,12 @@
 # Draws of `log_lik` with their chain structure: a draws by records matrix, as
 # `loo` wants, and the chain each draw came from.
 .log_lik_draws <- function(fit) {
+  if (inherits(fit, "stanimal_laplace"))
+    stop("`fit_loo()` needs posterior draws. A `stanimal_laplace` object is a "
+         , "Gaussian approximation at the mode, whose draws are not weighted "
+         , "posterior draws, so a comparison built from them would be "
+         , "meaningless. Fit with `lmm_animal()` or `lm_phen_cov()` first.",
+         call. = FALSE)
   if (.is_gibbs_draws(fit))
     stop("`lmm_animal_gibbs()` does not support LOO or WAIC. Use "
          , "`lmm_animal()` for model comparison.", call. = FALSE)

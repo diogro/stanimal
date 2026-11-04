@@ -1,3 +1,16 @@
+# stanimal 0.7.1
+
+## New features
+
+* `lmm_animal_laplace()` and `lm_phen_cov_laplace()` fit the same models by a
+  Laplace approximation at the posterior mode instead of sampling them. They
+  return posterior means and standard deviations for the covariance quantities
+  and finish in a fraction of the time, and they deliberately return no draws:
+  there are no chains, so there are no convergence diagnostics, and the
+  draw-based functions refuse the result. The standard deviation of a variance
+  or a heritability is the least reliable number they report, because a Gaussian
+  at the mode misstates a skewed posterior.
+
 # stanimal 0.7.0
 
 ## New features

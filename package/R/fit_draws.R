@@ -83,6 +83,11 @@
 #' round(draws_mean(d, "corrG"), 2)
 #' @export
 fit_draws <- function(fit, traits = NULL, terms = NULL) {
+  if (inherits(fit, "stanimal_laplace"))
+    stop("`fit_draws()` needs posterior draws, and a `stanimal_laplace` object "
+         , "is a Gaussian approximation with no chains. Read `fit$summary` "
+         , "instead, or fit the model with `lmm_animal()` / `lm_phen_cov()`.",
+         call. = FALSE)
   if (inherits(fit, "size_shape_draws"))
     return(.complete_components(unclass(fit)[setdiff(names(fit), "traits")],
                                 traits = traits %||% fit$traits,

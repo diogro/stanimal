@@ -86,6 +86,12 @@ test_that("draws_mean and draws_quantile drop the draw dimension", {
   q1 <- draws_quantile(d, "h2", probs = 0.5)
   expect_equal(dim(q1), c(2L, 1L))
   expect_equal(q1[, 1], apply(d$h2, 1L, stats::median))
+  # two quantiles must come out trait-by-quantile, not interleaved
+  q2 <- draws_quantile(d, "h2")
+  expect_equal(dim(q2), c(2L, 2L))
+  expect_equal(dimnames(q2)[[2]], c("2.5%", "97.5%"))
+  expect_equal(q2[, 1], apply(d$h2, 1L, stats::quantile, 0.025))
+  expect_equal(q2[, 2], apply(d$h2, 1L, stats::quantile, 0.975))
 })
 
 test_that("fit_draws validates its inputs", {

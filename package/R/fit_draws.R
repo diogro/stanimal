@@ -253,9 +253,13 @@ draws_quantile <- function(x, parameter = NULL, probs = c(0.025, 0.975),
                           probs = probs[q], names = FALSE)
     out
   } else {
+    # apply() returns a probs-by-trait matrix, or a trait vector for a single
+    # quantile. Transpose into the trait-by-probs shape the documentation
+    # promises for a vector quantity.
     q <- apply(values, 1L, stats::quantile, probs = probs, names = FALSE)
-    matrix(q, nrow = dims[1L], ncol = length(probs),
-           dimnames = list(rownames(values), labels))
+    q <- if (is.matrix(q)) t(q) else matrix(q, ncol = 1L)
+    dimnames(q) <- list(rownames(values), labels)
+    q
   }
 }
 

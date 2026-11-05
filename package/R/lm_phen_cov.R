@@ -9,7 +9,7 @@
 #' @param lkj_prior Shape parameter of the LKJ prior on the correlation matrix. \code{1} is uniform; values above \code{1} shrink correlations toward zero and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits, because at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of correlations. A finite number above 0. It is used only by \code{covariance_structure = "unstructured"}; explicitly supplying it for the factor model warns that it is ignored.
 #' @param covariance_structure Covariance structure for the phenotypic model: "unstructured" (default, scales times an LKJ correlation matrix) or "factor", which uses \eqn{P = \mathrm{diag}(\sigma_P)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(\sigma_P)} with regularized-horseshoe loadings, where \eqn{\sigma_P} are the residual standard deviations, estimated with the same half-normal prior as the unstructured model.
 #' @param n_factors Number of factors when \code{covariance_structure = "factor"}, a whole number between 1 and the number of traits minus one. If \code{NULL}, the model falls back to the same sublinear rule as \code{lmm_animal()} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.
-#' @param hs_global_scale,hs_slab_scale Scales of the regularized-horseshoe prior on the factor loadings. Both must be positive and are only used by the factor model.
+#' @param hs_global_scale,hs_slab_scale Scales of the regularized-horseshoe prior on the factor loadings. \code{hs_slab_scale} sets the communality the prior expects, \code{hs_slab_scale^2 / (1 + hs_slab_scale^2)}, which is 0.5 at the default of 1 and 0.8 at 2. Both must be positive and are only used by the factor model.
 #' @param column_decay Standard-deviation multiplier for successive factor columns, between 0 and 1. The default 0.8 orders the columns so that the factor labels stay meaningful; with \code{column_decay = 1} the columns are exchangeable a priori and their labels can swap between chains. Few factors need a stronger decay than many: with two columns of comparable size 0.8 is often too mild to separate them, while \code{0.5^(m - 1)} would shrink the fifth column of a many-factor model to a sixteenth of the first. Only used by the factor model, and explicitly supplying it otherwise warns that it is ignored.
 #' @param iter Number of MCMC iterations, a whole number.
 #' @param warmup Number of warmup iterations, a whole number smaller than \code{iter}.
@@ -106,7 +106,7 @@ lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(
                         cmd_stan = TRUE, model_file = NULL,
                         covariance_structure = c("unstructured", "factor"),
                         n_factors = NULL, hs_global_scale = 1,
-                        hs_slab_scale = 2, column_decay = 0.8, ...){
+                        hs_slab_scale = 1, column_decay = 0.8, ...){
   lkj_prior_supplied <- !missing(lkj_prior)
   hs_global_scale_supplied <- !missing(hs_global_scale)
   hs_slab_scale_supplied <- !missing(hs_slab_scale)

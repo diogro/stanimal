@@ -13,6 +13,9 @@
 #' @param Y,X,A Relationship matrix and data, as in \code{\link{lmm_animal}}.
 #'   \code{lmm_animal_laplace()} needs \code{A}; \code{lm_phen_cov_laplace()}
 #'   does not take one.
+#' @param covariance_structure Covariance structure for
+#'   \code{\link{lm_phen_cov_laplace}}, as in \code{\link{lm_phen_cov}}:
+#'   \code{"unstructured"} (default) or \code{"factor"}.
 #' @return An object of class \code{stanimal_laplace}, a list with
 #'   \itemize{
 #'     \item \code{summary} a data frame of posterior means and standard
@@ -56,7 +59,7 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
                                                       "shared_factor"),
                                genetic_structure = c("unstructured", "factor"),
                                n_factors = NULL, hs_global_scale = 1,
-                               hs_slab_scale = 2, column_decay = 0.8,
+                               hs_slab_scale = 1, column_decay = 0.8,
                                draws = 2000, seed = NULL, ...) {
   call <- match.call()
   parametrization <- match.arg(parametrization)
@@ -186,7 +189,7 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
                                 covariance_structure = c("unstructured",
                                                          "factor"),
                                 n_factors = NULL, hs_global_scale = 1,
-                                hs_slab_scale = 2, column_decay = 0.8,
+                                hs_slab_scale = 1, column_decay = 0.8,
                                 model_file = NULL, draws = 2000, seed = NULL,
                                 ...) {
   call <- match.call()

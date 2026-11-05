@@ -12,7 +12,7 @@ Rscript examples/univariate.R
 | `univariate.R` | `lmm_animal()` with a single trait, both parametrisations (`"variance"` and `"h2"`), compared with a simulated truth |
 | `multivariate.R` | `lmm_animal()` with five correlated traits: `G`, `E`, `P`, `corrG`, `h2` and the fixed effects |
 | `factor_model.R` | `lmm_animal(genetic_structure = "factor")`: a sparse nine-factor `G` for twelve traits with a hierarchical size/block/sub-block structure, regularized-horseshoe loadings, column decay, and posterior summaries |
-| `ratones.R` | `lmm_animal()` on real data: four log cranial distances of 329 mice, with `A` from the bundled pedigree (`ratones_morpho` and `ratones_pedigree`) |
+| `ratones.R` | `lmm_animal()` on real data: four log cranial distances of 329 mice, with `A` built from the dam and sire recorded on each mouse |
 | `imputation.R` | Incomplete records: entries blanked out of the mouse data, fitted with the gaps in place instead of dropping rows, then `imputed_data()` puts them back. The deleted values are known, so the recovery is scored, and the plot shows each imputation against the value that was removed |
 | `breeding_values.R` | `breeding_values()` on the mouse data: predicted additive values, their standard errors and reliability, the ranking of candidates by breeding value against the ranking by measurement, and the shrinkage that separates the two |
 | `phenotypic_covariance.R` | `lm_phen_cov()` with no pedigree, plus `size_shape()` and `back_transform()`, on the same mouse data |

@@ -12,29 +12,34 @@ test_that("ratones_morpho has the documented shape", {
   expect_true(all(ratones_morpho$SEX %in% c("F", "M")))
 })
 
-test_that("ratones_pedigree has the documented shape and covers the mice", {
-  expect_s3_class(ratones_pedigree, "data.frame")
-  expect_identical(names(ratones_pedigree), c("id", "sire", "dam"))
-  expect_identical(dim(ratones_pedigree), c(525L, 3L))
-  expect_equal(anyDuplicated(ratones_pedigree$id), 0L)
-  expect_true(all(ratones_morpho$ID %in% ratones_pedigree$id))
-  # founders and unknown parents are NA
-  expect_true(all(is.na(ratones_pedigree$sire) == is.na(ratones_pedigree$dam)))
-  expect_gt(sum(is.na(ratones_pedigree$sire)), 0)
+test_that("opossum has the documented shape", {
+  expect_s3_class(opossum, "data.frame")
+  expect_identical(dim(opossum), c(553L, 38L))
+  expect_identical(rownames(opossum), as.character(opossum$id))
+  expect_identical(names(opossum)[1:3], c("id", "sex", "age"))
+  expect_identical(anyDuplicated(opossum$id), 0L)
+  expect_false(anyNA(opossum$id))
+  expect_false(anyNA(opossum$sex))
+  expect_true(all(opossum$sex %in% c("1", "2")))
+  # the same 35 landmarks as the mice
+  expect_setequal(setdiff(names(opossum), c("id", "sex", "age")),
+                  names(ratones_morpho)[12:46])
+  # 22 animals have no trait measured, and 505 have every trait and covariate
+  traits <- setdiff(names(opossum), c("id", "sex", "age"))
+  expect_identical(sum(rowSums(is.na(opossum[traits])) == length(traits)), 22L)
+  expect_identical(sum(stats::complete.cases(opossum)), 505L)
 })
 
-test_that("the bundled pedigree builds a usable relationship matrix", {
-  dat <- ratones_morpho[c(1:20, 300:329), ]
-  dat$trait <- dat[["IS_PM"]]
-  d <- animal_design(trait ~ SEX + AGE, dat, pedigree = ratones_pedigree)
-  expect_identical(dim(d$A), c(nrow(dat), nrow(dat)))
-  expect_identical(rownames(d$A), as.character(dat$ID))
-  expect_identical(colnames(d$A), rownames(d$A))
-  expect_true(isSymmetric(d$A))
-  # every measured mouse is related to itself, and the pedigree has ancestors
-  expect_equal(unname(diag(d$A)), rep(1, nrow(dat)))
-  expect_true(any(d$A[upper.tri(d$A)] > 0))
-  expect_gt(min(eigen(d$A, symmetric = TRUE, only.values = TRUE)$values), 0)
+test_that("opossum_grm matches the animals and the complete subset is usable", {
+  expect_true(isSymmetric(opossum_grm))
+  expect_identical(rownames(opossum_grm), as.character(opossum$id))
+  expect_identical(colnames(opossum_grm), rownames(opossum_grm))
+  expect_equal(range(diag(opossum_grm)), c(0.2228368, 0.5942065),
+               tolerance = 1e-4)
+  # the full matrix is only positive semidefinite; the analysed subset is not
+  ok <- stats::complete.cases(opossum)
+  A <- opossum_grm[ok, ok]
+  expect_gt(min(eigen(A, symmetric = TRUE, only.values = TRUE)$values), 0)
 })
 
 test_that("the morphometrics are moderately integrated", {

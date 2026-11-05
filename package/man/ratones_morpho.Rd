@@ -6,8 +6,7 @@
 \title{Morphological and life-history data for five mouse lines}
 \format{
 A data frame with 329 rows and 46 columns. Row names are the
-  individual IDs (\code{as.character(ID)}), so they can be matched directly
-  to \code{\link{ratones_pedigree}} by \code{\link{animal_design}}.
+  individual IDs (\code{as.character(ID)}).
   \describe{
     \item{\code{.id}}{line label combining the selection direction and the
       line, e.g. \code{"control.t"};}
@@ -60,7 +59,7 @@ downwards in the \code{s} and \code{h} lines and upwards in the \code{sp} and
 \details{
 Every individual carries a full set of 35 cranial Euclidean distances,
 measured as the mean of two replicas, plus the catalogue numbers of its
-parents, which link the records to \code{\link{ratones_pedigree}}. The
+parents. The
 distances are moderately integrated: the first principal component of their
 correlation matrix explains about 40\% of the variance and the mean pairwise
 correlation is 0.35, so the traits carry partly independent information and
@@ -80,6 +79,6 @@ Penna, A., Melo, D., Bernardi, S., Oyarzabal, M. I., & Marroig,
   \doi{10.1111/evo.13304}
 }
 \seealso{
-\code{\link{ratones_pedigree}}, \code{\link{animal_design}}
+\code{\link{animal_design}}, \code{\link{lm_phen_cov}}
 }
 \keyword{datasets}

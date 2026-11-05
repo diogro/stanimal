@@ -23,7 +23,7 @@ lmm_animal(
   genetic_structure = c("unstructured", "factor"),
   n_factors = NULL,
   hs_global_scale = 1,
-  hs_slab_scale = 2,
+  hs_slab_scale = 1,
   column_decay = 0.8,
   ...
 )
@@ -63,7 +63,7 @@ lmm_animal(
 
 \item{n_factors}{Number of factors when \code{genetic_structure = "factor"}; for \code{residual_structure = "shared_factor"} these are shared by \code{G} and \code{E}. It is a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model falls back to \code{min(K - 1, max(2, floor(sqrt(K))), 20)} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.}
 
-\item{hs_global_scale, hs_slab_scale}{Scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale. Smaller \code{hs_global_scale} gives stronger shrinkage and fewer effective loadings; \code{hs_slab_scale} bounds the largest loading in the slab. Both must be positive and are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns that they are ignored. See Piironen and Vehtari (2017) on choosing the global scale from the expected number of nonzero loadings.}
+\item{hs_global_scale, hs_slab_scale}{Scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale. Smaller \code{hs_global_scale} gives stronger shrinkage and fewer effective loadings; \code{hs_slab_scale} bounds the largest loading in the slab, and through the row normalisation it sets the communality the prior expects, namely \code{hs_slab_scale^2 / (1 + hs_slab_scale^2)}: 0.5 at the default of 1, 0.8 at 2 and 0.94 at 4. Raise it when the factors are expected to absorb most of each trait's genetic variance, and report the value used, since the slab decides the posterior wherever the data are weak. Both must be positive and are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns that they are ignored. See Piironen and Vehtari (2017) on choosing the global scale from the expected number of nonzero loadings.}
 
 \item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 0.8 orders the columns without forcing a strict hierarchy; with \code{column_decay = 1} the columns are exchangeable a priori and their labels are free to swap between chains. How strong the decay needs to be depends on how many columns have to be told apart: with two columns of comparable size 0.8 is often too mild and 0.5 is what separates them, while a strong decay works against a model with many columns, because \code{0.5^(m - 1)} cuts the prior of the fifth column to a sixteenth of the first. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. Explicitly supplying it outside \code{genetic_structure = "factor"} warns that it is ignored.}
 

@@ -23,26 +23,28 @@ Requires R 4.0.0 or later.
 
 # Quick start with the bundled data
 
-The package ships the measurements and the pedigree of the mouse artificial-selection experiment of [Penna et al. (2017)](https://doi.org/10.1111/evo.13304):
+The package ships two real datasets, both measured on the same 35 cranial
+landmarks:
 
-- `ratones_morpho`: 329 mice with 35 cranial distances plus sex, age, generation and selection line, one row per individual;
-- `ratones_pedigree`: the pedigree of the 525 individuals of the experiment, ancestors included.
+- `ratones_morpho`: 329 mice from the artificial-selection experiment of [Penna et al. (2017)](https://doi.org/10.1111/evo.13304), with sex, age, generation and selection line;
+- `opossum` and `opossum_grm`: 553 opossums from [Porto et al. (2016)](https://doi.org/10.1534/genetics.116.189431), with sex and age, and the genomic relationship matrix built from their 3,696 markers.
 
-The rows of `ratones_morpho` are named with the individual IDs, so a relationship matrix built from the pedigree is matched to the records automatically:
+The rows of each data frame are named with the individual IDs, so the relationship matrix is matched to the records automatically:
 
 ```r
 library(stanimal)
 traits <- c("IS_PM", "NSL_NA", "PT_BA", "BA_OPI")
-ratones_morpho[traits] <- log(ratones_morpho[traits])   # morphometrics on the log scale
+opossum[traits] <- log(opossum[traits])   # morphometrics on the log scale
 
-# SEX + AGE + LIN: the lines were selected for body weight, so their means differ
-design <- animal_design(cbind(IS_PM, NSL_NA, PT_BA, BA_OPI) ~ SEX + AGE + LIN,
-                        ratones_morpho, pedigree = ratones_pedigree)
-fit <- lmm_animal(design$Y, design$X, design$A)
+design <- animal_design(cbind(IS_PM, NSL_NA, PT_BA, BA_OPI) ~ sex + age,
+                        opossum)
+fit <- lmm_animal(design$Y, design$X,
+                  opossum_grm[rownames(design$Y), rownames(design$Y)])
 fit$summary(c("h2", "corrG"))
 ```
 
-`examples/ratones.R` fits this model end to end and plots the results.
+`examples/ratones.R` fits the mouse model end to end and plots the results,
+building the relationship matrix from the dam and sire recorded on each mouse.
 
 # Usage
 

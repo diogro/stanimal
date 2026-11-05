@@ -20,14 +20,21 @@ options(mc.cores = 4)
 
 ## Data
 data(ratones_morpho)
-data(ratones_pedigree)
 # Three distances that span the skull and are not dominated by a single axis.
 traits <- c("IS_NSL", "NA_BR", "ZI_ZYGO")
 dat <- ratones_morpho
 dat[traits] <- log(dat[traits])   # morphometrics are fitted on the log scale
 
-design <- animal_design(cbind(IS_NSL, NA_BR, ZI_ZYGO) ~ SEX + AGE + LIN,
-                        dat, pedigree = ratones_pedigree)
+# Each mouse records its dam and sire, so the pedigree is rebuilt from the data
+# itself; parents that were never measured are added as founders by makeA().
+ped <- data.frame(id = as.character(dat$ID),
+                  sire = as.character(dat$PADRE),
+                  dam = as.character(dat$MADRE),
+                  stringsAsFactors = FALSE)
+
+design <- suppressWarnings(
+  animal_design(cbind(IS_NSL, NA_BR, ZI_ZYGO) ~ SEX + AGE + LIN,
+                dat, pedigree = ped))
 
 fit <- lmm_animal(design$Y, design$X, design$A, lkj_prior = 2,
                   iter = 800, warmup = 400, chains = 2)

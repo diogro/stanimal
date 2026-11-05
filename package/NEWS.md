@@ -1,3 +1,35 @@
+# stanimal 0.7.3
+
+## New data
+
+* `opossum` and `opossum_grm` ship with the package: 553 Monodelphis domestica
+  from Porto et al. (2016), measured on the same 35 cranial landmarks as
+  `ratones_morpho`, together with a genomic relationship matrix built from their
+  3,696 markers. The data are stored untransformed, as the published analysis
+  used them. The genomic matrix is the right relationship matrix for these
+  animals: the colony pedigree shipped with the archive puts every pair at a
+  kinship of 0.69 to 0.93, which leaves additive variance indistinguishable from
+  a shared colony effect.
+* `ratones_pedigree` is no longer bundled. `ratones_morpho` records each mouse's
+  dam and sire, so the pedigree can be rebuilt from the data itself (with
+  unmeasured parents added as founders by `makeA()`), as the examples do.
+
+## Changes in behaviour
+
+* `hs_slab_scale` now defaults to 1 instead of 2. Through the row normalisation
+  the slab sets the communality the prior expects,
+  `hs_slab_scale^2 / (1 + hs_slab_scale^2)`, so the old default asserted a
+  communality of 0.8 before any data arrived and the new one asserts 0.5. The
+  change bites only where the data are weak: with 600 individuals and 12 traits
+  the factor model recovers a simulated `G` to a relative MSE of 0.07 at a slab
+  of 2, while on the mice data the slab moved the posterior mean heritability
+  through 0.10, 0.21, 0.78 and 0.80 at slabs of 0.5, 1, 2 and 4. A factor fit is
+  therefore reproducible only if the slab is reported with it, and
+  `hs_slab_scale` is now documented as a statement about communality rather than
+  as a bound on a single loading. `hs_global_scale` is left at 1, since it turns
+  out to be nearly inert: across 0.1 to 4 the same mouse fit moved its
+  heritability between 0.785 and 0.790.
+
 # stanimal 0.7.2
 
 ## New features

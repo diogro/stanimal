@@ -12,6 +12,25 @@ test_that("ratones_morpho has the documented shape", {
   expect_true(all(ratones_morpho$SEX %in% c("F", "M")))
 })
 
+test_that("ratones_pedigree has the documented shape and covers the mice", {
+  expect_s3_class(ratones_pedigree, "data.frame")
+  expect_identical(names(ratones_pedigree), c("id", "sire", "dam"))
+  expect_identical(dim(ratones_pedigree), c(525L, 3L))
+  expect_equal(anyDuplicated(ratones_pedigree$id), 0L)
+  expect_true(all(ratones_morpho$ID %in% ratones_pedigree$id))
+  # founders and unknown parents are NA
+  expect_true(all(is.na(ratones_pedigree$sire) == is.na(ratones_pedigree$dam)))
+  expect_gt(sum(is.na(ratones_pedigree$sire)), 0)
+})
+
+test_that("ratones_morpho still carries the parent columns the pedigree needs", {
+  # The pedigree is rebuilt from these two columns in the examples, so they are
+  # part of the dataset's contract even though the pedigree ships separately.
+  expect_true(all(c("MADRE", "PADRE") %in% names(ratones_morpho)))
+  expect_true(all(ratones_morpho$PADRE %in% ratones_pedigree$id))
+  expect_true(all(ratones_morpho$MADRE %in% ratones_pedigree$id))
+})
+
 test_that("opossum has the documented shape", {
   expect_s3_class(opossum, "data.frame")
   expect_identical(dim(opossum), c(553L, 38L))

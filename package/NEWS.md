@@ -1,5 +1,15 @@
 # stanimal 0.7.3
 
+## Documentation
+
+* `ratones_morpho` and `ratones_pedigree` stay, with a weak identification
+  section explaining what they are: a long-term artificial-selection experiment
+  that happens to carry a pedigree, in which 329 individuals from 58 sires
+  identify a 35-trait `G` only weakly, so a heritability read from
+  `lmm_animal()` on these traits depends on the prior as much as on the data.
+  They remain the small worked example; `opossum` and `opossum_grm` are the
+  datasets for anything about genetic covariance.
+
 ## New data
 
 * `opossum` and `opossum_grm` ship with the package: 553 Monodelphis domestica

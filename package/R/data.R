@@ -56,7 +56,19 @@
 #'   G. (2017). The evolution of phenotypic integration: How directional
 #'   selection reshapes covariation in mice. Evolution, 71(10), 2370-2380.
 #'   \doi{10.1111/evo.13304}
-#' @seealso \code{\link{animal_design}}, \code{\link{lm_phen_cov}}
+#' @section Weak identification:
+#'   This is a long-term artificial-selection experiment that happens to carry a
+#'   pedigree, not a design built to estimate a genetic covariance matrix. The
+#'   animal model fits, but 329 individuals from 58 sires identify a 35-trait
+#'   \eqn{\mathbf{G}} only weakly: the split between the genetic and the
+#'   environmental covariance is left largely to the priors, so a heritability
+#'   read from \code{\link{lmm_animal}} on these traits depends on the prior as
+#'   much as on the data, and can move by a factor of eight between defensible
+#'   choices. Use it as the small worked example it is, and use
+#'   \code{\link{opossum}}, which carries marker genotypes and a design that does
+#'   identify \eqn{\mathbf{G}}, for anything about genetic covariance.
+#' @seealso \code{\link{ratones_pedigree}}, \code{\link{animal_design}},
+#'   \code{\link{lm_phen_cov}}
 #' @examples
 #' data(ratones_morpho)
 #' dim(ratones_morpho)
@@ -64,6 +76,44 @@
 #' traits <- names(ratones_morpho)[12:46]
 #' pc1_variance_share(log(as.matrix(ratones_morpho[, traits])))
 "ratones_morpho"
+
+#' Pedigree of the mouse lines
+#'
+#' The pedigree behind \code{\link{ratones_morpho}}: all 525 individuals of the
+#' experiment, including the ancestors that were never measured. Used to build
+#' the additive relationship matrix \code{A} for \code{\link{lmm_animal}}.
+#'
+#' The pedigree is complete and consistent, and the animal model will run on it,
+#' but it does not make the mice a quantitative-genetic design. Read the weak
+#' identification section of \code{\link{ratones_morpho}} before using it for
+#' anything beyond a worked example, and prefer \code{\link{opossum}} and its
+#' genomic relationship matrix \code{opossum_grm} when the genetic covariance is
+#' the object of inference.
+#'
+#' @format A data frame with 525 rows and 3 columns, in the order expected by
+#'   \code{\link{animal_design}}:
+#'   \describe{
+#'     \item{\code{id}}{individual catalogue number;}
+#'     \item{\code{sire}}{catalogue number of the sire, \code{NA} for a
+#'       founder or an unknown parent;}
+#'     \item{\code{dam}}{catalogue number of the dam, \code{NA} for a founder
+#'       or an unknown parent.}
+#'   }
+#' @source Penna et al. (2017), archived at Dryad under CC0 1.0
+#'   (\doi{10.5061/dryad.5gr8r}) and
+#'   distributed by the MIT-licensed companion
+#'   package \url{https://github.com/diogro/ratones}.
+#' @references Penna, A., Melo, D., Bernardi, S., Oyarzabal, M. I., & Marroig,
+#'   G. (2017). The evolution of phenotypic integration: How directional
+#'   selection reshapes covariation in mice. Evolution, 71(10), 2370-2380.
+#'   \doi{10.1111/evo.13304}
+#' @seealso \code{\link{ratones_morpho}}, \code{\link{makeA}}
+#' @examples
+#' data(ratones_pedigree)
+#' dim(ratones_pedigree)
+#' head(ratones_pedigree)
+#' sum(is.na(ratones_pedigree$sire))  # founders
+"ratones_pedigree"
 
 #' Opossum cranial measurements and a genomic relationship matrix
 #'

@@ -65,6 +65,20 @@ correlation matrix explains about 40\% of the variance and the mean pairwise
 correlation is 0.35, so the traits carry partly independent information and
 a handful of them is enough for a well-identified model.
 }
+\section{Weak identification}{
+
+  This is a long-term artificial-selection experiment that happens to carry a
+  pedigree, not a design built to estimate a genetic covariance matrix. The
+  animal model fits, but 329 individuals from 58 sires identify a 35-trait
+  \eqn{\mathbf{G}} only weakly: the split between the genetic and the
+  environmental covariance is left largely to the priors, so a heritability
+  read from \code{\link{lmm_animal}} on these traits depends on the prior as
+  much as on the data, and can move by a factor of eight between defensible
+  choices. Use it as the small worked example it is, and use
+  \code{\link{opossum}}, which carries marker genotypes and a design that does
+  identify \eqn{\mathbf{G}}, for anything about genetic covariance.
+}
+
 \examples{
 data(ratones_morpho)
 dim(ratones_morpho)
@@ -79,6 +93,7 @@ Penna, A., Melo, D., Bernardi, S., Oyarzabal, M. I., & Marroig,
   \doi{10.1111/evo.13304}
 }
 \seealso{
-\code{\link{animal_design}}, \code{\link{lm_phen_cov}}
+\code{\link{ratones_pedigree}}, \code{\link{animal_design}},
+  \code{\link{lm_phen_cov}}
 }
 \keyword{datasets}

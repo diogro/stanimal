@@ -1,5 +1,19 @@
 # stanimal 0.7.3
 
+## New data
+
+* `opossum` and `opossum_grm` ship with the package: 553 Monodelphis domestica
+  from Porto et al. (2016), measured on the same 35 cranial landmarks as
+  `ratones_morpho`, together with a genomic relationship matrix built from their
+  3,696 markers. The data are stored untransformed, as the published analysis
+  used them. The genomic matrix is the right relationship matrix for these
+  animals: the colony pedigree shipped with the archive puts every pair at a
+  kinship of 0.69 to 0.93, which leaves additive variance indistinguishable from
+  a shared colony effect.
+* `ratones_pedigree` is no longer bundled. `ratones_morpho` records each mouse's
+  dam and sire, so the pedigree can be rebuilt from the data itself (with
+  unmeasured parents added as founders by `makeA()`), as the examples do.
+
 ## Changes in behaviour
 
 * `hs_slab_scale` now defaults to 1 instead of 2. Through the row normalisation

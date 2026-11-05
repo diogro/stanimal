@@ -146,7 +146,6 @@ test_that("makeA matches nadiv::makeA", {
                      dam = c(NA, NA, NA)))
   compare(data.frame(id = letters[1:4], sire = c(NA, NA, "a", "c"),
                      dam = c(NA, NA, "b", "b")))
-  compare(ratones_pedigree)                                 # 525 individuals
 
   set.seed(4)
   n <- 200

@@ -19,7 +19,14 @@
 suppressMessages(pkgload::load_all("package", quiet = TRUE))
 
 data(ratones_morpho)
-data(ratones_pedigree)
+
+# ratones_morpho records each mouse's dam and sire, so the pedigree can be
+# rebuilt without a separate file; parents that were never measured are added
+# as founders by makeA().
+ratones_pedigree <- data.frame(id = as.character(ratones_morpho$ID),
+                               sire = as.character(ratones_morpho$PADRE),
+                               dam = as.character(ratones_morpho$MADRE),
+                               stringsAsFactors = FALSE)
 
 selections <- list(
   "6 face : 2 neuro" = c("NSL_ZI", "PM_MT", "IS_PNS", "NSL_ZS", "PT_EAM",
@@ -32,11 +39,11 @@ psi_model <- normalizePath("package/inst/stan/animalModelGFactorPsi.stan")
 build <- function(traits) {
   dat <- ratones_morpho
   dat[traits] <- log(dat[traits])
-  design <- animal_design(
+  design <- suppressWarnings(animal_design(
     stats::reformulate(c("SEX", "AGE", "LIN"),
                        response = sprintf("cbind(%s)",
                                           paste(traits, collapse = ", "))),
-    data = dat, pedigree = ratones_pedigree)
+    data = dat, pedigree = ratones_pedigree))
   resid <- sapply(traits, function(trait) {
     stats::residuals(stats::lm(
       stats::reformulate(c("SEX", "AGE", "LIN"), trait),

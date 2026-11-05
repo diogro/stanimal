@@ -18,7 +18,6 @@ options(mc.cores = 4)
 
 ## Data, and gaps to fill
 data(ratones_morpho)
-data(ratones_pedigree)
 # Four distances spanning the skull from the nasal suture to the basicranium.
 # All four are positively correlated with each other (0.18 to 0.49), which is
 # what lets a gap borrow from the other traits of the same mouse on top of what
@@ -27,8 +26,16 @@ traits <- c("IS_NSL", "NA_BR", "ZI_ZYGO", "BA_EAM")
 dat <- ratones_morpho
 dat[traits] <- log(dat[traits])   # morphometrics are fitted on the log scale
 
-design <- animal_design(cbind(IS_NSL, NA_BR, ZI_ZYGO, BA_EAM) ~ SEX + AGE + LIN,
-                        dat, pedigree = ratones_pedigree)
+# Each mouse records its dam and sire, so the pedigree is rebuilt from the data
+# itself; parents that were never measured are added as founders by makeA().
+ped <- data.frame(id = as.character(dat$ID),
+                  sire = as.character(dat$PADRE),
+                  dam = as.character(dat$MADRE),
+                  stringsAsFactors = FALSE)
+
+design <- suppressWarnings(
+  animal_design(cbind(IS_NSL, NA_BR, ZI_ZYGO, BA_EAM) ~ SEX + AGE + LIN,
+                dat, pedigree = ped))
 Y <- design$Y
 truth <- Y                         # kept only to score the imputation below
 

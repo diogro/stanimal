@@ -13,6 +13,9 @@
 #' @param Y,X,A Relationship matrix and data, as in \code{\link{lmm_animal}}.
 #'   \code{lmm_animal_laplace()} needs \code{A}; \code{lm_phen_cov_laplace()}
 #'   does not take one.
+#' @param covariance_structure Covariance structure for
+#'   \code{\link{lm_phen_cov_laplace}}, as in \code{\link{lm_phen_cov}}:
+#'   \code{"unstructured"} (default) or \code{"factor"}.
 #' @return An object of class \code{stanimal_laplace}, a list with
 #'   \itemize{
 #'     \item \code{summary} a data frame of posterior means and standard

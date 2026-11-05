@@ -10,15 +10,14 @@
 #'
 #' Every individual carries a full set of 35 cranial Euclidean distances,
 #' measured as the mean of two replicas, plus the catalogue numbers of its
-#' parents, which link the records to \code{\link{ratones_pedigree}}. The
+#' parents. The
 #' distances are moderately integrated: the first principal component of their
 #' correlation matrix explains about 40\% of the variance and the mean pairwise
 #' correlation is 0.35, so the traits carry partly independent information and
 #' a handful of them is enough for a well-identified model.
 #'
 #' @format A data frame with 329 rows and 46 columns. Row names are the
-#'   individual IDs (\code{as.character(ID)}), so they can be matched directly
-#'   to \code{\link{ratones_pedigree}} by \code{\link{animal_design}}.
+#'   individual IDs (\code{as.character(ID)}).
 #'   \describe{
 #'     \item{\code{.id}}{line label combining the selection direction and the
 #'       line, e.g. \code{"control.t"};}
@@ -57,7 +56,7 @@
 #'   G. (2017). The evolution of phenotypic integration: How directional
 #'   selection reshapes covariation in mice. Evolution, 71(10), 2370-2380.
 #'   \doi{10.1111/evo.13304}
-#' @seealso \code{\link{ratones_pedigree}}, \code{\link{animal_design}}
+#' @seealso \code{\link{animal_design}}, \code{\link{lm_phen_cov}}
 #' @examples
 #' data(ratones_morpho)
 #' dim(ratones_morpho)
@@ -66,33 +65,79 @@
 #' pc1_variance_share(log(as.matrix(ratones_morpho[, traits])))
 "ratones_morpho"
 
-#' Pedigree of the mouse lines
+#' Opossum cranial measurements and a genomic relationship matrix
 #'
-#' The pedigree behind \code{\link{ratones_morpho}}: all 525 individuals of the
-#' experiment, including the ancestors that were never measured. Used to build
-#' the additive relationship matrix \code{A} for \code{\link{lmm_animal}}.
+#' Cranial Euclidean distances and individual information for opossums from the
+#' colony of the South Texas Diabetes and Obesity Institute, analysed by
+#' \cite{Porto et al. (2016)}. The traits are the same 35 landmarks as
+#' \code{\link{ratones_morpho}}, so the two datasets can be compared directly.
 #'
-#' @format A data frame with 525 rows and 3 columns, in the order expected by
-#'   \code{\link{animal_design}}:
+#' Unlike the mice, these animals carry marker genotypes, so the relationship
+#' matrix is genomic rather than genealogical. That matters for these data: the
+#' colony pedigree shipped with the original archive gives every pair a kinship
+#' coefficient between 0.69 and 0.93, which leaves additive variance
+#' indistinguishable from a shared colony effect. The genomic matrix separates
+#' relatives from non-relatives and makes the genetic covariance identifiable.
+#'
+#' The distances are stored as measured. \cite{Porto et al. (2016)} analysed them
+#' untransformed, and the phenomenon is confirmed by their published phenotypic
+#' covariance, whose diagonal correlates 0.834 with the variances of the raw
+#' distances against 0.046 with those of their logarithms.
+#'
+#' @format Two objects.
 #'   \describe{
-#'     \item{\code{id}}{individual catalogue number;}
-#'     \item{\code{sire}}{catalogue number of the sire, \code{NA} for a
-#'       founder or an unknown parent;}
-#'     \item{\code{dam}}{catalogue number of the dam, \code{NA} for a founder
-#'       or an unknown parent.}
+#'     \item{\code{opossum}}{a data frame with 553 rows and 38 columns:
+#'       \code{id}, \code{sex}, \code{age} in days, and the 35 cranial distances
+#'       as measured, named after the landmarks they span, with underscores as in
+#'       \code{\link{ratones_morpho}}. Row names are the individual IDs. 22
+#'       individuals are missing every trait, which \code{\link{lmm_animal}}
+#'       and \code{\link{lm_phen_cov}} handle, and 505 have no missing value in
+#'       any trait or covariate.}
+#'     \item{\code{opossum_grm}}{a 553 by 553 genomic relationship matrix
+#'       computed as \eqn{ZZ^\top/m} from 3,696 markers, \eqn{Z} being the
+#'       marker matrix centred by twice the allele frequency and \eqn{m} the
+#'       number of markers. Rows and columns are named with the individual IDs
+#'       of \code{opossum}, so the rows of the subset being analysed can be
+#'       passed as the \code{A} argument of \code{\link{lmm_animal}} directly,
+#'       as in the example. The full matrix is only positive semidefinite, so
+#'       pass \code{blend_A = TRUE} if it is given whole. The diagonal runs from
+#'       0.22 to 0.59, as expected for a centred marker matrix rather than a
+#'       pedigree.}
 #'   }
-#' @source Penna et al. (2017), archived at Dryad under CC0 1.0
-#'   (\doi{10.5061/dryad.5gr8r}) and
-#'   distributed by the MIT-licensed companion
-#'   package \url{https://github.com/diogro/ratones}.
-#' @references Penna, A., Melo, D., Bernardi, S., Oyarzabal, M. I., & Marroig,
-#'   G. (2017). The evolution of phenotypic integration: How directional
-#'   selection reshapes covariation in mice. Evolution, 71(10), 2370-2380.
-#'   \doi{10.1111/evo.13304}
-#' @seealso \code{\link{ratones_morpho}}, \code{\link{animal_design}}
+#' @source Porto, A., Schmelter, R., VandeBerg, J. L., Marroig, G., & Cheverud,
+#'   J. M. (2016). Evolution of the genotype-to-phenotype map and the cost of
+#'   pleiotropy in mammals. Genetics, 204(4), 1601-1612.
+#'   \doi{10.1534/genetics.116.189431}. Data deposited on figshare as
+#'   \dQuote{Data - Genetics - Porto et al 2016},
+#'   \url{https://figshare.com/articles/dataset/4055961}.
+#'
+#'   The coded marker files in that archive carry no individual identifiers, so
+#'   the animals are matched to the cranial measurements by row order. The two
+#'   sources agree in length at 553, and the identities are attached here as the
+#'   row and column names of \code{opossum_grm}.
+#' @references Porto, A., Schmelter, R., VandeBerg, J. L., Marroig, G., &
+#'   Cheverud, J. M. (2016). Evolution of the genotype-to-phenotype map and the
+#'   cost of pleiotropy in mammals. Genetics, 204(4), 1601-1612.
+#'   \doi{10.1534/genetics.116.189431}
+#' @seealso \code{\link{ratones_morpho}}, \code{\link{lmm_animal}}
+#' @aliases opossum_grm
 #' @examples
-#' data(ratones_pedigree)
-#' dim(ratones_pedigree)
-#' head(ratones_pedigree)
-#' sum(is.na(ratones_pedigree$sire))  # founders
-"ratones_pedigree"
+#' data(opossum)
+#' dim(opossum)
+#' dim(opossum_grm)
+#' traits <- setdiff(names(opossum), c("id", "sex", "age"))
+#' \dontrun{
+#' # Phenotypic covariance of four traits, no pedigree needed
+#' lm_phen_cov(as.matrix(opossum[, traits[1:4]]),
+#'             model.matrix(~ sex + age, opossum))
+#'
+#' # Genomic animal model on the same four traits
+#' design <- animal_design(
+#'   stats::reformulate(c("sex", "age"),
+#'                      response = sprintf("cbind(%s)", paste(traits[1:4],
+#'                                                            collapse = ", "))),
+#'   data = opossum, pedigree = NULL)
+#' lmm_animal(design$Y, design$X, opossum_grm[rownames(design$Y),
+#'                                            rownames(design$Y)])
+#' }
+"opossum"

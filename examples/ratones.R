@@ -2,9 +2,8 @@
 #
 # ratones_morpho ships with the package (Penna et al. 2017): 35 cranial
 # distances for 329 mice from five artificial selection lines, with sex, age,
-# generation and line, plus ratones_pedigree, the pedigree of the 525
-# individuals in the experiment. Four distances are fitted here, with the
-# relationship matrix built from the pedigree by animal_design().
+# generation and line. Four distances are fitted here, with the relationship
+# matrix built by animal_design() from the dam and sire recorded on each mouse.
 #
 # Run from the project root:
 #   Rscript examples/ratones.R
@@ -25,7 +24,6 @@ library(stanimal)
 
 ## Data
 data(ratones_morpho)
-data(ratones_pedigree)
 dat <- ratones_morpho
 cat(nrow(dat), "mice,", ncol(dat) - 11, "cranial distances\n")
 table(dat$selection)
@@ -38,18 +36,27 @@ traits <- c("IS_PM", "NSL_NA", "PT_BA", "BA_OPI")
 dat[traits] <- log(dat[traits])
 round(cor(dat[traits]), 2)
 
+# Each mouse records its dam (MADRE) and sire (PADRE), so the pedigree can be
+# rebuilt from ratones_morpho itself; parents that were never measured are added
+# as founders by makeA().
+ped <- data.frame(id = as.character(dat$ID),
+                  sire = as.character(dat$PADRE),
+                  dam = as.character(dat$MADRE),
+                  stringsAsFactors = FALSE)
+
 # animal_design() builds Y, X and A in one call: the formula gives the fixed
 # effects (sex, age at death and selection line -- the lines differ in body weight
-# by construction, so their means must be modelled) and pedigree =
-# ratones_pedigree adds the relationship matrix. The rows of ratones_morpho are
-# named with the individual IDs, so the pedigree -- which also contains the
-# unmeasured ancestors -- is matched to the rows of Y automatically.
-design <- animal_design(cbind(IS_PM, NSL_NA, PT_BA, BA_OPI) ~ SEX + AGE + LIN,
-                        dat, pedigree = ratones_pedigree)
+# by construction, so their means must be modelled) and pedigree = ped adds the
+# relationship matrix. The rows of ratones_morpho are named with the individual
+# IDs, so the pedigree is matched to the rows of Y automatically.
+design <- suppressWarnings(
+  animal_design(cbind(IS_PM, NSL_NA, PT_BA, BA_OPI) ~ SEX + AGE + LIN,
+                dat, pedigree = ped))
 cat(nrow(design$Y), "mice with records,", ncol(design$Y), "traits,",
     ncol(design$X), "fixed effects\n")
-cat("pedigree:", nrow(ratones_pedigree), "individuals,",
-    nrow(ratones_pedigree) - nrow(design$Y), "of them ancestors without records\n")
+cat("pedigree:", nrow(ped), "measured mice,",
+    length(setdiff(unique(c(ped$sire, ped$dam)), ped$id)),
+    "of their parents added as founders\n")
 dim(design$A)
 range(design$A)
 
@@ -114,8 +121,9 @@ dev.off()
 # (see ?size_shape).
 ss <- size_shape(dat[traits], n_shape = length(traits) - 1L)
 dat <- cbind(dat, ss$scores)
-design_ss <- animal_design(cbind(size, shape1, shape2, shape3) ~ SEX + AGE + LIN,
-                           dat, pedigree = ratones_pedigree)
+design_ss <- suppressWarnings(
+  animal_design(cbind(size, shape1, shape2, shape3) ~ SEX + AGE + LIN,
+                dat, pedigree = ped))
 
 time_size_shape <- system.time(
   fit_ss <- lmm_animal(design_ss$Y, design_ss$X, design_ss$A, lkj_prior = 2,

@@ -72,6 +72,10 @@ posterior standard deviations. A whole number.}
 \item{seed}{Optional seed for the draws.}
 
 \item{...}{additional parameters for stan sampling}
+
+\item{covariance_structure}{Covariance structure for
+\code{\link{lm_phen_cov_laplace}}, as in \code{\link{lm_phen_cov}}:
+\code{"unstructured"} (default) or \code{"factor"}.}
 }
 \value{
 An object of class \code{stanimal_laplace}, a list with

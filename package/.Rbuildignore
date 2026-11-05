@@ -6,5 +6,4 @@ Rplots\.pdf$
 # build artifacts and must not reach the tarball (R CMD check flags them).
 ^inst/stan/animalModelG$
 ^inst/stan/animalModelGFactor$
-^inst/stan/animalModelGFactorPsi$
 ^inst/stan/.*\.(o|hpp|rds)$

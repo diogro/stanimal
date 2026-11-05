@@ -1,0 +1,1042 @@
+
+R version 4.6.0 (2026-04-24) -- "Because it was There"
+Copyright (C) 2026 The R Foundation for Statistical Computing
+Platform: aarch64-apple-darwin23
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> pkgname <- "stanimal"
+> source(file.path(R.home("share"), "R", "examples-header.R"))
+> options(warn = 1)
+> library('stanimal')
+> 
+> base::assign(".oldSearch", base::search(), pos = 'CheckExEnv')
+> base::assign(".old_wd", base::getwd(), pos = 'CheckExEnv')
+> cleanEx()
+> nameEx("animal_design")
+> ### * animal_design
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: animal_design
+> ### Title: Response and design matrices from a model formula
+> ### Aliases: animal_design
+> 
+> ### ** Examples
+> 
+> dat <- data.frame(trait = rnorm(6), x = rnorm(6),
++                   sex = rep(c(0, 1), each = 3), id = 1:6)
+> rownames(dat) <- dat$id
+> design <- animal_design(trait ~ sex + x, dat)
+> design$Y
+       trait
+1 -0.6264538
+2  0.1836433
+3 -0.8356286
+4  1.5952808
+5  0.3295078
+6 -0.8204684
+> design$X
+  (Intercept) sex          x
+1           1   0  0.4874291
+2           1   0  0.7383247
+3           1   0  0.5757814
+4           1   1 -0.3053884
+5           1   1  1.5117812
+6           1   1  0.3898432
+attr(,"assign")
+[1] 0 1 2
+> 
+> # formulas written for lme4 work as they are; the random term is ignored
+> animal_design(trait ~ sex + (1 | id), dat)
+$Y
+       trait
+1 -0.6264538
+2  0.1836433
+3 -0.8356286
+4  1.5952808
+5  0.3295078
+6 -0.8204684
+
+$X
+  (Intercept) sex
+1           1   0
+2           1   0
+3           1   0
+4           1   1
+5           1   1
+6           1   1
+attr(,"assign")
+[1] 0 1
+
+attr(,"individuals")
+[1] "1" "2" "3" "4" "5" "6"
+> 
+> # relatedness from a pedigree (first three columns: id, sire, dam)
+> ped <- data.frame(id = 1:6, sire = c(0, 0, 1, 1, 4, 4),
++                   dam = c(0, 0, 2, 2, 3, 5))
+> design <- animal_design(trait ~ sex, dat, pedigree = ped)
+> round(design$A, 2)
+    1   2    3    4    5    6
+1 1.0 0.0 0.50 0.50 0.50 0.50
+2 0.0 1.0 0.50 0.50 0.50 0.50
+3 0.5 0.5 1.00 0.50 0.75 0.62
+4 0.5 0.5 0.50 1.00 0.75 0.88
+5 0.5 0.5 0.75 0.75 1.25 1.00
+6 0.5 0.5 0.62 0.88 1.00 1.38
+> 
+> # related founders: pass their relationship matrix as Gamma
+> Gamma <- matrix(c(1, 0.5, 0.5, 1), 2,
++                 dimnames = list(c("1", "2"), c("1", "2")))
+> design <- animal_design(trait ~ sex, dat, pedigree = ped, Gamma = Gamma)
+> round(design$A, 2)
+     1    2    3    4    5    6
+1 1.00 0.50 0.75 0.75 0.75 0.75
+2 0.50 1.00 0.75 0.75 0.75 0.75
+3 0.75 0.75 1.25 0.75 1.00 0.88
+4 0.75 0.75 0.75 1.25 1.00 1.12
+5 0.75 0.75 1.00 1.00 1.38 1.19
+6 0.75 0.75 0.88 1.12 1.19 1.50
+> 
+> # relatedness from genotypes (individuals in rows, markers in columns)
+> M <- matrix(rbinom(6 * 40, 2, 0.3), 6,
++             dimnames = list(as.character(1:6), NULL))
+> design <- animal_design(trait ~ sex, dat, genotypes = M, blend = 0.01)
+> dim(design$A)
+[1] 6 6
+> 
+> 
+> 
+> cleanEx()
+> nameEx("back_transform")
+> ### * back_transform
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: back_transform
+> ### Title: Back-transform posterior draws to the original trait scale
+> ### Aliases: back_transform
+> 
+> ### ** Examples
+> 
+> ss <- size_shape(cbind(a = rnorm(20), b = rnorm(20), c = rnorm(20)))
+> k <- length(ss$raw_traits)
+> names_mat <- function(var) sprintf(paste0(var, "[%d,%d]"),
++                                    rep(seq_len(k), k), rep(seq_len(k), each = k))
+> # a real fit supplies G and E; here the same draw is repeated
+> G <- random_covariance(k, min_var = 0.5, max_var = 1.5)
+> E <- random_covariance(k, min_var = 0.5, max_var = 1.5)
+> m <- cbind(matrix(rep(as.vector(G), 4), 4, byrow = TRUE),
++            matrix(rep(as.vector(E), 4), 4, byrow = TRUE))
+> colnames(m) <- c(names_mat("G"), names_mat("E"))
+> post <- back_transform(m, ss)
+> dim(post$G)                    # traits x traits x draws
+[1] 3 3 4
+> draws_mean(post, "G")          # posterior mean G on the trait scale
+          a        b         c
+a 1.3271351 1.500825 0.7462116
+b 1.5008251 3.087045 1.2385075
+c 0.7462116 1.238508 2.0412791
+> draws_mean(post, "h2")
+        a         b         c 
+0.5038490 0.4850130 0.8520711 
+> 
+> 
+> 
+> cleanEx()
+> nameEx("breeding_values")
+> ### * breeding_values
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: breeding_values
+> ### Title: Estimated breeding values (BLUPs)
+> ### Aliases: breeding_values print.stanimal_breeding_values
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D fit <- lmm_animal(Y, X, A, iter = 1000, warmup = 500,
+> ##D                   chains = 2, cores = 2, refresh = 0)
+> ##D ebv <- breeding_values(fit)
+> ##D ebv                                   # first individuals, with reliability
+> ##D head(ebv$values)                      # individuals x traits
+> ##D range(ebv$reliability)
+> ##D 
+> ##D # The predicted values are on the trait's scale, so they can be ranked
+> ##D order(ebv$values[, 1], decreasing = TRUE)[1:5]
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("draws_mean")
+> ### * draws_mean
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: draws_mean
+> ### Title: Posterior means or quantiles of a fit, as matrices
+> ### Aliases: draws_mean draws_quantile
+> 
+> ### ** Examples
+> 
+> k <- 2
+> vars <- sprintf("G[%d,%d]", rep(1:k, k), rep(1:k, each = k))
+> m <- cbind(matrix(stats::rnorm(40), 10, 4, dimnames = list(NULL, vars)),
++            matrix(stats::rnorm(40), 10, 4,
++                   dimnames = list(NULL, sub("G", "E", vars))))
+> draws_mean(m, "G", traits = c("t1", "t2"))
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in sqrt(.diag_draws(components$G)) : NaNs produced
+Warning in sqrt(.diag_draws(components$E)) : NaNs produced
+Warning in sqrt(.diag_draws(components$P)) : NaNs produced
+          t1         t2
+t1 0.1322028 -0.1336732
+t2 0.2488450  0.1207302
+> round(draws_mean(m, "G", traits = c("t1", "t2")), 2)
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in sqrt(.diag_draws(components$G)) : NaNs produced
+Warning in sqrt(.diag_draws(components$E)) : NaNs produced
+Warning in sqrt(.diag_draws(components$P)) : NaNs produced
+     t1    t2
+t1 0.13 -0.13
+t2 0.25  0.12
+> draws_quantile(m, "h2", traits = c("t1", "t2"))
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in sqrt(.diag_draws(components$G)) : NaNs produced
+Warning in sqrt(.diag_draws(components$E)) : NaNs produced
+Warning in sqrt(.diag_draws(components$P)) : NaNs produced
+          2.5%    97.5%
+t1 -2.24778102 4.949873
+t2  0.07066562 4.161727
+> 
+> 
+> 
+> cleanEx()
+> nameEx("fit_draws")
+> ### * fit_draws
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: fit_draws
+> ### Title: Posterior draws of a fit, shaped by trait
+> ### Aliases: fit_draws
+> 
+> ### ** Examples
+> 
+> k <- 2
+> vars <- sprintf("G[%d,%d]", rep(1:k, k), rep(1:k, each = k))
+> m <- cbind(matrix(stats::rnorm(40), 10, 4, dimnames = list(NULL, vars)),
++            matrix(stats::rnorm(40), 10, 4,
++                   dimnames = list(NULL, sub("G", "E", vars))))
+> d <- fit_draws(m, traits = c("t1", "t2"))
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in FUN(array(newX[, i], d.call, dn.call), ...) :
+  diag(V) had non-positive or NA entries; the non-finite result may be dubious
+Warning in sqrt(.diag_draws(components$G)) : NaNs produced
+Warning in sqrt(.diag_draws(components$E)) : NaNs produced
+Warning in sqrt(.diag_draws(components$P)) : NaNs produced
+> names(d)
+ [1] "G"       "E"       "P"       "corrG"   "corrE"   "corrP"   "h2"     
+ [8] "sigma_G" "sigma_E" "sigma_P"
+> dim(d$G)                       # traits x traits x draws
+[1]  2  2 10
+> round(draws_mean(d, "G"), 2)   # posterior mean G, as a matrix
+     t1    t2
+t1 0.13 -0.13
+t2 0.25  0.12
+> round(draws_mean(d, "corrG"), 2)
+    t1  t2
+t1   1 NaN
+t2 NaN   1
+> 
+> 
+> 
+> cleanEx()
+> nameEx("fit_loo")
+> ### * fit_loo
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: fit_loo
+> ### Title: Leave-one-out cross-validation for a fit
+> ### Aliases: fit_loo loo.CmdStanMCMC loo.stanfit
+> ### Keywords: internal
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D fit1 <- lmm_animal(Y, X, A)
+> ##D fit2 <- lmm_animal(Y, X, A, genetic_structure = "factor", n_factors = 2)
+> ##D loo::loo_compare(fit_loo(fit1), fit_loo(fit2))
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("genomic_relationship")
+> ### * genomic_relationship
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: genomic_relationship
+> ### Title: Genomic relationship matrix from genotype data
+> ### Aliases: genomic_relationship
+> 
+> ### ** Examples
+> 
+> set.seed(1)
+> M <- matrix(rbinom(50 * 500, 2, 0.3), nrow = 50)
+> G <- genomic_relationship(M, blend = 0.01)
+> dim(G)
+[1] 50 50
+> 
+> 
+> 
+> cleanEx()
+> nameEx("imputed_data")
+> ### * imputed_data
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: imputed_data
+> ### Title: Completed datasets from a fit with missing values
+> ### Aliases: imputed_data print.stanimal_imputation
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D Y[c(2, 9), 1] <- NA
+> ##D fit <- lmm_animal(Y, X, A)
+> ##D imp <- imputed_data(fit, ndraws = 200)
+> ##D imp                                   # each gap with its interval
+> ##D dim(imp$Y)                            # individuals x traits x draws
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("lm_phen_cov")
+> ### * lm_phen_cov
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: lm_phen_cov
+> ### Title: Fit a Bayesian phenotypic covariance matrix
+> ### Aliases: lm_phen_cov
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D set.seed(1)
+> ##D n <- 60
+> ##D X <- cbind(Intercept = 1, sex = rbinom(n, 1, 0.5))
+> ##D P <- random_covariance(3, min_var = 0.8, max_var = 1.2,
+> ##D                        trait_names = c("t1", "t2", "t3"))
+> ##D B <- rbind(c(10, 9, 11), c(1, -0.5, 0.3))
+> ##D Y <- X %*% B + matrix(rnorm(n * 3), n) %*% chol(P)
+> ##D colnames(Y) <- c("t1", "t2", "t3")
+> ##D 
+> ##D fit <- lm_phen_cov(Y, X, iter = 1000, warmup = 500,
+> ##D                    chains = 2, cores = 2, refresh = 0)
+> ##D fit$summary(c("P", "corrP", "sigma_P"))
+> ##D round(draws_mean(fit, "P"), 2)
+> ##D 
+> ##D # Sparse factor P
+> ##D factor_fit <- lm_phen_cov(Y, X, covariance_structure = "factor",
+> ##D                           n_factors = 2, iter = 1000, warmup = 500,
+> ##D                           chains = 2, cores = 2, refresh = 0)
+> ##D factor_fit$summary(c("P", "loadings", "factor_magnitude"))
+> ##D dim(fit_draws(factor_fit)$loadings)
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("lmm_animal")
+> ### * lmm_animal
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: lmm_animal
+> ### Title: Fit linear mixed animal model
+> ### Aliases: lmm_animal
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D set.seed(1)
+> ##D n <- 40
+> ##D ped <- data.frame(
+> ##D   id = 1:n,
+> ##D   sire = c(rep(NA, 20), sample(1:10, 20, replace = TRUE)),
+> ##D   dam = c(rep(NA, 20), sample(11:20, 20, replace = TRUE))
+> ##D )
+> ##D A <- makeA(ped)
+> ##D X <- cbind(Intercept = 1, sex = rbinom(n, 1, 0.5))
+> ##D G <- random_covariance(2, min_var = 0.8, max_var = 1.2,
+> ##D                        trait_names = c("t1", "t2"))
+> ##D E <- random_covariance(2, min_var = 0.8, max_var = 1.2,
+> ##D                        trait_names = c("t1", "t2"))
+> ##D Y <- X %*% rbind(c(10, 9), c(1, -0.5)) +
+> ##D   t(chol(A)) %*% matrix(rnorm(n * 2), n) %*% chol(G) +
+> ##D   matrix(rnorm(n * 2), n) %*% chol(E)
+> ##D colnames(Y) <- c("t1", "t2")
+> ##D 
+> ##D fit <- lmm_animal(Y, X, A, iter = 1000, warmup = 500,
+> ##D                   chains = 2, cores = 2, refresh = 0)
+> ##D fit$summary(c("G", "E", "h2"))
+> ##D round(draws_mean(fit, "G"), 2)
+> ##D 
+> ##D # Univariate model with the h2 parametrization
+> ##D fit_h2 <- lmm_animal(Y[, 1], X, A, parametrization = "h2",
+> ##D                      iter = 1000, warmup = 500,
+> ##D                      chains = 2, cores = 2)
+> ##D 
+> ##D # Sparse factor G
+> ##D factor_fit <- lmm_animal(Y, X, A, genetic_structure = "factor",
+> ##D                          n_factors = 1, iter = 1000, warmup = 500,
+> ##D                          chains = 2, cores = 2)
+> ##D factor_fit$summary(c("loadings", "factor_magnitude"))
+> ##D dim(fit_draws(factor_fit)$loadings)
+> ##D 
+> ##D # Shared factors for G and E
+> ##D shared_fit <- lmm_animal(Y, X, A, genetic_structure = "factor",
+> ##D                          residual_structure = "shared_factor",
+> ##D                          n_factors = 1, iter = 1000, warmup = 500,
+> ##D                          chains = 2, cores = 2)
+> ##D shared_fit$summary(c("factor_heritability", "genetic_uniqueness"))
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("makeA")
+> ### * makeA
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: makeA
+> ### Title: Additive relationship matrix from a pedigree
+> ### Aliases: makeA
+> 
+> ### ** Examples
+> 
+> ped <- data.frame(id = 1:6, sire = c(0, 0, 1, 1, 4, 4),
++                   dam = c(0, 0, 2, 2, 3, 5))
+> A <- makeA(ped)
+> round(A, 3)
+    1   2     3     4    5     6
+1 1.0 0.0 0.500 0.500 0.50 0.500
+2 0.0 1.0 0.500 0.500 0.50 0.500
+3 0.5 0.5 1.000 0.500 0.75 0.625
+4 0.5 0.5 0.500 1.000 0.75 0.875
+5 0.5 0.5 0.750 0.750 1.25 1.000
+6 0.5 0.5 0.625 0.875 1.00 1.375
+> # full-sib mating: individual 6 is the offspring of the sibs 4 and 5
+> ped2 <- data.frame(id = 1:6, sire = c(NA, NA, NA, 1, 1, 4),
++                    dam = c(NA, NA, NA, 2, 2, 5))
+> diag(makeA(ped2))   # 1.25 for the inbred individual
+   1    2    3    4    5    6 
+1.00 1.00 1.00 1.00 1.00 1.25 
+> 
+> # related founders: founders 1 and 2 have relationship 0.5
+> Gamma <- matrix(c(1, 0.5, 0.5, 1), 2,
++                 dimnames = list(c("1", "2"), c("1", "2")))
+> ped3 <- data.frame(id = 1:4, sire = c(NA, NA, 1, 1),
++                    dam = c(NA, NA, 2, 2))
+> A3 <- makeA(ped3, Gamma = Gamma)
+> round(A3, 3)
+     1    2    3    4
+1 1.00 0.50 0.75 0.75
+2 0.50 1.00 0.75 0.75
+3 0.75 0.75 1.25 0.75
+4 0.75 0.75 0.75 1.25
+> 
+> # founder groups: 1 and 2 in group A, 3 in group B
+> Gamma_groups <- matrix(c(1, 0.2, 0.2, 1), 2,
++                        dimnames = list(c("A", "B"), c("A", "B")))
+> ped4 <- data.frame(id = 1:5, sire = c(NA, NA, NA, 1, 1),
++                    dam = c(NA, NA, NA, 2, 3))
+> round(makeA(ped4, Gamma = Gamma_groups, groups = c("A", "A", "B")), 3)
+    1   2   3   4   5
+1 1.0 1.0 0.2 1.0 0.6
+2 1.0 1.0 0.2 1.0 0.6
+3 0.2 0.2 1.0 0.2 0.6
+4 1.0 1.0 0.2 1.5 0.6
+5 0.6 0.6 0.6 0.6 1.1
+> 
+> 
+> 
+> cleanEx()
+> nameEx("opossum")
+> ### * opossum
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: opossum
+> ### Title: Opossum cranial measurements and a genomic relationship matrix
+> ### Aliases: opossum opossum_grm
+> ### Keywords: datasets
+> 
+> ### ** Examples
+> 
+> data(opossum)
+> dim(opossum)
+[1] 553  38
+> dim(opossum_grm)
+[1] 553 553
+> traits <- setdiff(names(opossum), c("id", "sex", "age"))
+> ## Not run: 
+> ##D # Phenotypic covariance of four traits, no pedigree needed
+> ##D lm_phen_cov(as.matrix(opossum[, traits[1:4]]),
+> ##D             model.matrix(~ sex + age, opossum))
+> ##D 
+> ##D # Genomic animal model on the same four traits
+> ##D design <- animal_design(
+> ##D   stats::reformulate(c("sex", "age"),
+> ##D                      response = sprintf("cbind(%s)", paste(traits[1:4],
+> ##D                                                            collapse = ", "))),
+> ##D   data = opossum, pedigree = NULL)
+> ##D lmm_animal(design$Y, design$X, opossum_grm[rownames(design$Y),
+> ##D                                            rownames(design$Y)])
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("pc1_variance_share")
+> ### * pc1_variance_share
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: pc1_variance_share
+> ### Title: Share of variance explained by the first principal component
+> ### Aliases: pc1_variance_share
+> 
+> ### ** Examples
+> 
+> set.seed(1)
+> G <- random_covariance(3, method = "factor", integration = 0.8)
+> Y <- matrix(rnorm(200 * 3), 200, 3) %*% chol(G)
+> pc1_variance_share(Y)                     # high: one dominant size axis
+[1] 0.9200658
+> pc1_variance_share(matrix(rnorm(600), 200, 3))  # close to 1 / 3
+[1] 0.3555601
+> 
+> 
+> 
+> cleanEx()
+> nameEx("plot_corr")
+> ### * plot_corr
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: plot_corr
+> ### Title: Heatmap of a correlation matrix
+> ### Aliases: plot_corr
+> 
+> ### ** Examples
+> 
+> plot_corr(stats::cor(mtcars[, 1:5]), "mtcars")
+> 
+> 
+> 
+> cleanEx()
+> nameEx("posterior_predictive")
+> ### * posterior_predictive
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: posterior_predictive
+> ### Title: Replicate the response from the posterior
+> ### Aliases: posterior_predictive print.stanimal_yrep plot.stanimal_yrep
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D pp <- posterior_predictive(fit)
+> ##D pp                      # observed against replicated summaries
+> ##D plot(pp)                # and the distributions behind them
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("random_covariance")
+> ### * random_covariance
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: random_covariance
+> ### Title: Random covariance matrices
+> ### Aliases: random_covariance
+> 
+> ### ** Examples
+> 
+> set.seed(1)
+> G <- random_covariance(3, min_var = 0.5, max_var = 1.5)
+> round(G, 2)
+       trait1 trait2 trait3
+trait1   0.77   0.51   0.19
+trait2   0.51   0.87  -0.43
+trait3   0.19  -0.43   1.07
+> round(cov2cor(G), 2)
+       trait1 trait2 trait3
+trait1   1.00   0.62   0.21
+trait2   0.62   1.00  -0.44
+trait3   0.21  -0.44   1.00
+> eigen(G, symmetric = TRUE, only.values = TRUE)$values
+[1] 1.4772680 1.1197192 0.1134987
+> 
+> # Reproduce the evolqg construction
+> random_covariance(2, n_matrices = 3, method = "partial")
+[[1]]
+           trait1     trait2
+trait1  1.0000000 -0.6468865
+trait2 -0.6468865  1.0000000
+
+[[2]]
+          trait1    trait2
+trait1 1.0000000 0.5396828
+trait2 0.5396828 1.0000000
+
+[[3]]
+          trait1    trait2
+trait1 1.0000000 0.9838122
+trait2 0.9838122 1.0000000
+
+> 
+> # A strongly integrated size axis: PC1 dominates and is positive
+> S <- random_covariance(5, method = "factor", integration = 0.8)
+> R <- cov2cor(S)
+> round(R, 2)
+       trait1 trait2 trait3 trait4 trait5
+trait1   1.00   0.90   0.89   0.89   0.91
+trait2   0.90   1.00   0.90   0.89   0.90
+trait3   0.89   0.90   1.00   0.87   0.88
+trait4   0.89   0.89   0.87   1.00   0.90
+trait5   0.91   0.90   0.88   0.90   1.00
+> eigen(R, symmetric = TRUE)$vectors[, 1]
+[1] -0.4493574 -0.4490820 -0.4438025 -0.4448958 -0.4488991
+> 
+> 
+> 
+> cleanEx()
+> nameEx("ratones_morpho")
+> ### * ratones_morpho
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: ratones_morpho
+> ### Title: Morphological and life-history data for five mouse lines
+> ### Aliases: ratones_morpho
+> ### Keywords: datasets
+> 
+> ### ** Examples
+> 
+> data(ratones_morpho)
+> dim(ratones_morpho)
+[1] 329  46
+> table(ratones_morpho$selection)
+
+  control downwards   upwards 
+       67       121       141 
+> traits <- names(ratones_morpho)[12:46]
+> pc1_variance_share(log(as.matrix(ratones_morpho[, traits])))
+[1] 0.4063927
+> 
+> 
+> 
+> cleanEx()
+> nameEx("ratones_pedigree")
+> ### * ratones_pedigree
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: ratones_pedigree
+> ### Title: Pedigree of the mouse lines
+> ### Aliases: ratones_pedigree
+> ### Keywords: datasets
+> 
+> ### ** Examples
+> 
+> data(ratones_pedigree)
+> dim(ratones_pedigree)
+[1] 525   3
+> head(ratones_pedigree)
+      id sire dam
+1 260482   NA  NA
+2 260386   NA  NA
+3 260460   NA  NA
+4 260466   NA  NA
+5 260474   NA  NA
+6 260396   NA  NA
+> sum(is.na(ratones_pedigree$sire))  # founders
+[1] 84
+> 
+> 
+> 
+> cleanEx()
+> nameEx("scree_eigenvalues")
+> ### * scree_eigenvalues
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: scree_eigenvalues
+> ### Title: Eigenvalues of the residual trait correlation matrix
+> ### Aliases: scree_eigenvalues
+> 
+> ### ** Examples
+> 
+> set.seed(1)
+> P <- random_covariance(6, method = "factor", integration = 0.8)
+> Y <- matrix(stats::rnorm(300 * 6), 300) %*% chol(P)
+> colnames(Y) <- paste0("t", 1:6)
+> scree <- scree_eigenvalues(Y)
+> scree
+  component eigenvalue      share cumulative
+1         1 5.39746420 0.89957737  0.8995774
+2         2 0.15648373 0.02608062  0.9256580
+3         3 0.13954226 0.02325704  0.9489150
+4         4 0.13147305 0.02191218  0.9708272
+5         5 0.09846155 0.01641026  0.9872375
+6         6 0.07657521 0.01276253  1.0000000
+> plot(scree)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("size_shape")
+> ### * size_shape
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: size_shape
+> ### Title: Size and shape scores for many correlated traits
+> ### Aliases: size_shape
+> 
+> ### ** Examples
+> 
+> set.seed(1)
+> G <- random_covariance(3, method = "factor", integration = 0.8)
+> Y <- matrix(rnorm(30 * 3), 30, 3) %*% chol(G)
+> colnames(Y) <- c("a", "b", "c")
+> ss <- size_shape(Y)
+> head(ss$scores)
+           size       shape1      shape2
+[1,]  1.4713091 -0.174043125  0.09388516
+[2,] -0.1054167 -0.527625904  0.23599427
+[3,] -0.8306718 -0.001639013  0.13899487
+[4,]  0.1249348 -0.625704797 -0.20420978
+[5,]  0.8642806  0.270603383  0.34168101
+[6,]  0.8045399  0.168324928 -0.19979879
+> ss$loadings
+  size        PC1        PC2
+a    1 -0.7464609  0.3308517
+b    1  0.0867045 -0.8118799
+c    1  0.6597564  0.4810283
+> 
+> # a gap in one trait is completed from the other two
+> Y[2, "b"] <- NA
+> size_shape(Y)$scores[2, ]
+        size       shape1       shape2 
+ 0.017864835 -0.499582949 -0.000827619 
+> 
+> 
+> 
+> cleanEx()
+> nameEx("suggest_n_factors")
+> ### * suggest_n_factors
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: suggest_n_factors
+> ### Title: Number of factors suggested by parallel analysis
+> ### Aliases: suggest_n_factors
+> 
+> ### ** Examples
+> 
+> set.seed(1)
+> # two modules of three traits each
+> loadings <- matrix(0, 6, 2)
+> loadings[1:3, 1] <- 0.8
+> loadings[4:6, 2] <- 0.8
+> P <- loadings %*% t(loadings) + diag(6) * 0.36
+> Y <- matrix(stats::rnorm(400 * 6), 400) %*% chol(P)
+> colnames(Y) <- paste0("t", 1:6)
+> suggest_n_factors(Y)                     # 2
+[1] 2
+attr(,"retained")
+[1] 2
+attr(,"eigenvalues")
+[1] 2.4452694 2.0608424 0.4034226 0.3891087 0.3783506 0.3230063
+attr(,"reference")
+[1] 1.2219686 1.1276298 1.0668124 1.0060175 0.9525715 0.8951196
+attr(,"level")
+[1] 0.95
+attr(,"share")
+[1] 0.7510186
+> scree <- scree_eigenvalues(Y)
+> plot(scree, reference = suggest_n_factors(Y))
+> 
+> 
+> 
+> cleanEx()
+> nameEx("to_draws_list")
+> ### * to_draws_list
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: to_draws_list
+> ### Title: Convert the back-transformed draws to posterior draws
+> ### Aliases: to_draws_list
+> 
+> ### ** Examples
+> 
+> ss <- size_shape(cbind(a = rnorm(20), b = rnorm(20), c = rnorm(20)))
+> k <- length(ss$raw_traits)
+> G <- random_covariance(k, min_var = 0.5, max_var = 1.5)
+> E <- random_covariance(k, min_var = 0.5, max_var = 1.5)
+> m <- cbind(matrix(rep(as.vector(G), 3), 3, byrow = TRUE),
++            matrix(rep(as.vector(E), 3), 3, byrow = TRUE))
+> colnames(m) <- c(sprintf("G[%d,%d]", rep(seq_len(k), k), rep(seq_len(k), each = k)),
++                  sprintf("E[%d,%d]", rep(seq_len(k), k), rep(seq_len(k), each = k)))
+> draws <- to_draws_list(back_transform(m, ss))
+> names(draws)
+[1] "G"     "E"     "P"     "corrG" "corrP" "h2"   
+> posterior::summarise_draws(draws$corrG)
+# A tibble: 3 × 10
+  variable    mean median    sd   mad    q5   q95  rhat ess_bulk ess_tail
+  <chr>      <dbl>  <dbl> <dbl> <dbl> <dbl> <dbl> <dbl>    <dbl>    <dbl>
+1 corrG[1,2] 0.741  0.741     0     0 0.741 0.741    NA       NA       NA
+2 corrG[1,3] 0.453  0.453     0     0 0.453 0.453    NA       NA       NA
+3 corrG[2,3] 0.493  0.493     0     0 0.493 0.493    NA       NA       NA
+> combined <- do.call(posterior::bind_draws, unname(draws))
+> posterior::variables(combined)[1:4]
+[1] "G[1,1]" "G[2,1]" "G[3,1]" "G[1,2]"
+> 
+> 
+> 
+> ### * <FOOTER>
+> ###
+> cleanEx()
+> options(digits = 7L)
+> base::cat("Time elapsed: ", proc.time() - base::get("ptime", pos = 'CheckExEnv'),"\n")
+Time elapsed:  0.917 0.063 0.993 0 0 
+> grDevices::dev.off()
+null device 
+          1 
+> ###
+> ### Local variables: ***
+> ### mode: outline-minor ***
+> ### outline-regexp: "\\(> \\)?### [*]+" ***
+> ### End: ***
+> quit('no')

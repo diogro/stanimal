@@ -1,0 +1,202 @@
+sim <- simulate_animal(n_fam = 5, size = 4, G = G3, E = E3)
+Y <- sim$Y
+X <- sim$X
+A <- sim$A
+
+# The checks run before any Stan code, so these are fast.
+test_that("lmm_animal validates Y and X", {
+  Yinf <- Y; Yinf[1, 1] <- Inf
+  expect_error(lmm_animal(Yinf, X, A), "`Y` must contain only finite")
+  # missing values are allowed, a trait with nothing observed is not
+  Yblank <- Y; Yblank[, 2] <- NA
+  expect_error(lmm_animal(Yblank, X, A), "at least one observed value")
+  expect_no_error(stanimal:::.check_response_design(Y, X, allow_na = TRUE))
+  Xinf <- X; Xinf[2, 2] <- Inf
+  expect_error(lmm_animal(Y, Xinf, A), "`X` must contain only finite")
+  expect_error(lmm_animal(Y, X[-1, ], A), "same number of rows")
+  expect_error(lmm_animal(Y, cbind(X, X[, 2]), A), "full column rank")
+})
+
+test_that("lmm_animal validates A and flags", {
+  expect_error(lmm_animal(Y, X, A[-1, -1]), "square matrix")
+  As <- A; As[1, 2] <- 5
+  expect_error(lmm_animal(Y, X, As), "symmetric")
+  Ai <- diag(nrow(A)); Ai[1, 1] <- -1
+  expect_error(lmm_animal(Y, X, Ai), "positive semidefinite")
+  Asing <- A; Asing[2, ] <- Asing[1, ]; Asing[, 2] <- Asing[, 1]
+  expect_error(lmm_animal(Y, X, Asing), "positive definite")
+  expect_error(lmm_animal(Y, X, A, blend_A = NA), "blend_A")
+  expect_error(lmm_animal(Y, X, A, residual_structure = "bad"), "should be one of")
+  expect_error(lmm_animal(Y, X, A, parametrization = "bad"), "should be one of")
+})
+
+test_that("constant traits are rejected before the model is fitted", {
+  # univariate: a constant response has no standard deviation to divide by
+  expect_error(lmm_animal(rep(5, nrow(Y)), X, A),
+               "every trait in `Y` must vary")
+  # multivariate: one constant column is enough
+  expect_error(lmm_animal(cbind(Y, flat = 1), X, A),
+               "every trait in `Y` must vary.*: flat")
+  # partially named and unnamed responses still say which column it was
+  expect_error(lmm_animal(cbind(Y, 1), X, A), "column 4")
+  expect_error(lmm_animal(cbind(unname(Y[, 1]), 1), X, A), "column 2")
+  # the phenotypic model shares the check, and so does the rstan path
+  expect_error(lm_phen_cov(cbind(Y, flat = 1), X), "flat")
+  expect_error(lmm_animal(cbind(Y, flat = 1), X, A, cmd_stan = FALSE), "flat")
+})
+
+test_that("X must be able to represent a constant", {
+  no_intercept <- cbind(x = X[, "x"])
+  expect_error(lmm_animal(Y, no_intercept, A), "cannot represent a constant")
+  expect_error(lm_phen_cov(Y, no_intercept), "cannot represent a constant")
+  expect_error(lmm_animal(Y, no_intercept, A, cmd_stan = FALSE),
+               "cannot represent a constant")
+  # factor indicators span the constant, so they are fine
+  expect_silent(stanimal:::.check_response_design(
+    Y, stats::model.matrix(~ 0 + factor(rep(c(0, 1), length.out = nrow(Y))))))
+})
+
+test_that("X defaults to an intercept-only design", {
+  # the shared check builds one column of ones, named like model.matrix() does
+  intercept <- matrix(1, nrow(Y), 1L, dimnames = list(NULL, "(Intercept)"))
+  YX <- stanimal:::.check_response_design(Y, NULL)
+  expect_equal(YX$X, intercept)
+  expect_equal(unname(YX$x_mean_weight), 1)
+  expect_equal(stanimal:::.check_response_design(Y, NULL,
+                                                require_constant = FALSE)$X,
+               intercept)
+  # the Gibbs sampler does not shift the mean, but the default is the same
+  # design, and it reaches the beta draws
+  fit <- lmm_animal_gibbs(Y[, 1], A = A, iter = 200, warmup = 100)
+  expect_equal(dim(fit$beta), c(1, 1, 100))
+  expect_equal(dimnames(fit$beta)[[2]], "(Intercept)")
+  # every model takes X as optional: the check on Y is what fails next
+  Yinf <- Y; Yinf[1, 1] <- Inf
+  expect_error(lmm_animal(Yinf, A = A), "`Y` must contain only finite")
+  expect_error(lm_phen_cov(Yinf), "`Y` must contain only finite")
+  expect_error(lmm_animal_gibbs(Yinf, A = A), "`Y` must contain only finite")
+  # the Gibbs sampler still needs complete records
+  Yna <- Y; Yna[1, 1] <- NA
+  expect_error(lmm_animal_gibbs(Yna, A = A), "`Y` must contain only finite")
+})
+
+test_that("lm_phen_cov validates Y and X", {
+  Yinf <- Y; Yinf[1, 1] <- Inf
+  expect_error(lm_phen_cov(Yinf, X), "`Y` must contain only finite")
+  # a record with nothing observed has no likelihood to contribute here, because
+  # without relatedness nothing else informs it
+  Ynone <- Y; Ynone[1, ] <- NA
+  expect_error(lm_phen_cov(Ynone, X), "at least one observed trait")
+  expect_error(lm_phen_cov(Y, X[-1, ]), "same number of rows")
+  expect_error(lm_phen_cov(Y, cbind(X, X[, 2])), "full column rank")
+})
+
+test_that("lmm_animal_gibbs validates its inputs", {
+  expect_error(lmm_animal_gibbs(Y, X, A[-1, -1]), "square matrix")
+  expect_error(lmm_animal_gibbs(Y, cbind(X, X[, 2]), A), "full column rank")
+  expect_error(lmm_animal_gibbs(Y, X, A, iter = 10, warmup = 20), "iter")
+  Ai <- diag(nrow(A)); Ai[1, 1] <- -1
+  expect_error(lmm_animal_gibbs(Y, X, Ai), "positive semidefinite")
+  expect_error(lmm_animal_gibbs(cbind(Y[, 1], 1), X, A), "must vary")
+})
+
+test_that("custom model files are read and missing defaults error", {
+  f <- tempfile(fileext = ".stan")
+  writeLines("parameters { real x; } model { x ~ normal(0, 1); }", f)
+  expect_match(stanimal:::.read_animal_model_code(f), "normal\\(0, 1\\)")
+  expect_match(stanimal:::.read_animal_model_code(NULL, "animalModelG.stan"),
+               "lkj_corr_cholesky")
+  expect_match(stanimal:::.read_animal_model_code(NULL, "phenotypicModel.stan"),
+               "sigma_P")
+  expect_error(stanimal:::.read_animal_model_code(NULL, "nope.stan"),
+               "Could not locate")
+})
+
+test_that("all shipped Stan files are discoverable", {
+  for (f in c("animalModelG.stan", "animalModelGFactor.stan",
+              "animalModelGSharedFactor.stan", "animalModelUni.stan",
+              "animalModelUniH2.stan", "phenotypicModel.stan",
+              "phenotypicModelFactor.stan"))
+    expect_true(nzchar(stanimal:::.read_animal_model_code(NULL, f)))
+})
+
+test_that("an invalid LKJ shape is rejected before Stan runs", {
+  expect_error(lmm_animal(Y, X, A, lkj_prior = 0), "`lkj_prior`")
+  expect_error(lmm_animal(Y, X, A, lkj_prior = -1), "`lkj_prior`")
+  expect_error(lmm_animal(Y, X, A, lkj_prior = c(1, 2)), "`lkj_prior`")
+  expect_error(lm_phen_cov(Y, X, lkj_prior = 0), "`lkj_prior`")
+  expect_error(lm_phen_cov(Y, X, lkj_prior = NA_real_), "`lkj_prior`")
+})
+
+test_that("the sampler arguments are checked the same way everywhere", {
+  # the two Stan fitters and the Gibbs sampler share .check_iterations()
+  stan_animal <- function(...) lmm_animal(Y, X, A, ...)
+  stan_phen <- function(...) lm_phen_cov(Y, X, ...)
+  gibbs <- function(...) lmm_animal_gibbs(Y, X, A, ...)
+  for (fit in list(stan_animal, stan_phen, gibbs)) {
+    expect_error(fit(iter = 0), "`iter`")
+    expect_error(fit(iter = 100.5), "`iter`")
+    expect_error(fit(iter = 100, warmup = 100), "`warmup` must be smaller")
+    expect_error(fit(iter = 100, warmup = -1), "`warmup`")
+  }
+  for (fit in list(stan_animal, stan_phen)) {
+    expect_error(fit(chains = 0), "`chains`")
+    expect_error(fit(cores = 2.5), "`cores`")
+    expect_error(fit(cmd_stan = NA), "`cmd_stan`")
+  }
+  expect_error(lmm_animal(Y, X, A, blend_A = "yes"), "`blend_A`")
+  expect_error(lmm_animal(Y, X, A, chains = 2, cores = 4), "`cores` must not exceed")
+  expect_error(lmm_animal(Y, X, A, parametrization = "h2", beta_prior = 0),
+               "`beta_prior`")
+  expect_error(lmm_animal(Y, X, A, beta_prior = 0), "`beta_prior`")
+})
+
+test_that("ignored priors warn only when explicitly supplied", {
+  expect_warning(stanimal:::.warn_ignored(TRUE, FALSE, "lkj_prior"),
+                 "`lkj_prior` is ignored")
+  expect_silent(stanimal:::.warn_ignored(FALSE, FALSE, "lkj_prior"))
+  expect_silent(stanimal:::.warn_ignored(TRUE, TRUE, "lkj_prior"))
+  expect_equal(stanimal:::.check_beta_prior(c(2, 5)), c(2, 5))
+  expect_error(stanimal:::.check_beta_prior(c(1, -1)), "`beta_prior`")
+})
+
+test_that("the Gibbs sampler shares the response and design checks", {
+  expect_error(lmm_animal_gibbs(cbind(Y, flat = 1), X, A), "flat")
+  expect_error(lmm_animal_gibbs(Y, X[-1, ], A), "same number of rows")
+  Yna <- Y; Yna[1, 1] <- NA
+  expect_error(lmm_animal_gibbs(Yna, X, A), "`Y` must contain only finite")
+  # no constant column is needed, because no mean is shifted through X
+  expect_no_error(lmm_animal_gibbs(Y, cbind(x = X[, "x"]), A, iter = 20,
+                                   warmup = 10))
+  # thinning is checked against the draws actually kept
+  expect_error(lmm_animal_gibbs(Y, X, A, iter = 10, warmup = 5, thin = 10),
+               "`iter` must leave at least one draw")
+  expect_error(lmm_animal_gibbs(Y, X, A, thin = 0), "`thin`")
+})
+
+test_that("errors are raised without a call, so they name the argument", {
+  # a call. = FALSE error from a package function reports no call at all
+  err <- tryCatch(lmm_animal("a", X, A), error = function(e) e)
+  expect_null(conditionCall(err))
+})
+
+test_that("a heritability at a boundary suggests the h2 parametrization", {
+  fake <- function(...) {
+    d <- cbind(...)
+    colnames(d) <- paste0("h2[", seq_len(ncol(d)), "]")
+    list(draws = function(variables, format) posterior::as_draws_matrix(d))
+  }
+  expect_warning(stanimal:::.warn_h2_boundary(
+    fake(rep(0.01, 200), rep(0.01, 200))), "parametrization")
+  expect_warning(stanimal:::.warn_h2_boundary(
+    fake(rep(0.99, 200), rep(0.99, 200))), "parametrization")
+  expect_warning(stanimal:::.warn_h2_boundary(
+    fake(rep(0.01, 200), rep(0.4, 200))), "1 of 2")
+  expect_silent(stanimal:::.warn_h2_boundary(
+    fake(rep(0.4, 200), rep(0.4, 200))))
+  # a fit with no h2 in it is not an error
+  expect_silent(stanimal:::.warn_h2_boundary(
+    list(draws = function(variables, format) {
+      posterior::as_draws_matrix(cbind(G = 1:200))
+    })))
+})

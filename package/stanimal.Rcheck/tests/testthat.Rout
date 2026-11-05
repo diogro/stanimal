@@ -1,0 +1,105 @@
+
+R version 4.6.0 (2026-04-24) -- "Because it was There"
+Copyright (C) 2026 The R Foundation for Statistical Computing
+Platform: aarch64-apple-darwin23
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(testthat)
+> library(stanimal)
+> 
+> test_check("stanimal")
+Starting 2 test processes.
+> test-imputation.R: Chain 1 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 1 Exception: cholesky_decompose: Matrix m is not positive definite (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 1 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 1 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 1 
+> test-imputation.R: Chain 1 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 1 Exception: cholesky_decompose: Matrix m is not positive definite (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 1 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 1 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 1 
+> test-imputation.R: Chain 1 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 1 Exception: cholesky_decompose: Matrix m is not positive definite (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 1 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 1 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 1 
+> test-imputation.R: Chain 1 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 1 Exception: cholesky_decompose: A is not symmetric. A[1,2] = nan, but A[2,1] = nan (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 1 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 1 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 1 
+> test-imputation.R: Chain 2 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 2 Exception: cholesky_decompose: Matrix m is not positive definite (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 2 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 2 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 2 
+> test-imputation.R: Chain 2 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 2 Exception: cholesky_decompose: Matrix m is not positive definite (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 2 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 2 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 2 
+> test-imputation.R: Chain 2 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 2 Exception: cholesky_decompose: Matrix m is not positive definite (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 2 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 2 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 2 
+> test-imputation.R: Chain 2 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 2 Exception: cholesky_decompose: Matrix m is not positive definite (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 2 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 2 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 2 
+> test-imputation.R: Chain 2 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 2 Exception: cholesky_decompose: A is not symmetric. A[1,2] = nan, but A[2,1] = nan (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 2 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 2 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 2 
+> test-imputation.R: Chain 2 Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+> test-imputation.R: Chain 2 Exception: cholesky_decompose: Matrix m is not positive definite (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 135, column 4 to column 51)
+> test-imputation.R: Chain 2 If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+> test-imputation.R: Chain 2 but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+> test-imputation.R: Chain 2 
+> test-laplace.R: Chain 1 Exception: cholesky_corr_free: x is not a valid unit vector. The sum of the squares of the elements should be 1, but is 1 (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/RtmpbRcglP/model-49986d7bc3e5.stan', line 125, column 2 to column 40)
+> test-laplace.R: Chain 1 Bad or missing parameter values, cannot unconstrain.
+> test-laplace.R: Chain 1 
+> test-laplace.R: Chain 1 Exception: cholesky_corr_free: x is not a valid unit vector. The sum of the squares of the elements should be 1, but is 1 (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/Rtmpyri486/model-f5693d3b7e58.stan', line 95, column 2 to column 36)
+> test-laplace.R: Chain 1 Bad or missing parameter values, cannot unconstrain.
+> test-laplace.R: Chain 1 
+[ FAIL 0 | WARN 1 | SKIP 41 | PASS 694 ]
+
+══ Skipped tests (41) ══════════════════════════════════════════════════════════
+• On CRAN (40): 'test-breeding-values.R:103:1', 'test-cache.R:13:3',
+  'test-cstan.R:2:3', 'test-cstan.R:18:3', 'test-cstan.R:28:3',
+  'test-custom-model-prior.R:2:3', 'test-custom-model-prior.R:21:3',
+  'test-custom-model-prior.R:33:3', 'test-imputation.R:11:3',
+  'test-imputation.R:61:3', 'test-loadings-signs.R:54:3',
+  'test-log-lik-uni.R:1:1', 'test-loo.R:2:3', 'test-loo.R:16:3',
+  'test-loo.R:30:3', 'test-loo.R:49:3', 'test-loo.R:63:3', 'test-loo.R:83:3',
+  'test-loo.R:109:3', 'test-loo.R:123:3', 'test-missing.R:72:3',
+  'test-missing.R:105:3', 'test-missing.R:153:3', 'test-missing.R:180:3',
+  'test-missing.R:219:3', 'test-missing.R:232:3', 'test-model-G-factor.R:1:1',
+  'test-model-G-shared-factor.R:1:1', 'test-model-G.R:1:1',
+  'test-model-P-factor.R:1:1', 'test-model-P.R:1:1', 'test-model-uni.R:1:1',
+  'test-posterior-predictive.R:20:3', 'test-prior-posterior.R:10:3',
+  'test-prior-posterior.R:20:3', 'test-prior-posterior.R:40:3',
+  'test-prior-posterior.R:56:3', 'test-rstan-G.R:1:1', 'test-rstan-P.R:1:1',
+  'test-rstan-uni.R:1:1'
+• README.md is not available outside a checkout of the repository (1):
+  'test-readme.R:90:3'
+
+[ FAIL 0 | WARN 1 | SKIP 41 | PASS 694 ]
+> 
+> proc.time()
+   user  system elapsed 
+ 10.125   1.772   7.384 

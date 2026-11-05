@@ -1,0 +1,28 @@
+Package: stanimal
+Version: 0.7.3
+Date: 2026-11-05
+Title: Animal Models in Stan
+Description: Fit linear animal models in Stan for one or more traits.
+URL: https://github.com/diogro/stanimal
+BugReports: https://github.com/diogro/stanimal/issues
+Additional_repositories: https://stan-dev.r-universe.dev
+Authors@R: 
+    person(given = "Diogo",
+           family = "Melo",
+           role = c("aut", "cre"),
+           email = "diogro@gmail.com",
+           comment = c(ORCID = "0000-0002-7603-0092"))
+License: GPL (>=3)
+Encoding: UTF-8
+LazyData: true
+Depends: R (>= 4.0.0)
+Imports: ggplot2, grid, methods, posterior, stats, tools, utils
+Suggests: cmdstanr, loo, nadiv, rstan (>= 2.18.1), testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Config/testthat/parallel: true
+Config/roxygen2/version: 8.1.1
+NeedsCompilation: no
+Packaged: 2026-11-05 22:18:40 UTC; diogro
+Author: Diogo Melo [aut, cre] (ORCID: <https://orcid.org/0000-0002-7603-0092>)
+Maintainer: Diogo Melo <diogro@gmail.com>
+Built: R 4.6.0; ; 2026-11-05 22:18:42 UTC; unix

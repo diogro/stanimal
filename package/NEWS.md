@@ -1,3 +1,21 @@
+# stanimal 0.7.3
+
+## Changes in behaviour
+
+* `hs_slab_scale` now defaults to 1 instead of 2. Through the row normalisation
+  the slab sets the communality the prior expects,
+  `hs_slab_scale^2 / (1 + hs_slab_scale^2)`, so the old default asserted a
+  communality of 0.8 before any data arrived and the new one asserts 0.5. The
+  change bites only where the data are weak: with 600 individuals and 12 traits
+  the factor model recovers a simulated `G` to a relative MSE of 0.07 at a slab
+  of 2, while on the mice data the slab moved the posterior mean heritability
+  through 0.10, 0.21, 0.78 and 0.80 at slabs of 0.5, 1, 2 and 4. A factor fit is
+  therefore reproducible only if the slab is reported with it, and
+  `hs_slab_scale` is now documented as a statement about communality rather than
+  as a bound on a single loading. `hs_global_scale` is left at 1, since it turns
+  out to be nearly inert: across 0.1 to 4 the same mouse fit moved its
+  heritability between 0.785 and 0.790.
+
 # stanimal 0.7.2
 
 ## New features

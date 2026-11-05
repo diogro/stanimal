@@ -19,9 +19,31 @@
 # Run from the package directory:
 #   Rscript data-raw/opossum.R
 
-src <- "/Users/diogro/Downloads/4055961"
+article <- 4055961
+cache <- file.path(tempdir(), "opossum-figshare")
+dir.create(cache, recursive = TRUE, showWarnings = FALSE)
 
-cranial <- read.csv(file.path(src, "phenotype_covariates", "cranial_data.csv"),
+# The download links are resolved from the figshare API rather than hard-coded,
+# since the file identifiers are not part of the article number. Everything is
+# cached in the session temporary directory, so a rebuild costs nothing.
+fetch <- function(name) {
+  dest <- file.path(cache, name)
+  if (!file.exists(dest)) {
+    listing <- jsonlite::fromJSON(sprintf(
+      "https://api.figshare.com/v2/articles/%d", article))$files
+    url <- listing$download_url[listing$name == name]
+    if (length(url) != 1L)
+      stop("figshare article ", article, " does not offer ", name,
+           call. = FALSE)
+    utils::download.file(url, dest, mode = "wb", quiet = TRUE)
+  }
+  dest
+}
+
+unzip(fetch("phenotype_covariates.zip"), exdir = cache)
+unzip(fetch("coded_marker_data.zip"), exdir = cache)
+
+cranial <- read.csv(file.path(cache, "phenotype_covariates", "cranial_data.csv"),
                     stringsAsFactors = FALSE)
 
 landmarks <- c("IS", "NSL", "PNS", "PM", "ZS", "ZI", "MT", "NA", "BR", "PT",
@@ -55,8 +77,7 @@ rownames(opossum) <- opossum$id
 # Markers: the coded files carry no animal IDs, so animals are matched to the
 # cranial file by row order. Both have 553 rows; that equality is the only check
 # available, and the package documentation says so.
-unzip(file.path(src, "coded_marker_data.zip"), exdir = tempdir())
-marker_files <- list.files(file.path(tempdir(), "coded_marker_data"),
+marker_files <- list.files(file.path(cache, "coded_marker_data"),
                            pattern = "SAS_ADD", full.names = TRUE)
 stopifnot(length(marker_files) == 8L)
 markers <- do.call(cbind, lapply(marker_files, function(f)

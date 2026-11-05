@@ -238,10 +238,13 @@ ebv$reliability   # 1 - Var(u | y) / diag(G), in [0, 1]
 ## Choosing the model
 
 **Univariate vs multivariate.** `lmm_animal(y, X, A)` estimates a single variance
-ratio. `parametrization = "h2"` puts a beta prior on h2 directly (univariate
-only); `"variance"` (default) puts half-normals on the two standard deviations and
-derives h2. Use `"h2"` when you have a real prior belief about the heritability
-itself.
+ratio. `parametrization = "h2"` puts a beta prior on h2 directly, for the
+univariate models and for the unstructured multivariate one; `"variance"`
+(default) puts half-normals on the two standard deviations and derives h2. Use
+`"h2"` when you have a real prior belief about the heritability itself, and when
+the data are thin enough that the two parameterisations disagree (section 4). The
+ordinary factor model has no switch and always puts `beta_prior` on the trait
+heritabilities, for the same reason.
 
 **Residual structure.** `"unstructured"` (default) is a full `E`. `"diagonal"`
 assumes independent residuals, which pushes environmental covariance into `G` and
@@ -307,10 +310,29 @@ multivariate unstructured `E` (including factor `G` with unstructured `E`). It i
 there warns.
 
 `beta_prior` (default `c(1, 1)`) is the prior on h2 for
-`parametrization = "h2"` and on the factor heritabilities for
+`parametrization = "h2"`, on the trait heritabilities for the ordinary factor
+model, and on the factor heritabilities for
 `residual_structure = "shared_factor"`. Both priors are validated **even when the
 configuration does not use them**, and supplying an unused one warns instead of
 erroring. Do not read a warning about an unused prior as a failure.
+
+The ordinary factor model has no `parametrization` switch, because its two scales
+are tied to the phenotypic scale and the prior has to go somewhere: it writes them
+as `s_G = sqrt(h2) s_P` and `s_E = sqrt(1 - h2) s_P`, so `beta_prior` is on `h2`
+and `s_P` is the free scale. The unstructured multivariate model writes the same
+two scales when you ask for `parametrization = "h2"`, and only then. Until 0.7.2
+both multivariate models put independent half-normals on `s_G` and `s_E`, which,
+because the response is standardized and `s_G^2 + s_E^2` is therefore the
+phenotypic variance, is a prior on a circle. The density that induces on h2 is
+`1 / sqrt(h2 (1 - h2))`: about 14% of prior mass below 0.05, 14% above 0.95, and a
+moderate heritability the least likely answer a priori. A fit at a few hundred
+individuals can sit at either end of that range without the data objecting, and
+two fits of the same data can then disagree on `h2` and on every `corrG` by an
+order of magnitude. If a fit reports an `h2` whose interval touches a boundary,
+refit with `parametrization = "h2"` before reading the heritabilities, and treat
+the difference between the two fits as the share of the answer the prior was
+supplying. No sample-size threshold for that has been validated, so it is a check
+and not a rule.
 
 ### 5. What is actually identified
 

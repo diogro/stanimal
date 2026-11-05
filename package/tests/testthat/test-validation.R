@@ -179,3 +179,24 @@ test_that("errors are raised without a call, so they name the argument", {
   err <- tryCatch(lmm_animal("a", X, A), error = function(e) e)
   expect_null(conditionCall(err))
 })
+
+test_that("a heritability at a boundary suggests the h2 parametrization", {
+  fake <- function(...) {
+    d <- cbind(...)
+    colnames(d) <- paste0("h2[", seq_len(ncol(d)), "]")
+    list(draws = function(variables, format) posterior::as_draws_matrix(d))
+  }
+  expect_warning(stanimal:::.warn_h2_boundary(
+    fake(rep(0.01, 200), rep(0.01, 200))), "parametrization")
+  expect_warning(stanimal:::.warn_h2_boundary(
+    fake(rep(0.99, 200), rep(0.99, 200))), "parametrization")
+  expect_warning(stanimal:::.warn_h2_boundary(
+    fake(rep(0.01, 200), rep(0.4, 200))), "1 of 2")
+  expect_silent(stanimal:::.warn_h2_boundary(
+    fake(rep(0.4, 200), rep(0.4, 200))))
+  # a fit with no h2 in it is not an error
+  expect_silent(stanimal:::.warn_h2_boundary(
+    list(draws = function(variables, format) {
+      posterior::as_draws_matrix(cbind(G = 1:200))
+    })))
+})

@@ -82,6 +82,7 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
          "`genetic_structure = \"factor\"`.", call. = FALSE)
   shared_factor_model <- factor_model &&
     residual_structure == "shared_factor"
+  h2_param <- ncol(Y) > 1L && !factor_model && parametrization == "h2"
 
   if (factor_model) {
     if (ncol(Y) < 2L)
@@ -146,17 +147,21 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
       stan_data$lkj_prior <- lkj_prior
       stan_data$unstructured_E <-
         as.integer(residual_structure == "unstructured")
+      if (h2_param) stan_data$beta_prior <- beta_prior
       if (factor_model) {
         stan_data$M <- n_factors
         stan_data$hs_global_scale <- hs_global_scale
         stan_data$hs_slab_scale <- hs_slab_scale
         stan_data$column_decay <- column_decay
+        stan_data$beta_prior <- beta_prior
       }
     }
     default_model <- if (shared_factor_model) {
       "animalModelGSharedFactor.stan"
     } else if (factor_model) {
       "animalModelGFactor.stan"
+    } else if (h2_param) {
+      "animalModelGH2.stan"
     } else {
       "animalModelG.stan"
     }

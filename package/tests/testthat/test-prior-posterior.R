@@ -69,12 +69,22 @@ test_that("a factor fit has no closed-form prior to compare against", {
   expect_no_error(stanimal:::.prior_posterior(fit, NULL, NULL, 100, prior))
 })
 
-test_that("the beta prior only applies to a single trait", {
-  expect_error(animal_prior_draws(2, n = 10, beta_prior = c(1, 1)),
-               "single trait")
+test_that("the beta prior applies to every trait", {
+  set.seed(1)
+  d2 <- animal_prior_draws(2, n = 50, beta_prior = c(1, 1))
+  expect_setequal(unique(d2$type), c("Heritability", "Genetic correlation"))
+  expect_true(all(d2$value[d2$type == "Heritability"] > 0 &
+                    d2$value[d2$type == "Heritability"] < 1))
+  # the correlations are still the LKJ, so they are in [-1, 1] and not zero
+  rho <- d2$value[d2$type == "Genetic correlation"]
+  expect_true(all(abs(rho) <= 1))
+  expect_gt(stats::sd(rho), 0)
   expect_error(animal_prior_draws(1, n = 10, beta_prior = c(1, -1)),
                "`beta_prior`")
   d <- animal_prior_draws(1, n = 50, beta_prior = c(1, 1))
   expect_equal(unique(d$type), "Heritability")
   expect_true(all(d$value > 0 & d$value < 1))
+  # a tight beta is reproduced, which is what makes the plot a prior check
+  dt <- animal_prior_draws(1, n = 4000, beta_prior = c(20, 80))
+  expect_equal(mean(dt$value), 0.2, tolerance = 0.02)
 })

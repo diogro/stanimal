@@ -32,8 +32,8 @@
 #' @param X Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.
 #' @param A Finite symmetric positive-definite relationship matrix matching the rows of Y. A matrix that is only positive semidefinite (duplicated individuals, for example) is rejected; set \code{blend_A = TRUE} to regularize it. When \code{A} and \code{Y} both have row names, they are used to put \code{A} in the order of \code{Y}; names that disagree are an error. Without names the rows are matched by position.
 #' @param lkj_prior Shape parameter of the LKJ prior on the correlation matrices of the multivariate model. \code{1} is uniform over correlation matrices, values above \code{1} shrink correlations toward zero, and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits: at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of genetic correlations, a well-known problem in quantitative genetics. A finite number above 0. It is used only by multivariate models with \code{residual_structure = "unstructured"} and not \code{shared_factor}; explicitly supplying it in other configurations warns that it is ignored.
-#' @param beta_prior Parameters of the beta prior on h2. Used by the univariate model with \code{parametrization = "h2"} and by the shared-factor model for the factor heritabilities. The default \code{c(1, 1)} is flat on h2 and on each factor heritability. It is validated for every model; explicitly supplying it where it is not used warns that it is ignored.
-#' @param parametrization Univariate models only. \code{"variance"} (default) estimates the genetic and residual standard deviations with half-normal priors and derives h2. \code{"h2"} estimates a total standard deviation and h2 with a beta prior (\code{beta_prior}). If the variance version shows low E-BFMI, a warning suggests switching to \code{"h2"}. Multivariate fits always use the variance parametrization; explicitly supplying this argument for one warns that it is ignored.
+#' @param beta_prior Parameters of the beta prior on h2. Used by the univariate model with \code{parametrization = "h2"}, by the unstructured multivariate model with \code{parametrization = "h2"}, by the ordinary factor model for the trait heritabilities, and by the shared-factor model for the factor heritabilities. The default \code{c(1, 1)} is flat on h2 and on each factor heritability. It is validated for every model; explicitly supplying it where it is not used warns that it is ignored.
+#' @param parametrization Which parameters carry the prior. \code{"variance"} (default) estimates the genetic and residual standard deviations with half-normal priors and derives h2. \code{"h2"} estimates a phenotypic standard deviation and a heritability per trait, and puts the beta prior (\code{beta_prior}) on h2. It is available for the univariate models and for the unstructured multivariate model, and the two differ only in the prior they imply on h2: because the response is standardized trait by trait, \eqn{s_G^2 + s_E^2} is the phenotypic variance, so the half-normal priors of \code{"variance"} are priors on a circle and they induce \eqn{p(h^2) \propto 1/\sqrt{h^2(1-h^2)}}, a density whose mass sits at the two ends. The two parameterizations agree when the data are informative and separate when they are not, so prefer \code{"h2"} when there are few individuals relative to the number of traits, when h2 is the object of inference rather than \code{G}, or when a \code{"variance"} fit puts its heritabilities against 0 or 1. No sample-size threshold has been validated, so treat that as a reason to check rather than a rule. The ordinary factor model has no switch: its scales are locked to the phenotypic scale and it always puts the beta prior on the trait heritabilities. Supplying this argument for the factor or shared-factor model warns that it is ignored, and a univariate \code{"variance"} fit with low E-BFMI already warns and suggests \code{"h2"}.
 #' @param iter Number of MCMC iterations, a whole number.
 #' @param warmup Number of warmup iterations, a whole number smaller than \code{iter}.
 #' @param chains Number of chains to run, a whole number.
@@ -107,9 +107,10 @@
 #'     standardized response scale, which is the diagonal scale that moves the
 #'     correlation-scale decomposition to the original scale; multiplying it by
 #'     the response standard deviation gives the genetic standard deviations
-#'     \code{sigma_G} on the data scale. It is a parameter of every multivariate
+#'     \code{sigma_G} on the data scale. It is reported by every multivariate
 #'     fit except the shared-factor model, which scales its factors by
-#'     \code{sqrt_psi_G} and \code{sqrt_psi_E} instead.
+#'     \code{sqrt_psi_G} and \code{sqrt_psi_E} instead. In the ordinary factor
+#'     model it is derived from \code{h2} and \code{s_P}.
 #' }
 #' These are available from \code{fit$summary()} and from
 #' \code{\link{fit_draws}}. The latter returns \code{loadings} as a trait by
@@ -117,7 +118,9 @@
 #' \code{factor_magnitude} as factor by draw matrices, and the uniqueness and
 #' communality vectors as trait by draw matrices.
 #'
-#' @details The models estimate the additive genetic and residual standard deviations (\code{sigma_G}, \code{sigma_E}) directly, with half-normal priors on the standardized response scale, and report \code{h2} as a derived quantity; there is no prior on h2 itself. The multivariate model estimates the additive genetic covariance matrix \code{G} and the residual covariance \code{E} directly, each as scales times an LKJ-distributed correlation matrix (\code{lkj_prior}), with half-normal priors on the scales of the standardized responses. With \code{genetic_structure = "factor"}, \code{G} is instead \eqn{\mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)}, where the loadings \eqn{\Lambda} have regularized-horseshoe priors and \eqn{\Psi} is diagonal on the correlation scale; the default global shrinkage is \code{hs_global_scale = 1}. With \code{residual_structure = "shared_factor"}, the same loadings enter both covariances: \eqn{G = \Lambda\mathrm{diag}(h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_G)} and \eqn{E = \Lambda\mathrm{diag}(1 - h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_E)}, with the beta prior on the factor heritabilities controlled by \code{beta_prior}. The optional \code{column_decay} multiplies the prior standard deviation of factor column \eqn{m} by \code{column_decay^(m - 1)}, which favours factors in decreasing order without adding a learned decay parameter. Breeding values are marginalized using the eigendecomposition of \code{A}: the response and the design are rotated by its eigenvectors and the likelihood is computed on the rotated records, with the eigenvalues entering through the per-record covariance. No per-individual random effects are needed, which is why a singular \code{A} can be fitted once it is regularized with \code{blend_A = TRUE}. Returned quantities (original response scale) are \code{G}, \code{E}, \code{P = G + E}, \code{corrG}, \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}.
+#' @details By default the models estimate the additive genetic and residual standard deviations (\code{sigma_G}, \code{sigma_E}) directly, with half-normal priors on the standardized response scale, and report \code{h2} as a derived quantity. With \code{parametrization = "h2"}, and always in the ordinary factor model, the two scales are written as \eqn{s_G = \sqrt{h^2}s_P} and \eqn{s_E = \sqrt{1-h^2}s_P} instead, so \code{beta_prior} is a prior on the trait heritabilities and \eqn{s_P} is the phenotypic scale. The multivariate model estimates the additive genetic covariance matrix \code{G} and the residual covariance \code{E} directly, each as scales times an LKJ-distributed correlation matrix (\code{lkj_prior}), with half-normal priors on the scales of the standardized responses. With \code{genetic_structure = "factor"}, \code{G} is instead \eqn{\mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)}, where the loadings \eqn{\Lambda} have regularized-horseshoe priors and \eqn{\Psi} is diagonal on the correlation scale; the default global shrinkage is \code{hs_global_scale = 1}. With \code{residual_structure = "shared_factor"}, the same loadings enter both covariances: \eqn{G = \Lambda\mathrm{diag}(h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_G)} and \eqn{E = \Lambda\mathrm{diag}(1 - h^2_\text{factor})\Lambda^T + \mathrm{diag}(\psi_E)}, with the beta prior on the factor heritabilities controlled by \code{beta_prior}. The optional \code{column_decay} multiplies the prior standard deviation of factor column \eqn{m} by \code{column_decay^(m - 1)}, which favours factors in decreasing order without adding a learned decay parameter. Breeding values are marginalized using the eigendecomposition of \code{A}: the response and the design are rotated by its eigenvectors and the likelihood is computed on the rotated records, with the eigenvalues entering through the per-record covariance. No per-individual random effects are needed, which is why a singular \code{A} can be fitted once it is regularized with \code{blend_A = TRUE}. Returned quantities (original response scale) are \code{G}, \code{E}, \code{P = G + E}, \code{corrG}, \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}.
+#'
+#' With \code{parametrization = "h2"}, and always in the ordinary factor model, the scales are written as a phenotypic scale and a heritability rather than as two standard deviations, because the response is standardized trait by trait and the two scales are tied to its variance. That makes \eqn{s_G^2 + s_E^2} the phenotypic variance of the trait and fixes it near 1, so half-normal priors on \eqn{s_G} and on \eqn{s_E} are priors on a circle. The density they induce on \eqn{h^2} is proportional to \eqn{1/\sqrt{h^2(1-h^2)}}, an arcsine prior that puts about 14 percent of its mass below 0.05 and 14 percent above 0.95, which makes a moderate heritability the least likely answer a priori. With few individuals the likelihood is weak enough for that to show through, and a fit can then sit at either end of the interval. Writing the scales as \eqn{s_G = \sqrt{h^2}s_P} and \eqn{s_E = \sqrt{1-h^2}s_P} puts \code{beta_prior} on \eqn{h^2} directly, so the prior applied is the one that was asked for, and \eqn{s_P} is the well-determined quantity that is left.
 #'
 #' The per-individual likelihoods are whitened by the residual Cholesky factor and rotated into a single eigendecomposition of \code{E^{-1/2} G E^{-1/2}}, so each evaluation costs \code{O(N K^2 + K^3)} rather than \code{O(N K^3)}. This lets the multivariate model scale to dozens of traits without a Cholesky factorization per individual. When the eigenvalues of that matrix are nearly coincident (for example at initialization, or when \code{G} is roughly proportional to \code{E}) the model automatically falls back to a per-individual Cholesky evaluation, which has a well-behaved gradient.
 #'
@@ -231,6 +234,10 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
     stop("`residual_structure = \"shared_factor\"` requires `genetic_structure = \"factor\"`.",
          call. = FALSE)
   shared_factor_model <- factor_model && residual_structure == "shared_factor"
+  # The ordinary factor model has no choice about its parameters, so this only
+  # distinguishes the two parameterisations of the unstructured multivariate
+  # model. Trait h2 is what the beta prior is about either way.
+  h2_param <- ncol(Y) > 1L && !factor_model && parametrization == "h2"
   if (factor_model) {
     if (ncol(Y) < 2L)
       stop("`genetic_structure = \"factor\"` needs at least two traits.",
@@ -254,14 +261,16 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
            call. = FALSE)
   }
 
-  beta_used <- (ncol(Y) == 1L && parametrization == "h2") ||
-    shared_factor_model
+  beta_used <- (ncol(Y) == 1L && parametrization == "h2") || factor_model ||
+    h2_param
   lkj_used <- ncol(Y) > 1L && !shared_factor_model &&
     residual_structure == "unstructured"
   factor_used <- factor_model
   .warn_ignored(beta_prior_supplied, beta_used, "beta_prior")
   .warn_ignored(lkj_prior_supplied, lkj_used, "lkj_prior")
-  .warn_ignored(parametrization_supplied, ncol(Y) == 1L, "parametrization")
+  # the factor model has no choice of parameterisation, so the argument applies
+  # to every other fit, univariate or not
+  .warn_ignored(parametrization_supplied, !factor_model, "parametrization")
   .warn_ignored(hs_global_scale_supplied, factor_used, "hs_global_scale")
   .warn_ignored(hs_slab_scale_supplied, factor_used, "hs_slab_scale")
   .warn_ignored(column_decay_supplied, factor_used, "column_decay")
@@ -310,8 +319,10 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
       fit = .rstan_sample(model, stan_data, iter, warmup, chains, control, ...)
       fit <- .rename_fixed_effect_draws(fit, X, ncol(Y))
     }
-    if(parametrization == "variance")
+    if(parametrization == "variance") {
       .warn_low_bfmi(fit)
+      .warn_h2_boundary(fit)
+    }
   } else{
     stan_data = list(K = ncol(Y),
                      J = ncol(X),
@@ -336,17 +347,24 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
     } else {
       stan_data$lkj_prior <- lkj_prior
       stan_data$unstructured_E <- as.integer(residual_structure == "unstructured")
+      if (h2_param) stan_data$beta_prior <- beta_prior
       if (factor_model) {
         stan_data$M <- n_factors
         stan_data$hs_global_scale <- hs_global_scale
         stan_data$hs_slab_scale <- hs_slab_scale
         stan_data$column_decay <- column_decay
+        # same name and meaning as in animalModelUniH2.stan: the beta prior on
+        # the trait heritabilities. The shared-factor model above calls the same
+        # pair h2_prior_a/b because there it is a factor heritability.
+        stan_data$beta_prior <- beta_prior
       }
     }
     default_model <- if (shared_factor_model) {
       "animalModelGSharedFactor.stan"
     } else if (factor_model) {
       "animalModelGFactor.stan"
+    } else if (h2_param) {
+      "animalModelGH2.stan"
     } else {
       "animalModelG.stan"
     }
@@ -361,6 +379,8 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
         "animalModelGSharedFactor"
       } else if (factor_model) {
         "animalModelGFactor"
+      } else if (h2_param) {
+        "animalModelGH2"
       } else {
         "animalModelG"
       }
@@ -372,6 +392,12 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
       fit = .rstan_sample(model, stan_data, iter, warmup, chains, control, ...)
       fit <- .rename_fixed_effect_draws(fit, X, ncol(Y))
     }
+    # Only the variance parametrization of the unstructured model implies the
+    # arcsine prior this check is about. The ordinary factor model already puts a
+    # beta prior on h2, and the shared-factor model puts one on the factor
+    # heritabilities, so there is nothing to suggest for either.
+    if (!factor_model && parametrization == "variance")
+      .warn_h2_boundary(fit)
   }
   # the names are what fit_draws() labels its arrays with, so they have to be
   # recorded for both backends, not just the cmdstanr path
@@ -379,9 +405,19 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   attr(fit, "y_names") <- colnames(Y)
   attr(fit, "genetic_structure") <- genetic_structure
   attr(fit, "residual_structure") <- residual_structure
-  # the parametrization only means something for a single trait, so record what
-  # the model actually used rather than what was passed
-  attr(fit, "parametrization") <- if (ncol(Y) == 1L) parametrization else "variance"
+  # the parametrization only means something where the model has a choice, so
+  # record what the model actually used rather than what was passed. The
+  # ordinary factor model has none: its two scales are tied to the phenotypic
+  # scale, so it always puts the prior on h2, and "h2" is what it ran.
+  attr(fit, "parametrization") <- if (ncol(Y) == 1L) {
+    parametrization
+  } else if (factor_model && !shared_factor_model) {
+    "h2"
+  } else if (h2_param) {
+    "h2"
+  } else {
+    "variance"
+  }
   attr(fit, "lkj_prior") <- lkj_prior
   attr(fit, "beta_prior") <- beta_prior
   # a custom Stan file can use any prior it likes, so nothing below can be
@@ -547,6 +583,34 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
             "parametrization can sample poorly when the genetic variance is ",
             "weakly identified; consider parametrization = \"h2\".",
             call. = FALSE)
+  invisible(fit)
+}
+
+# The variance parametrization puts half-normal priors on two standard
+# deviations that are constrained to the phenotypic scale, which is a prior on a
+# circle and induces p(h2) proportional to 1 / sqrt(h2 (1 - h2)) on each trait.
+# That density is about three times higher at h2 = 0.05 than at 0.5, so a
+# posterior mean against either boundary is compatible with the prior having
+# decided the answer. The check reports the count rather than a verdict, because
+# a trait with no additive variance legitimately sits at zero.
+.warn_h2_boundary <- function(fit, low = 0.05, high = 0.95) {
+  h2 <- tryCatch({
+    d <- if (inherits(fit, "stanfit"))
+      posterior::as_draws_matrix(fit) else
+        fit$draws("h2", format = "draws_matrix")
+    d[, grep("^h2\\[", posterior::variables(d)), drop = FALSE]
+  }, error = function(e) NULL)
+  if (is.null(h2) || !ncol(h2))
+    return(invisible(fit))
+  mean_h2 <- colMeans(as.matrix(h2))
+  at_edge <- mean_h2 < low | mean_h2 > high
+  if (any(at_edge))
+    warning("h2 has a posterior mean below ", low, " or above ", high, " for ",
+            sum(at_edge), " of ", length(mean_h2), " traits. The variance ",
+            "parametrization implies a Beta(1/2, 1/2) prior on h2, which is ",
+            "densest near 0 and near 1, so an answer at a boundary may be the ",
+            "prior rather than the data: refit with parametrization = \"h2\" ",
+            "before reading the heritabilities.", call. = FALSE)
   invisible(fit)
 }
 

@@ -45,6 +45,20 @@ test_that("factor G model samples and exposes factor summaries", {
   ll <- fit$draws("log_lik")
   expect_equal(dim(ll)[3], nrow(sim$Y))
   expect_true(all(is.finite(ll)))
+
+  # The model is parameterized by h2 and a phenotypic scale, so the reported h2
+  # is a parameter, and it is still exactly the diagonal ratio.
+  dm <- as.matrix(fit$draws(c("G", "P", "h2", "s_P"),
+                            format = "draws_matrix"))
+  expect_equal(unname(dm[, sprintf("h2[%d]", 1:3)]),
+               unname(dm[, sprintf("G[%d,%d]", 1:3, 1:3)] /
+                        dm[, sprintf("P[%d,%d]", 1:3, 1:3)]),
+               tolerance = 1e-6)
+  expect_true(all(dm[, sprintf("s_P[%d]", 1:3)] > 0))
+  expect_true(all(dm[, sprintf("h2[%d]", 1:3)] > 0 &
+                    dm[, sprintf("h2[%d]", 1:3)] < 1))
+  expect_equal(attr(fit, "parametrization"), "h2")
+  expect_equal(attr(fit, "beta_prior"), c(1, 1))
 })
 
 test_that("factor model uses the sublinear n_factors default", {
@@ -120,4 +134,30 @@ test_that("factor model handles a diagonal residual structure", {
   E <- post_matrix(fit, "E", 3)
   expect_equal(E[upper.tri(E)], rep(0, 3), tolerance = 1e-8)
   expect_true(all(fit$summary("uniqueness")$mean > 0))
+})
+
+test_that("the factor model puts beta_prior on the trait heritabilities", {
+  sim <- simulate_animal(n_fam = 10, size = 5, G = true_factor_G(),
+                         E = diag(c(0.8, 0.9, 0.7)), seed = 35)
+  short <- function(prior) {
+    lmm_animal(sim$Y, sim$X, sim$A, genetic_structure = "factor",
+               n_factors = 2, hs_global_scale = 2, beta_prior = prior,
+               iter = 200, warmup = 100, chains = 1, cores = 1, seed = 1,
+               refresh = 0, show_messages = FALSE)
+  }
+  # the prior is used by this model, so it is not reported as ignored
+  warns <- character()
+  fit_flat <- withCallingHandlers(
+    short(c(1, 1)),
+    warning = function(w) {
+      warns <<- c(warns, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_false(any(grepl("ignored", warns)))
+  expect_equal(attr(fit_flat, "beta_prior"), c(1, 1))
+
+  # Beta(5, 50) has mean 0.091, so a live prior must drag h2 down
+  fit_low <- suppressWarnings(short(c(5, 50)))
+  expect_true(all(draws_mean(fit_low, "h2") < draws_mean(fit_flat, "h2")))
+  expect_true(all(draws_mean(fit_low, "h2") < 0.4))
 })

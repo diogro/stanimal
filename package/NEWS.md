@@ -1,3 +1,32 @@
+# stanimal 0.7.2
+
+## New features
+
+* `parametrization = "h2"` now applies to the unstructured multivariate model as
+  well as to the univariate ones. It writes the two scales as a phenotypic scale
+  and a heritability per trait, `s_G = sqrt(h2) s_P` and `s_E = sqrt(1-h2) s_P`,
+  and puts `beta_prior` on the trait heritabilities. The default is unchanged
+  (`"variance"`), and the two parameterizations agree when the data are
+  informative, so this is the switch to reach for when there are few individuals
+  per trait or when the heritability itself is the object of inference.
+
+## Bug fixes
+
+* The ordinary factor model now puts the beta prior on the trait heritabilities
+  instead of on two standard deviations. The response is standardized trait by
+  trait, so `s_G^2 + s_E^2` is the phenotypic variance and the data pin it near
+  1, which made the old half-normal priors on `s_G` and `s_E` a prior on a
+  circle: the density induced on h2 was `Beta(1/2, 1/2)`, with about 14% of its
+  mass below 0.05 and 14% above 0.95 and a moderate heritability the least likely
+  answer a priori. At a few hundred individuals the likelihood is weak enough for
+  that to show through, and a fit could sit at either end of the range, reporting
+  h2 near 0 or near 1 with genetic correlations to match. The model is now
+  parameterized by a phenotypic scale `s_P` and a heritability `h2`, with
+  `s_G = sqrt(h2) s_P` and `s_E = sqrt(1 - h2) s_P`, so `beta_prior` (default
+  `c(1, 1)`, flat on h2) is the prior on the trait heritabilities and `s_P` is
+  the free scale. `h2` is still reported and still equals `diag(G) / diag(P)`.
+  The fits record `parametrization = "h2"`, and `s_P` is a reported parameter.
+
 # stanimal 0.7.1
 
 ## New features

@@ -178,11 +178,57 @@ test_that("a multivariate fit records the priors it ran with", {
   expect_false(attr(fit, "custom_model"))
 })
 
-test_that("a univariate parametrization supplied for a multivariate fit warns", {
+test_that("the parametrization is ignored only by the factor models", {
   sim <- simulate_animal(n_fam = 10, size = 5, G = G3, E = E3, seed = 24)
-  # not through fit_G(), which suppresses warnings
-  expect_warning(lmm_animal(sim$Y, sim$X, sim$A, parametrization = "h2",
-                            iter = 100, chains = 1, cores = 1, seed = 1,
-                            refresh = 0, show_messages = FALSE),
-                 "`parametrization` is ignored")
+  # the factor model has no choice of parameterisation, so it says so
+  expect_warning(
+    lmm_animal(sim$Y, sim$X, sim$A, genetic_structure = "factor",
+               n_factors = 1, parametrization = "h2",
+               iter = 100, chains = 1, cores = 1, seed = 1,
+               refresh = 0, show_messages = FALSE),
+    "`parametrization` is ignored")
+  # the unstructured multivariate model does have a choice, so it does not
+  warns <- character()
+  withCallingHandlers(
+    lmm_animal(sim$Y, sim$X, sim$A, parametrization = "variance",
+               iter = 100, chains = 1, cores = 1, seed = 1,
+               refresh = 0, show_messages = FALSE),
+    warning = function(w) {
+      warns <<- c(warns, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_false(any(grepl("`parametrization` is ignored", warns)))
+})
+
+test_that("the unstructured model can put the prior on the trait heritabilities", {
+  sim <- simulate_animal(n_fam = 10, size = 5, G = G3, E = E3, seed = 25)
+  short <- function(prior) {
+    lmm_animal(sim$Y, sim$X, sim$A, parametrization = "h2", beta_prior = prior,
+               iter = 200, warmup = 100, chains = 1, cores = 1, seed = 1,
+               refresh = 0, show_messages = FALSE)
+  }
+  # both arguments are used by this configuration
+  warns <- character()
+  fit_flat <- withCallingHandlers(
+    short(c(1, 1)),
+    warning = function(w) {
+      warns <<- c(warns, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_false(any(grepl("ignored", warns)))
+  expect_equal(attr(fit_flat, "parametrization"), "h2")
+  expect_equal(attr(fit_flat, "beta_prior"), c(1, 1))
+
+  # the model reports h2 as a parameter, and it is still the diagonal ratio
+  dm <- as.matrix(fit_flat$draws(c("G", "P", "h2", "s_P"),
+                                 format = "draws_matrix"))
+  expect_equal(unname(dm[, sprintf("h2[%d]", 1:3)]),
+               unname(dm[, sprintf("G[%d,%d]", 1:3, 1:3)] /
+                        dm[, sprintf("P[%d,%d]", 1:3, 1:3)]),
+               tolerance = 1e-6)
+  expect_true(all(dm[, sprintf("s_P[%d]", 1:3)] > 0))
+
+  # Beta(5, 50) has mean 0.091, so a live prior must drag h2 down
+  fit_low <- suppressWarnings(short(c(5, 50)))
+  expect_true(all(draws_mean(fit_low, "h2") < draws_mean(fit_flat, "h2")))
 })

@@ -10,16 +10,17 @@
 #'   below 1 put mass on correlations near +/-1, and a shape of 0 or less is not
 #'   a distribution.
 #' @param trait_names Optional trait names.
-#' @param beta_prior Optional shapes of the beta prior that the univariate
-#'   \code{parametrization = "h2"} model puts on the heritability. When given,
-#'   the draws come from that beta instead of the scaled half-normal ratio,
-#'   because that is the prior the fit uses. Only valid for a single trait.
+#' @param beta_prior Optional shapes of the beta prior that the
+#'   \code{parametrization = "h2"} models put on the heritability of each
+#'   trait. When given, the heritabilities come from that beta instead of the
+#'   scaled half-normal ratio, because that is the prior the fit uses. The
+#'   genetic correlations are drawn from the LKJ in either case.
 #' @return A long data frame with columns \code{type} (\code{"Heritability"} or
 #'   \code{"Genetic correlation"}), \code{parameter} and \code{value}.
 #' @details Standard deviations are half-normal(0, 1) and correlation matrices
-#'   are LKJ(\code{lkj_prior}), as in the Stan models. Univariate fits use the
-#'   default \code{parametrization = "variance"} prior unless \code{beta_prior}
-#'   is given, in which case that beta is the prior on the heritability.
+#'   are LKJ(\code{lkj_prior}), as in the Stan models. Fits with
+#'   \code{parametrization = "variance"} use that prior unless \code{beta_prior}
+#'   is given, in which case that beta is the prior on each heritability.
 #'
 #'   The residual correlation structure of the fit does not enter these draws:
 #'   heritability divides the genetic variance by the phenotypic variance, which
@@ -35,13 +36,20 @@ animal_prior_draws <- function(n_traits, n = 4000, lkj_prior = 2,
   lkj_prior <- .check_positive(lkj_prior, "lkj_prior")
   trait_names <- .trait_names(trait_names, n_traits)
   if (!is.null(beta_prior)) {
-    if (n_traits != 1L)
-      stop("`beta_prior` is the prior of the univariate `parametrization = "
-           , "\"h2\"` model, which has a single trait.", call. = FALSE)
     beta_prior <- .check_beta_prior(beta_prior)
-    h2 <- matrix(stats::rbeta(n, beta_prior[1L], beta_prior[2L]), n, 1L,
-                 dimnames = list(NULL, trait_names))
-    return(.long_draws(h2, NULL, "prior"))
+    # One beta per trait, and the correlations still come from the LKJ: that is
+    # exactly the prior of the parametrization = "h2" models.
+    h2 <- matrix(stats::rbeta(n * n_traits, beta_prior[1L], beta_prior[2L]),
+                 n, n_traits, dimnames = list(NULL, trait_names))
+    if (n_traits == 1L) return(.long_draws(h2, NULL, "prior"))
+    pairs <- .trait_pairs(trait_names)
+    cors <- matrix(NA_real_, n, nrow(pairs),
+                   dimnames = list(NULL, pairs$parameter))
+    for (i in seq_len(n)) {
+      Og <- .rlkj(n_traits, lkj_prior)
+      cors[i, ] <- Og[cbind(pairs$i, pairs$j)]
+    }
+    return(.long_draws(h2, cors, "prior"))
   }
   h2 <- matrix(NA_real_, n, n_traits, dimnames = list(NULL, trait_names))
   pairs <- .trait_pairs(trait_names)

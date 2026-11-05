@@ -2,6 +2,15 @@
 // G = diag(s_G) (Lambda Lambda' + Psi) diag(s_G), with regularized-horseshoe
 // priors on the loadings on the correlation scale.
 // E remains unstructured or diagonal, as in animalModelG.stan.
+//
+// The two scale vectors are a reparameterisation of a phenotypic scale and a
+// heritability: s_G = sqrt(h2) s_P and s_E = sqrt(1 - h2) s_P. The response is
+// standardized, so s_G^2 + s_E^2 is the phenotypic variance of the trait and is
+// pinned near 1 by the data. Putting independent priors on s_G and s_E would
+// therefore put the prior on a circle, which in terms of h2 is
+// p(h2) ~ 1 / sqrt(h2 (1 - h2)): an arcsine density that piles mass at 0 and at
+// 1 and makes a moderate heritability the least likely answer a priori. The
+// parameters below are s_P and h2 instead, so beta_prior is the prior on h2.
 functions {
   // The rotated response with the gaps filled in. See animalModelG.stan for why
   // incomplete traits need parameters here instead of per-pattern marginals: a
@@ -32,6 +41,7 @@ data {
   real<lower=0> hs_global_scale; // half-Cauchy scale for the global shrinkage
   real<lower=0> hs_slab_scale; // slab scale of the regularized horseshoe
   real<lower=0, upper=1> column_decay; // sd multiplier for successive factors
+  vector<lower=0>[2] beta_prior; // beta prior on the trait heritabilities
 }
 transformed data {
   int E_dim = unstructured_E ? K : 0;
@@ -109,15 +119,21 @@ transformed data {
 }
 parameters {
   matrix[K, J] beta_scaled; // fixed effects on scaled predictors
-  vector<lower=0>[K] s_G; // genetic sds, standardized response scale
+  vector<lower=0, upper=1>[K] h2; // trait heritability, standardized scale
+  vector<lower=0>[K] s_P; // phenotypic sds, standardized response scale
   vector[n_missing] Y_mis; // the gaps, on the standardized response scale
-  vector<lower=0>[K] s_E; // residual sds, standardized response scale
   cholesky_factor_corr[E_dim] L_Omega_E;
   matrix[K, M] loadings_raw; // non-centred loadings
   matrix<lower=0>[K, M] local_scale; // local horseshoe scales
   real<lower=0> global_scale; // global horseshoe scale
 }
 transformed parameters {
+  // The two scale vectors, rebuilt from the parameters so that every later
+  // expression keeps its meaning. They are non-negative by construction, so
+  // they carry no lower bound of their own: a constraint here would only add a
+  // runtime check that an out-of-bounds proposal can trip.
+  vector[K] s_G = sqrt(h2) .* s_P; // genetic sds
+  vector[K] s_E = sqrt(1 - h2) .* s_P; // residual sds
   matrix[K, J] beta; // fixed effects on original predictor and response scales
   matrix[K, M] loadings_corr; // loadings on the correlation scale
   vector<lower=0>[K] uniqueness_corr; // 1 - communality on the correlation scale
@@ -223,8 +239,8 @@ model {
   for (k in 1:K)
     for (j in 1:J)
       beta_scaled[k, j] ~ normal(0, beta_prior_sd[j]);
-  s_G ~ normal(0, 1);
-  s_E ~ normal(0, 1);
+  s_P ~ normal(0, 1);
+  h2 ~ beta(beta_prior[1], beta_prior[2]);
   if (unstructured_E)
     L_Omega_E ~ lkj_corr_cholesky(lkj_prior);
   to_vector(loadings_raw) ~ normal(0, 1);
@@ -251,12 +267,8 @@ generated quantities {
   matrix[K, K] P = G + E;
   vector[K] sigma_G = y_sd .* s_G;
   vector[K] sigma_E = sqrt(diagonal(E));
-  vector[K] h2;
   matrix[K, K] corrG = R_G;
   vector[N] log_lik;
-
-  for (k in 1:K)
-    h2[k] = G[k, k] / P[k, k];
 
   {
     // The rotated response belongs here, not to the saved quantities: it is a

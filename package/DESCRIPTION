@@ -1,6 +1,6 @@
 Package: stanimal
-Version: 0.7.1
-Date: 2026-11-04
+Version: 0.7.2
+Date: 2026-11-05
 Title: Animal Models in Stan
 Description: Fit linear animal models in Stan for one or more traits.
 URL: https://github.com/diogro/stanimal

@@ -51,6 +51,14 @@ data {
 }
 transformed data {
   int E_dim = unstructured_E ? K : 0;
+  // Prior for the specific genetic standard deviations: a log-normal with
+  // median 0.3 and spread 0.8 in phenotypic standard deviation units, so a 68%
+  // interval of about 0.14 to 0.67 and about 7% of the mass above one. The
+  // parameter is standardized rather than the sd itself, so a trait whose
+  // genetic variance is nearly zero is a large negative value instead of a
+  // parameter pressed against its lower bound.
+  real psi_sd_median = 0.3;
+  real psi_sd_log_sd = 0.8;
   vector[N] lambda;
   matrix[N, N] Q = eigenvectors_sym(A);
   vector[M] column_scale;
@@ -125,7 +133,7 @@ transformed data {
 }
 parameters {
   matrix[K, J] beta_scaled; // fixed effects on scaled predictors
-  vector<lower=0>[K] psi_sd; // specific genetic sds, standardized scale
+  vector[K] psi_log; // standardized log specific genetic sd
   vector<lower=0>[K] s_E; // residual sds, standardized response scale
   vector[n_missing] Y_mis; // the gaps, on the standardized response scale
   cholesky_factor_corr[E_dim] L_Omega_E;
@@ -134,6 +142,7 @@ parameters {
   real<lower=0> global_scale; // global horseshoe scale
 }
 transformed parameters {
+  vector[K] psi_sd = psi_sd_median * exp(psi_sd_log_sd * psi_log);
   vector[K] psi = square(psi_sd); // specific genetic variances
   matrix[K, J] beta; // fixed effects on original predictor and response scales
   matrix[K, M] loadings; // loadings, standardized response scale
@@ -237,7 +246,7 @@ model {
   for (k in 1:K)
     for (j in 1:J)
       beta_scaled[k, j] ~ normal(0, beta_prior_sd[j]);
-  psi_sd ~ normal(0, 1);
+  psi_log ~ normal(0, 1);
   s_E ~ normal(0, 1);
   if (unstructured_E)
     L_Omega_E ~ lkj_corr_cholesky(lkj_prior);

@@ -2,7 +2,7 @@
 #
 # An animal model answers "how much of the variation in this trait is additive"
 # and gives the covariance G. It does not answer "what is the additive value of
-# *this* mouse", because the breeding values are integrated out of the
+# *this* opossum", because the breeding values are integrated out of the
 # likelihood: that is what makes the model scale to many individuals and many
 # traits. breeding_values() puts them back afterwards, from the G, E and beta the
 # fit already estimated. What comes out is what a breeding program would act on:
@@ -19,38 +19,33 @@ library(ggplot2)
 options(mc.cores = 4)
 
 ## Data
-data(ratones_morpho)
+data(opossum)
+
 # Three distances that span the skull and are not dominated by a single axis.
 traits <- c("IS_NSL", "NA_BR", "ZI_ZYGO")
-dat <- ratones_morpho
+dat <- opossum[complete.cases(opossum[, c("id", "sex", "age", traits)]), ]
 dat[traits] <- log(dat[traits])   # morphometrics are fitted on the log scale
 
-# Each mouse records its dam and sire, so the pedigree is rebuilt from the data
-# itself; parents that were never measured are added as founders by makeA().
-ped <- data.frame(id = as.character(dat$ID),
-                  sire = as.character(dat$PADRE),
-                  dam = as.character(dat$MADRE),
-                  stringsAsFactors = FALSE)
-
 design <- suppressWarnings(
-  animal_design(cbind(IS_NSL, NA_BR, ZI_ZYGO) ~ SEX + AGE + LIN,
-                dat, pedigree = ped))
+  animal_design(cbind(IS_NSL, NA_BR, ZI_ZYGO) ~ sex + age,
+                dat))
 
-fit <- lmm_animal(design$Y, design$X, design$A, lkj_prior = 2,
+A <- opossum_grm[rownames(design$Y), rownames(design$Y)]
+fit <- lmm_animal(design$Y, design$X, A, lkj_prior = 2,
                   iter = 800, warmup = 400, chains = 2)
 
 ## The breeding values
 ebv <- breeding_values(fit)
-ebv                       # the first mice, with standard errors and reliabilities
+ebv                       # the first opossum, with standard errors and reliabilities
 
 ## Reliability: the share of a trait's additive variance the prediction pins
-## down. A mouse with many measured relatives scores higher than a lone one.
-cat("\nreliability (5%, 50%, 95% of mice):\n")
+## down. An animal with many measured relatives scores higher than a lone one.
+cat("\nreliability (5%, 50%, 95% of opossums):\n")
 print(round(apply(ebv$reliability, 2, stats::quantile, c(0.05, 0.5, 0.95)), 2))
 
 ## The prediction is on the trait's scale, as a deviation from the fixed effects
 residual <- design$Y - design$X %*% t(draws_mean(fit, "beta"))
-cat("\nrank correlation between the breeding value and the mouse's own",
+cat("\nrank correlation between the breeding value and the animal's own",
     "deviation:\n")
 print(round(diag(stats::cor(ebv$values, residual, method = "spearman")), 2))
 
@@ -58,7 +53,7 @@ print(round(diag(stats::cor(ebv$values, residual, method = "spearman")), 2))
 first <- traits[1]
 by_value <- rownames(ebv$values)[order(ebv$values[, first], decreasing = TRUE)]
 by_phenotype <- rownames(residual)[order(residual[, first], decreasing = TRUE)]
-cat("\ntop 10 mice by breeding value, with reliability:\n")
+cat("\ntop 10 opossums by breeding value, with reliability:\n")
 print(data.frame(id = by_value[1:10],
                  value = round(ebv$values[by_value[1:10], first], 3),
                  se = round(ebv$se[by_value[1:10], first], 3),
@@ -68,7 +63,7 @@ cat("\n", length(intersect(by_value[1:10], by_phenotype[1:10])), "of those",
     "are also in the top 10 by their own measurement; the rest are promoted by",
     "their relatives\n")
 
-## Shrinkage: every prediction sits closer to the mean than the mouse's own
+## Shrinkage: every prediction sits closer to the mean than the animal's own
 ## deviation, and the points that sit furthest inside the line are the ones with
 ## the lowest reliability
 plot_dat <- data.frame(
@@ -94,7 +89,7 @@ p <- ggplot(plot_dat, aes(x = measured, y = predicted, colour = reliability)) +
        colour = "reliability",
        title = "Breeding values shrink the measurements toward the mean",
        subtitle = paste("dashed line: the measurement itself; the further inside",
-                        "the line, the less the mouse's own record is trusted")) +
+                        "the line, the less the animal's own record is trusted")) +
   theme_minimal()
 
 dir.create("examples/figures", showWarnings = FALSE)

@@ -36,13 +36,8 @@ traits <- c("IS_PM", "NSL_NA", "PT_BA", "BA_OPI")
 dat[traits] <- log(dat[traits])
 round(cor(dat[traits]), 2)
 
-# Each mouse records its dam (MADRE) and sire (PADRE), so the pedigree can be
-# rebuilt from ratones_morpho itself; parents that were never measured are added
-# as founders by makeA().
-ped <- data.frame(id = as.character(dat$ID),
-                  sire = as.character(dat$PADRE),
-                  dam = as.character(dat$MADRE),
-                  stringsAsFactors = FALSE)
+# now the pedigree
+ped <- ratones_pedigree
 
 # animal_design() builds Y, X and A in one call: the formula gives the fixed
 # effects (sex, age at death and selection line -- the lines differ in body weight

@@ -1,16 +1,19 @@
 # Prototype: the factor model with the specific genetic variance free
 #
-# Compares the shipped factor model (loadings normalised to a correlation
-# matrix, so the specific genetic variance is 1 / (1 + ||raw||^2) and the trait
-# heritability is a parameter) with animalModelGFactorPsi.stan, where
-# G = Lambda Lambda' + diag(psi) and the heritability is derived. See Runcie and
-# Mukherjee (2013) for the parameterisation of G, with unstructured rather than
-# diagonal residuals here.
+# The psi comparison (animalModelGFactorPsi.stan, where G = Lambda Lambda' +
+# diag(psi) and the heritability is derived; see Runcie and Mukherjee 2013) was
+# run under a temporary relaxation that let lmm_animal() pass a custom model
+# file through the factor data path. That relaxation has been removed:
+# model_file is again incompatible with genetic_structure = "factor", as the
+# documentation states, so the psi fits cannot be rerun through the public
+# interface. Their results are kept in the committed
+# data-raw/prototype-factor-psi.csv; rerunning this script rewrites that file
+# with only the fits below.
 #
-# The point of the comparison is stability: does the reported heritability still
-# move when the slab scale moves, and does it still move when the trait selection
-# changes from six facial and two neurocranial distances to a balanced four and
-# four (Porto et al. 2009, Table 2)?
+# What this script still fits is the stability of the shipped factor model: does
+# the reported heritability move when the slab scale moves, and does it still
+# move when the trait selection changes from six facial and two neurocranial
+# distances to a balanced four and four (Porto et al. 2009, Table 2)?
 #
 # Run from the repository root:
 #   Rscript data-raw/prototype-factor-psi.R
@@ -33,8 +36,6 @@ selections <- list(
                          "PT_ZYGO", "PT_APET", "PM_ZI"),
   "4 + 4" = c("NSL_ZI", "PM_MT", "NSL_ZS", "IS_PNS",
               "PT_APET", "BR_APET", "PNS_APET", "OPI_LD"))
-
-psi_model <- normalizePath("package/inst/stan/animalModelGFactorPsi.stan")
 
 build <- function(traits) {
   dat <- ratones_morpho
@@ -115,14 +116,6 @@ for (design in names(selections)) {
   rows[[length(rows) + 1L]] <- fit_one(
     paste(design, "| current, slab 2"), d,
     genetic_structure = "factor", n_factors = 2, hs_slab_scale = 2)
-  rows[[length(rows) + 1L]] <- fit_one(
-    paste(design, "| psi, slab 1"), d,
-    genetic_structure = "factor", n_factors = 2, hs_slab_scale = 1,
-    model_file = psi_model)
-  rows[[length(rows) + 1L]] <- fit_one(
-    paste(design, "| psi, slab 2"), d,
-    genetic_structure = "factor", n_factors = 2, hs_slab_scale = 2,
-    model_file = psi_model)
   rows[[length(rows) + 1L]] <- fit_one(paste(design, "| unstructured"), d)
   write.csv(do.call(rbind, rows), "data-raw/prototype-factor-psi.csv",
             row.names = FALSE)

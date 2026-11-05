@@ -243,9 +243,8 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
       stop("`genetic_structure = \"factor\"` needs at least two traits.",
            call. = FALSE)
     if (!is.null(model_file))
-      # TEST BRANCH ONLY: relaxed so a prototype factor model can be fitted
-      # through the same data-building path. Do not merge.
-      message("`model_file` overrides the factor model on this branch.")
+      stop("`model_file` cannot be combined with `genetic_structure = \"factor\"`.",
+           call. = FALSE)
     if (is.null(n_factors)) {
       n_factors <- .default_n_factors(ncol(Y))
       warning("`n_factors` was not supplied; using ", n_factors,

@@ -68,23 +68,41 @@ animal_prior_draws <- function(n_traits, n = 4000, lkj_prior = 2,
 
 #' Heritability and genetic correlation draws from a fit
 #'
-#' @param fit A fit returned by \code{lmm_animal} with \code{cmd_stan = TRUE}, or
-#'   a \code{posterior} draws object containing \code{h2} and, for several
+#' @param fit A fit returned by \code{lmm_animal}, or a
+#'   \code{posterior} draws object containing \code{h2} and, for several
 #'   traits, \code{corrG}.
-#' @param trait_names Optional trait names.
+#' @param trait_names Optional trait names. Defaults to names recorded on the fit,
+#'   or generic names when these are unavailable.
 #' @return A long data frame with columns \code{type}, \code{parameter} and
 #'   \code{value}.
 #' @export
 animal_parameter_draws <- function(fit, trait_names = NULL) {
+  if (inherits(fit, "stanimal_laplace"))
+    stop("`animal_parameter_draws()` needs posterior draws; a Laplace ",
+         "approximation is not a posterior sample.", call. = FALSE)
   draws <- fit
   if (inherits(fit, "CmdStanFit") || (is.list(fit) && is.function(fit$draws))) {
     vars <- if (is.function(fit$metadata)) fit$metadata()$stan_variables else c("h2", "corrG")
     draws <- fit$draws(intersect(c("h2", "corrG"), vars))
   }
-  df <- as.data.frame(posterior::as_draws_df(draws))
+  df <- if (inherits(draws, "stanfit")) as.data.frame(as.matrix(draws)) else
+    as.data.frame(posterior::as_draws_df(draws))
   h2_cols <- grep("^h2(\\[[0-9]+\\])?$", names(df), value = TRUE)
   if (!length(h2_cols)) stop("`fit` must contain `h2` draws.", call. = FALSE)
-  trait_names <- .trait_names(trait_names, length(h2_cols))
+  if ("h2" %in% h2_cols && length(h2_cols) > 1L)
+    stop("`h2` indices must be consecutive, starting at 1.", call. = FALSE)
+  if (!identical(h2_cols, "h2")) {
+    indices <- as.integer(sub("^h2\\[([0-9]+)\\]$", "\\1", h2_cols))
+    if (anyNA(indices) || anyDuplicated(indices) ||
+        !identical(sort(indices), seq_along(indices)))
+      stop("`h2` indices must be consecutive, starting at 1.", call. = FALSE)
+    h2_cols <- h2_cols[order(indices)]
+  }
+  trait_names <- .trait_names(trait_names %||% attr(fit, "y_names"),
+                              length(h2_cols))
+  if (anyNA(trait_names) || any(!nzchar(trait_names)) ||
+      anyDuplicated(trait_names))
+    stop("`trait_names` must be non-empty, non-missing and unique.", call. = FALSE)
   h2 <- as.matrix(df[h2_cols]); colnames(h2) <- trait_names
   cors <- NULL
   if (length(h2_cols) > 1L) {
@@ -100,11 +118,15 @@ animal_parameter_draws <- function(fit, trait_names = NULL) {
 #'
 #' @inheritParams animal_parameter_draws
 #' @param lkj_prior Optional LKJ shape for the prior draws. The default
-#'   \code{NULL} uses the shape recorded by the fit, and 2 when the fit does not
-#'   carry one.
+#'   \code{NULL} uses the shape recorded by the fit. Supplying a different
+#'   shape warns that the comparison no longer uses the fitted prior. It is
+#'   ignored, with a warning, for factor-G or univariate fits, or when
+#'   \code{prior} is given.
 #' @param n_prior Passed to \code{\link{animal_prior_draws}} as \code{n}.
 #' @param prior Optional prior draws in the format returned by
-#'   \code{animal_prior_draws}; computed if \code{NULL}.
+#'   \code{animal_prior_draws}; computed if \code{NULL} and the fit's prior is
+#'   known. Its parameter names and types must match the posterior. The caller
+#'   is responsible for ensuring the draws represent the fitted prior.
 #' @return A ggplot object. \code{plot_prior_posterior} shows overlaid densities
 #'   in one panel per parameter, and \code{plot_forest} shows means and
 #'   \code{prob} intervals of the posterior and the prior.
@@ -113,11 +135,18 @@ animal_parameter_draws <- function(fit, trait_names = NULL) {
 #'   The prior is drawn from the model configuration recorded by
 #'   \code{\link{lmm_animal}}, so an \code{"h2"} fit is compared with its beta
 #'   prior on the heritability and an unstructured fit with the LKJ shape it was
-#'   given. Two configurations have no prior this function can reproduce, and
-#'   both are errors rather than a comparison against the wrong prior: a sparse
-#'   factor fit, whose prior is on the loadings with the column decay on top, and
-#'   a fit sampled from a custom \code{model_file}, where the prior is whatever
-#'   that file says. Pass \code{prior} with draws from the prior you used.
+#'   given. For ordinary factor \code{G}, it simulates the regularized horseshoe
+#'   loadings using the recorded factor count, global scale, slab and column
+#'   decay, then constructs the genetic correlations. The current model uses
+#'   the recorded beta prior on trait heritability; older factor fits recorded as
+#'   \code{"variance"} use independent half-normal genetic and residual scales.
+#'   These prior draws use R's random number generator.
+#'
+#'   The shared-factor model and a fit sampled from a custom \code{model_file}
+#'   cannot be reconstructed here. Bare draws and older fits missing configuration
+#'   metadata cannot establish which prior was used either. In each case pass
+#'   \code{prior} with draws from the prior you used, using the same trait names
+#'   as the posterior. The same rules apply to \code{plot_forest()}.
 #' @export
 plot_prior_posterior <- function(fit, trait_names = NULL, lkj_prior = NULL,
                                  n_prior = 4000, prior = NULL, ncol = 4) {
@@ -167,7 +196,14 @@ plot_forest <- function(fit, trait_names = NULL, lkj_prior = NULL,
 
 .prior_posterior <- function(fit, trait_names, lkj_prior, n_prior, prior) {
   n_prior <- .check_count(n_prior, "n_prior")
+  if (!is.null(lkj_prior))
+    lkj_prior <- .check_positive(lkj_prior, "lkj_prior")
   post <- animal_parameter_draws(fit, trait_names)
+  parameters <- unique(post$parameter[post$type == "Heritability"])
+  expected <- unique(post[c("type", "parameter")])
+  if (anyDuplicated(expected$parameter))
+    stop("Trait names produce ambiguous parameter labels; choose distinct ",
+         "`trait_names`.", call. = FALSE)
   if (is.null(prior)) {
     config <- .fit_prior_config(fit)
     if (config$custom)
@@ -175,17 +211,50 @@ plot_forest <- function(fit, trait_names = NULL, lkj_prior = NULL,
            , "prior is whatever that file says and cannot be reconstructed "
            , "here. Pass `prior` with draws from the prior you used, in the "
            , "format returned by `animal_prior_draws()`.", call. = FALSE)
-    if (config$factor)
-      stop("`fit` uses a sparse factor model, whose prior on `G` is the ",
-           "regularized horseshoe on the loadings plus the column decay and has ",
-           "no closed form here, so the unstructured prior would be the wrong ",
-           "comparison. Pass `prior` with draws from the prior you actually ",
-           "used, in the format returned by `animal_prior_draws()`.",
+    if (config$shared_factor)
+      stop("The shared-factor model prior cannot be reconstructed here. ",
+           "Pass `prior` with draws from the prior used by the fit.",
            call. = FALSE)
-    parameters <- unique(post$parameter[post$type == "Heritability"])
-    prior <- animal_prior_draws(length(parameters), n_prior,
-                                lkj_prior %||% config$lkj_prior %||% 2,
-                                parameters, beta_prior = config$h2_prior)
+    if (!config$known ||
+        (!config$factor && length(parameters) > 1L && is.null(config$lkj_prior)) ||
+        (config$factor && any(vapply(config[c("n_factors", "hs_global_scale",
+                                             "hs_slab_scale", "column_decay")],
+                                    is.null, logical(1)))) ||
+        (identical(config$parametrization, "h2") && is.null(config$h2_prior)))
+      stop("The prior cannot be reconstructed: the fit is missing or has ",
+           "unrecognized model configuration metadata. Pass `prior` with draws ",
+           "from the prior used by the fit.", call. = FALSE)
+    if (!config$factor && !is.null(config$lkj_prior))
+      config$lkj_prior <- .check_positive(config$lkj_prior, "lkj_prior")
+    if (!is.null(config$h2_prior))
+      config$h2_prior <- .check_beta_prior(config$h2_prior)
+    if (!is.null(lkj_prior)) {
+      if (config$factor)
+        warning("`lkj_prior` is ignored for the factor-G prior; genetic ",
+                "correlations are determined by the factor loadings.",
+                call. = FALSE)
+      else if (length(parameters) == 1L)
+        warning("`lkj_prior` is ignored for a univariate fit.", call. = FALSE)
+      else if (lkj_prior != config$lkj_prior)
+        warning("`lkj_prior` differs from the shape recorded by the fit; the ",
+                "comparison uses the supplied shape, not the fitted prior.",
+                call. = FALSE)
+    }
+    if (config$factor) {
+      prior <- .factor_g_prior_draws(length(parameters), n_prior, parameters,
+                                     config$n_factors, config$hs_global_scale,
+                                     config$hs_slab_scale, config$column_decay,
+                                     config$h2_prior)
+    } else {
+      prior <- animal_prior_draws(length(parameters), n_prior,
+                                  lkj_prior %||% config$lkj_prior %||% 2,
+                                  parameters, beta_prior = config$h2_prior)
+    }
+  } else {
+    if (!is.null(lkj_prior))
+      warning("`lkj_prior` is ignored when `prior` is supplied.", call. = FALSE)
+    .validate_plot_prior(prior, expected)
+    prior <- prior[c("type", "parameter", "value", "source")]
   }
   d <- rbind(post, prior)
   d$source <- factor(ifelse(d$source == "posterior", "Posterior", "Prior"),
@@ -195,18 +264,102 @@ plot_forest <- function(fit, trait_names = NULL, lkj_prior = NULL,
   d[order(d$type), ]
 }
 
-# The model configuration that lmm_animal() records on the fit, so the prior it
-# used can be reproduced instead of assuming the unstructured one. A bare draws
-# object carries nothing and falls back to those defaults.
 .fit_prior_config <- function(fit) {
-  genetic <- attr(fit, "genetic_structure") %||% "unstructured"
-  residual <- attr(fit, "residual_structure") %||% "unstructured"
-  parametrization <- attr(fit, "parametrization") %||% "variance"
-  list(factor = identical(genetic, "factor") ||
-         identical(residual, "shared_factor"),
-       custom = isTRUE(attr(fit, "custom_model")),
+  genetic <- attr(fit, "genetic_structure")
+  residual <- attr(fit, "residual_structure")
+  parametrization <- attr(fit, "parametrization")
+  custom <- attr(fit, "custom_model")
+  list(factor = identical(genetic, "factor"),
+       shared_factor = identical(residual, "shared_factor"),
+       custom = isTRUE(custom),
+       known = (identical(genetic, "unstructured") || identical(genetic, "factor")) &&
+         (identical(residual, "unstructured") || identical(residual, "diagonal")) &&
+         (identical(parametrization, "variance") || identical(parametrization, "h2")) &&
+         identical(custom, FALSE),
+       parametrization = parametrization,
+       n_factors = attr(fit, "n_factors"),
+       hs_global_scale = attr(fit, "hs_global_scale"),
+       hs_slab_scale = attr(fit, "hs_slab_scale"),
+       column_decay = attr(fit, "column_decay"),
        lkj_prior = attr(fit, "lkj_prior"),
        h2_prior = if (identical(parametrization, "h2")) attr(fit, "beta_prior"))
+}
+
+.factor_g_prior_draws <- function(k, n, traits, n_factors, hs_global_scale,
+                                  hs_slab_scale, column_decay, beta_prior) {
+  n_factors <- .check_count(n_factors, "n_factors")
+  if (k < 2L || n_factors >= k)
+    stop("`n_factors` must be smaller than the number of traits.", call. = FALSE)
+  hs_global_scale <- .check_positive(hs_global_scale, "hs_global_scale")
+  hs_slab_scale <- .check_positive(hs_slab_scale, "hs_slab_scale")
+  column_decay <- .check_in_range(column_decay, "column_decay", 0, 1,
+                                  open_low = TRUE)
+  if (is.null(beta_prior)) {
+    g <- matrix(stats::rnorm(n * k), n, k)
+    e <- matrix(stats::rnorm(n * k), n, k)
+    h2 <- g^2 / (g^2 + e^2)
+  } else {
+    h2 <- matrix(stats::rbeta(n * k, beta_prior[1L], beta_prior[2L]), n, k)
+  }
+  colnames(h2) <- traits
+  pairs <- .trait_pairs(traits)
+  cors <- matrix(NA_real_, n, nrow(pairs),
+                 dimnames = list(NULL, pairs$parameter))
+  for (i in seq_len(n)) {
+    R <- .factor_g_prior_correlation(k, n_factors, hs_global_scale,
+                                     hs_slab_scale, column_decay)
+    cors[i, ] <- R[cbind(pairs$i, pairs$j)]
+  }
+  .long_draws(h2, cors, "prior")
+}
+
+.factor_g_prior_correlation <- function(k, m, global_scale, slab_scale, decay) {
+  global <- abs(stats::rcauchy(1, scale = global_scale))
+  local <- matrix(abs(stats::rcauchy(k * m)), k, m)
+  raw <- matrix(stats::rnorm(k * m), k, m)
+  log_column <- (seq_len(m) - 1L) * log(decay)
+  log_local <- sweep(log(local), 2L, log_column, "+") + log(global)
+  variance <- exp(pmin(2 * log_local, log(1e150)))
+  slab <- slab_scale^2
+  # Avoid overflowing the ratio when a valid slab is extremely small or large.
+  shrunk <- variance
+  if (slab == 0) {
+    shrunk[] <- 0
+  } else {
+    high <- variance > slab
+    shrunk[!high] <- variance[!high] / (1 + variance[!high] / slab)
+    shrunk[high] <- slab / (1 + slab / variance[high])
+  }
+  loadings <- raw * sqrt(shrunk)
+  row_scale <- 1 / sqrt(1 + rowSums(loadings^2))
+  loadings <- loadings * row_scale
+  tcrossprod(loadings) + diag(row_scale^2, k)
+}
+
+.validate_plot_prior <- function(prior, expected) {
+  if (!is.data.frame(prior) ||
+      !all(c("type", "parameter", "value", "source") %in% names(prior)) ||
+      !nrow(prior))
+    stop("`prior` must be a non-empty data frame in the format returned by ",
+         "`animal_prior_draws()`.", call. = FALSE)
+  if (anyNA(prior$source) || any(as.character(prior$source) != "prior"))
+    stop("`prior` source must be 'prior' for every draw.", call. = FALSE)
+  if (!is.numeric(prior$value) || any(!is.finite(prior$value)))
+    stop("`prior` value must contain finite numeric draws.", call. = FALSE)
+  keys <- data.frame(type = as.character(prior$type),
+                     parameter = as.character(prior$parameter))
+  keys <- unique(keys)
+  if (anyNA(keys) || nrow(keys) != nrow(expected) ||
+      nrow(merge(keys, expected, by = c("type", "parameter"))) != nrow(expected))
+    stop("`prior` parameter names and types must match the posterior exactly.",
+         call. = FALSE)
+  types <- as.character(prior$type)
+  if (any(prior$value[types == "Heritability"] < 0 |
+          prior$value[types == "Heritability"] > 1) ||
+      any(abs(prior$value[types == "Genetic correlation"]) > 1))
+    stop("`prior` values must be valid heritabilities or genetic correlations.",
+         call. = FALSE)
+  invisible(NULL)
 }
 
 .trait_names <- function(trait_names, k) {

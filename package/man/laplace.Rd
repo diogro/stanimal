@@ -66,10 +66,11 @@ does not take one.}
 
 \item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 0.8 orders the columns without forcing a strict hierarchy; with \code{column_decay = 1} the columns are exchangeable a priori and their labels are free to swap between chains. How strong the decay needs to be depends on how many columns have to be told apart: with two columns of comparable size 0.8 is often too mild and 0.5 is what separates them, while a strong decay works against a model with many columns, because \code{0.5^(m - 1)} cuts the prior of the fifth column to a sixteenth of the first. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. Explicitly supplying it outside \code{genetic_structure = "factor"} warns that it is ignored.}
 
-\item{draws}{Number of draws to take from the approximation, used only for the
-posterior standard deviations. A whole number.}
+\item{draws}{Number of draws from the approximation used for its reported
+means, standard deviations and median absolute deviations. A whole number.}
 
-\item{seed}{Optional seed for the draws.}
+\item{seed}{Optional seed for optimization and approximation draws. If omitted,
+a seed is drawn from R's random-number generator and recorded in the result.}
 
 \item{...}{additional parameters for stan sampling}
 
@@ -95,13 +96,15 @@ An object of class \code{stanimal_laplace}, a list with
 \description{
 Fits the same model as \code{\link{lmm_animal}} or \code{\link{lm_phen_cov}}
 and returns a Gaussian approximation at the posterior mode instead of
-posterior draws. It is much faster than sampling and it comes with no
-diagnostics: there is no \code{Rhat}, no divergence count and no effective
-sample size, because there are no chains.
+posterior draws. It can be much faster than sampling, but has no MCMC
+diagnostics: there is no \code{Rhat}, divergence count or effective sample
+size, because there are no chains.
 }
 \details{
-The approximation is a Gaussian centred on the posterior mode, with
-  the covariance taken from the curvature there. It is poor wherever the
+The approximation is Gaussian on the unconstrained parameter scale,
+  centred on the mode, with covariance taken from the curvature there.
+  Quantities on their reported scales are transformations of those draws.
+  The approximation is poor wherever the
   posterior is skewed, and the diagonal of a covariance matrix is the first
   place that happens, so a standard deviation for a variance or a heritability
   is the least trustworthy number these functions return. In bivariate animal
@@ -113,6 +116,10 @@ The approximation is a Gaussian centred on the posterior mode, with
   Only \code{cmdstanr} can run the approximation; there is no \code{rstan}
   equivalent, so the functions error when it is not installed rather than
   falling back to sampling.
+  Optimization and CmdStan failures and warnings are surfaced; there is no
+  automatic retry. If the Laplace stage fails, its CmdStan output is included
+  in the error. The mode is written with high precision to avoid loss of
+  precision when CmdStan reads a correlation Cholesky factor back in.
 }
 \seealso{
 \code{\link{lmm_animal}}, \code{\link{lm_phen_cov}}

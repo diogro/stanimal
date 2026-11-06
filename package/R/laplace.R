@@ -2,13 +2,14 @@
 #'
 #' Fits the same model as \code{\link{lmm_animal}} or \code{\link{lm_phen_cov}}
 #' and returns a Gaussian approximation at the posterior mode instead of
-#' posterior draws. It is much faster than sampling and it comes with no
-#' diagnostics: there is no \code{Rhat}, no divergence count and no effective
-#' sample size, because there are no chains.
+#' posterior draws. It can be much faster than sampling, but has no MCMC
+#' diagnostics: there is no \code{Rhat}, divergence count or effective sample
+#' size, because there are no chains.
 #'
-#' @param draws Number of draws to take from the approximation, used only for the
-#'   posterior standard deviations. A whole number.
-#' @param seed Optional seed for the draws.
+#' @param draws Number of draws from the approximation used for its reported
+#'   means, standard deviations and median absolute deviations. A whole number.
+#' @param seed Optional seed for optimization and approximation draws. If omitted,
+#'   a seed is drawn from R's random-number generator and recorded in the result.
 #' @inheritParams lmm_animal
 #' @param Y,X,A Relationship matrix and data, as in \code{\link{lmm_animal}}.
 #'   \code{lmm_animal_laplace()} needs \code{A}; \code{lm_phen_cov_laplace()}
@@ -30,8 +31,10 @@
 #'   to screen many trait sets quickly, or to get a covariance when a full fit is
 #'   too slow, and not to report a heritability with an interval.
 #'
-#' @details The approximation is a Gaussian centred on the posterior mode, with
-#'   the covariance taken from the curvature there. It is poor wherever the
+#' @details The approximation is Gaussian on the unconstrained parameter scale,
+#'   centred on the mode, with covariance taken from the curvature there.
+#'   Quantities on their reported scales are transformations of those draws.
+#'   The approximation is poor wherever the
 #'   posterior is skewed, and the diagonal of a covariance matrix is the first
 #'   place that happens, so a standard deviation for a variance or a heritability
 #'   is the least trustworthy number these functions return. In bivariate animal
@@ -43,6 +46,10 @@
 #'   Only \code{cmdstanr} can run the approximation; there is no \code{rstan}
 #'   equivalent, so the functions error when it is not installed rather than
 #'   falling back to sampling.
+#'   Optimization and CmdStan failures and warnings are surfaced; there is no
+#'   automatic retry. If the Laplace stage fails, its CmdStan output is included
+#'   in the error. The mode is written with high precision to avoid loss of
+#'   precision when CmdStan reads a correlation Cholesky factor back in.
 #'
 #' @seealso \code{\link{lmm_animal}}, \code{\link{lm_phen_cov}}
 #' @name laplace
@@ -62,9 +69,18 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
                                hs_slab_scale = 1, column_decay = 0.8,
                                draws = 2000, seed = NULL, ...) {
   call <- match.call()
+  .warn_dots(...)
+  beta_prior_supplied <- !missing(beta_prior)
+  lkj_prior_supplied <- !missing(lkj_prior)
+  parametrization_supplied <- !missing(parametrization)
+  hs_supplied <- c(hs_global_scale = !missing(hs_global_scale),
+                   hs_slab_scale = !missing(hs_slab_scale),
+                   column_decay = !missing(column_decay))
   parametrization <- match.arg(parametrization)
   residual_structure <- match.arg(residual_structure)
   genetic_structure <- match.arg(genetic_structure)
+  for (arg in names(hs_supplied))
+    .warn_ignored(hs_supplied[[arg]], genetic_structure == "factor", arg)
   lkj_prior <- .check_positive(lkj_prior, "lkj_prior")
   beta_prior <- .check_beta_prior(beta_prior)
   hs_global_scale <- .check_positive(hs_global_scale, "hs_global_scale")
@@ -107,6 +123,13 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
     stop("`n_factors` is only used with `genetic_structure = \"factor\"`.",
          call. = FALSE)
   }
+  .warn_ignored(beta_prior_supplied,
+                (ncol(Y) == 1L && parametrization == "h2") || factor_model ||
+                  h2_param, "beta_prior")
+  .warn_ignored(lkj_prior_supplied,
+                ncol(Y) > 1L && !shared_factor_model &&
+                  residual_structure == "unstructured", "lkj_prior")
+  .warn_ignored(parametrization_supplied, !factor_model, "parametrization")
 
   n <- nrow(Y)
   A <- .check_relationship_matrix(A, Y)
@@ -193,7 +216,14 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
                                 model_file = NULL, draws = 2000, seed = NULL,
                                 ...) {
   call <- match.call()
+  .warn_dots(...)
+  lkj_prior_supplied <- !missing(lkj_prior)
+  hs_supplied <- c(hs_global_scale = !missing(hs_global_scale),
+                   hs_slab_scale = !missing(hs_slab_scale),
+                   column_decay = !missing(column_decay))
   covariance_structure <- match.arg(covariance_structure)
+  for (arg in names(hs_supplied))
+    .warn_ignored(hs_supplied[[arg]], covariance_structure == "factor", arg)
   lkj_prior <- .check_positive(lkj_prior, "lkj_prior")
   hs_global_scale <- .check_positive(hs_global_scale, "hs_global_scale")
   hs_slab_scale <- .check_positive(hs_slab_scale, "hs_slab_scale")
@@ -226,6 +256,7 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
     stop("`n_factors` is only used with `covariance_structure = \"factor\"`.",
          call. = FALSE)
   }
+  .warn_ignored(lkj_prior_supplied, !factor_model, "lkj_prior")
 
   stan_data <- list(K = ncol(Y), J = ncol(X), N = nrow(Y), X = X, Y = Y,
                     miss = missing$miss, n_pattern = missing$n_pattern,
@@ -254,48 +285,34 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
   .laplace_fit(model_code, stan_data, quantities, draws, seed, call)
 }
 
+# `...` is kept for symmetry with the samplers but nothing consumes it here
+.warn_dots <- function(...) {
+  if (...length() > 0L) {
+    arg_names <- names(list(...))
+    if (is.null(arg_names)) arg_names <- rep("", ...length())
+    arg_names[!nzchar(arg_names)] <- "<unnamed>"
+    warning("Arguments in `...` are ignored by the Laplace approximation: ",
+            paste(arg_names, collapse = ", "), ".",
+            call. = FALSE)
+  }
+  invisible(NULL)
+}
+
 # Run the Laplace approximation on a compiled model and wrap the summaries.
-.laplace_fit <- function(model_code, stan_data, quantities, draws, seed, call,
-                         attempts = 3L) {
+.laplace_fit <- function(model_code, stan_data, quantities, draws, seed, call) {
+  draws <- .check_count(draws, "draws")
+  if (!is.null(seed)) seed <- .check_whole(seed, "seed")
   if (!requireNamespace("cmdstanr", quietly = TRUE))
     stop("A Laplace approximation needs the cmdstanr package; install it, or ",
          "use the sampler with `lmm_animal()` or `lm_phen_cov()`.", call. = FALSE)
-  draws <- .check_count(draws, "draws")
-  if (!is.null(seed)) seed <- .check_whole(seed, "seed")
 
   stan_file <- cmdstanr::write_stan_file(model_code, dir = stan_cache_dir())
   mod <- cmdstanr::cmdstan_model(stan_file)
 
-  # A draw from the approximation sometimes fails the exact unit-vector check
-  # when CmdStan unconstrains a Cholesky factor of a correlation matrix, which
-  # aborts that fit. It is a property of the seed rather than of the model, so
-  # the seed is advanced and the fit retried before giving up.
-  seeds <- if (is.null(seed)) sample.int(1e6, attempts) else
-    seed + seq_len(attempts) - 1L
-  result <- NULL
-  elapsed <- 0
-  for (s in seeds) {
-    args <- list(data = stan_data, draws = draws, refresh = 0, seed = s)
-    start <- proc.time()[["elapsed"]]
-    # the optimiser prints its convergence line to stdout, which is noise inside
-    # a function that is meant to be called from a script
-    value <- tryCatch({
-      invisible(utils::capture.output(fit <- do.call(mod$laplace, args)))
-      summary <- fit$summary(quantities)[, c("variable", "mean", "sd", "mad")]
-      list(fit = fit, summary = summary, seed = s)
-    }, error = function(e) NULL)
-    elapsed <- elapsed + proc.time()[["elapsed"]] - start
-    if (!is.null(value)) {
-      result <- value
-      break
-    }
-  }
-  if (is.null(result))
-    stop("The Laplace approximation failed on ", attempts, " seeds. CmdStan ",
-         "rejects a draw when a Cholesky factor of a correlation matrix is not ",
-         "a unit vector to machine precision, and that check can fail for a ",
-         "given mode. Try `draws` larger, a different `seed`, or sample the ",
-         "model with `lmm_animal()` / `lm_phen_cov()`.", call. = FALSE)
+  seed <- if (is.null(seed)) sample.int(1e6, 1L) else seed
+  start <- proc.time()[["elapsed"]]
+  result <- .laplace_run(mod, stan_data, quantities, draws, seed)
+  elapsed <- proc.time()[["elapsed"]] - start
 
   summary <- result$summary
   colnames(summary) <- c("quantity", "mean", "sd", "mad")
@@ -311,13 +328,26 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
   )
 }
 
+.laplace_run <- function(model, stan_data, quantities, draws, seed) {
+  fit <- model$laplace(data = stan_data, draws = draws, refresh = 0,
+                       seed = seed, sig_figs = 18, show_messages = FALSE)
+  codes <- fit$return_codes()
+  if (!length(codes) || anyNA(codes) || any(codes != 0)) {
+    output <- utils::capture.output(fit$output())
+    stop("The Laplace approximation failed (seed ", seed, "). CmdStan output:\n",
+         paste(output, collapse = "\n"), call. = FALSE)
+  }
+  summary <- fit$summary(quantities)[, c("variable", "mean", "sd", "mad")]
+  list(fit = fit, summary = summary, seed = seed)
+}
+
 #' @export
 print.stanimal_laplace <- function(x, digits = 3, ...) {
   cat("Laplace approximation, not a posterior sample\n")
   cat("  model :", deparse(x$call[[1L]]), "\n")
   cat("  draws :", x$draws_requested, " (seed ", x$seed, ")\n", sep = "")
   cat("  time  :", round(x$elapsed, 1), "s\n")
-  cat("\nNo convergence diagnostics exist for this object, and the draw-based\n",
+  cat("\nNo MCMC convergence diagnostics exist for this object, and the draw-based\n",
       "functions refuse it. Standard deviations for variances and\n",
       "heritabilities are the least reliable entries.\n\n", sep = "")
   print(as.data.frame(x$summary[, c("quantity", "mean", "sd")]),

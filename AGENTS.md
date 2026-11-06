@@ -29,6 +29,7 @@ for anyone *using* the package. Worked examples live in `README.md` and
 | Markers instead of a pedigree | `genomic_relationship(M)` → pass as `A` |
 | How many factors? | `suggest_n_factors(Y, X)` + `scree_eigenvalues(Y, X)` |
 | Which of two models fits better? | `loo::loo_compare(fit_loo(a), fit_loo(b))` |
+| Quick approximate fit (no draws-based tools) | `lmm_animal_laplace(Y, X, A)` / `lm_phen_cov_laplace(Y)` |
 | Does the model reproduce the data? | `posterior_predictive(fit)` |
 | Each individual's breeding value | `breeding_values(fit)` |
 | Many correlated traits on one size gradient | `size_shape()` then `back_transform()` — but only around an **unstructured** model, see the anti-patterns |
@@ -45,13 +46,13 @@ lmm_animal(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
            cmd_stan = TRUE, blend_A = FALSE,
            residual_structure = c("unstructured", "diagonal", "shared_factor"),
            genetic_structure = c("unstructured", "factor"), n_factors = NULL,
-           hs_global_scale = 1, hs_slab_scale = 2, column_decay = 0.8, ...)
+           hs_global_scale = 1, hs_slab_scale = 1, column_decay = 0.8, ...)
 
 lm_phen_cov(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(iter/2),
             chains = 4, cores = chains, control = list(adapt_delta = 0.99),
             cmd_stan = TRUE, model_file = NULL,
             covariance_structure = c("unstructured", "factor"), n_factors = NULL,
-            hs_global_scale = 1, hs_slab_scale = 2, column_decay = 0.8, ...)
+            hs_global_scale = 1, hs_slab_scale = 1, column_decay = 0.8, ...)
 
 lmm_animal_gibbs(Y, X = NULL, A, iter = 1000, warmup = floor(iter/2), thin = 1)
 ```
@@ -215,7 +216,7 @@ ebv <- breeding_values(fit)
 ebv$values        # individuals x traits, response scale
                    # deviations from the fixed effects
 ebv$se            # conditional SD, at the posterior means of G, E and beta
-ebv$reliability   # 1 - Var(u | y) / diag(G), in [0, 1]
+ebv$reliability   # 1 - Var(u | y) / (A_nn G_kk), in [0, 1]
 ```
 
 - It is the conditional mean `(A ⊗ G) V^-1 (y - X beta)` with
@@ -226,8 +227,8 @@ ebv$reliability   # 1 - Var(u | y) / diag(G), in [0, 1]
   and `lm_phen_cov()` fits do not have one, so they are refused rather than
   silently given a different `A`.
 - Missing traits are fine: the gaps are replaced by their posterior mean from
-  `imputed_data()` first, which is exact for this predictor because it is linear
-  in the response.
+  `imputed_data()` first; the predictor is linear in the response, so this is
+  close to exact (each imputed draw uses its own parameter draw).
 - Use it as a check as well as an output: with `A = I` the prediction reduces to
   shrinking each individual's own residual by `G (G + E)^-1`, and a prediction
   that is not correlated with a simulated `u` means the fit, not the prediction,
@@ -257,6 +258,17 @@ heritability.
 phenotypic covariance, for fixed-effect-adjusted trait covariance, or as a fast
 sanity check before an animal model. Its `P` is the **residual** covariance, not
 the marginal covariance of `Y`.
+
+**`lmm_animal_laplace()` / `lm_phen_cov_laplace()`** fit the same models by a
+Laplace approximation (cmdstanr only): a Gaussian at the mode on the unconstrained
+scale, transformed to reported quantities, not a posterior sample. The result has
+`$summary` (mean, sd, mad) and `$draws`, no MCMC convergence diagnostics, and the draw-based tools
+(`fit_draws()`, `fit_loo()`, `breeding_values()`, `posterior_predictive()`,
+`imputed_data()`) refuse it. Standard deviations of variances and heritabilities
+are the least reliable entries; use it to explore, then confirm with the sampler.
+Arguments in `...` are ignored (with a warning). CmdStan warnings and failures
+are surfaced without automatic retries; the seed is recorded in the result.
+See `examples/laplace.R` for a sampler comparison.
 
 **`lmm_animal_gibbs()`** is a convenience single-chain sampler with
 inverse-Wishart priors. It does **not** reproduce `lmm_animal()`; use it for
@@ -296,11 +308,15 @@ summaries multimodal.
 
 ### 3. `hs_global_scale`, `hs_slab_scale` — the loading shrinkage
 
-Regularized horseshoe (Piironen & Vehtari 2017). `hs_global_scale` (default 1) is
-the half-Cauchy scale on the global shrinkage and sets roughly how many loadings
-survive; `hs_slab_scale` (default 2) bounds the largest loading. Larger
-`hs_global_scale` → denser factors. For a scale derived from an expected number
-of nonzero loadings, see the reference in `?lmm_animal`.
+Regularized horseshoe (Piironen & Vehtari 2017). Through the row normalisation,
+`hs_slab_scale` (default 1) sets the communality the prior expects, namely
+`s^2 / (1 + s^2)`: 0.5 at 1, 0.8 at 2, 0.94 at 4. It is the setting that moves
+the posterior where the data are weak (on the mouse data the heritability went
+0.10, 0.21, 0.78, 0.80 at slabs 0.5, 1, 2, 4), so report it with a factor fit.
+`hs_global_scale` (default 1) is the half-Cauchy scale on the global shrinkage
+and is nearly inert in practice (0.785 to 0.790 across 0.1 to 4). For a scale
+derived from an expected number of nonzero loadings, see the reference in
+`?lmm_animal`.
 
 ### 4. `lkj_prior` and `beta_prior`
 
@@ -320,7 +336,7 @@ The ordinary factor model has no `parametrization` switch, because its two scale
 are tied to the phenotypic scale and the prior has to go somewhere: it writes them
 as `s_G = sqrt(h2) s_P` and `s_E = sqrt(1 - h2) s_P`, so `beta_prior` is on `h2`
 and `s_P` is the free scale. The unstructured multivariate model writes the same
-two scales when you ask for `parametrization = "h2"`, and only then. Until 0.7.2
+two scales when you ask for `parametrization = "h2"`, and only then. Before 0.7.2
 both multivariate models put independent half-normals on `s_G` and `s_E`, which,
 because the response is standardized and `s_G^2 + s_E^2` is therefore the
 phenotypic variance, is a prior on a circle. The density that induces on h2 is
@@ -370,11 +386,18 @@ plot_prior_posterior(fit)   # compares with the prior the fit recorded
 animal_prior_draws(3)       # standalone prior simulator for the unstructured model
 ```
 
-A sparse factor fit has no closed-form prior to redraw, so `plot_prior_posterior()`
-errors there by design; pass `prior` explicitly if you need that plot. The
-reliable check for the factor models is simulation: `random_covariance(method =
-"factor")` builds a known covariance, and recovery of `G`/`P` can be scored
-directly.
+Both `plot_prior_posterior()` and `plot_forest()` reconstruct the prior for
+unstructured and ordinary factor-G animal fits with complete recorded metadata.
+For factor G, they simulate the fitted horseshoe and column decay; `lkj_prior`
+does not set genetic correlations. Shared-factor or custom fits, bare draws
+and older fits missing metadata need explicit `prior` draws in the
+format returned by `animal_prior_draws()`, with matching trait names and
+parameter types; the caller must ensure the distribution is the model's prior.
+Supplying a different `lkj_prior` warns. For example, for bare draws from a known
+unstructured variance model, use `trait_names = c("a", "b")` and
+`prior = animal_prior_draws(2, trait_names = c("a", "b"))`. For factor models,
+simulation with `random_covariance(method = "factor")` builds a known
+covariance, and recovery of `G`/`P` can be scored directly.
 
 ## Anti-patterns
 

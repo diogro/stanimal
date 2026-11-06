@@ -39,8 +39,24 @@ test_that("the predicted values are the conditional means of u", {
   conditional <- Ag - Ag %*% solve(V, Ag)
   expect_equal(unname(out$se), sqrt(matrix(diag(conditional), n, k)),
                tolerance = 1e-10)
-  reliability <- matrix(1 - diag(conditional) / rep(diag(G), each = n), n, k)
+  reliability <- matrix(1 - diag(conditional) /
+                          (rep(diag(G), each = n) * diag(A)), n, k)
   expect_equal(unname(out$reliability), reliability, tolerance = 1e-10)
+})
+
+test_that("reliability is relative to the prior variance A[n, n] * G[k, k]", {
+  G <- matrix(c(1, 0.3, 0.3, 1), 2)
+  E <- diag(2)
+  Y <- matrix(c(0.5, -0.2, 0.1, 0.4, -0.3, 0.2), 3)
+  X <- matrix(1, 3, 1)
+  beta <- c(0, 0)
+  # with A = a I each individual is independent: Var(u | y) = a G - a G (a G + E)^-1 a G
+  for (a in c(0.4, 2)) {
+    out <- stanimal:::.conditional_breeding_values(Y, X, a * diag(3), G, E, beta)
+    conditional <- a * G - a * G %*% solve(a * G + E, a * G)
+    expected <- 1 - matrix(diag(conditional), 3, 2, byrow = TRUE) / (a * matrix(diag(G), 3, 2, byrow = TRUE))
+    expect_equal(unname(out$reliability), expected, tolerance = 1e-10)
+  }
 })
 
 test_that("with A = I the prediction is ridge shrinkage of each residual", {

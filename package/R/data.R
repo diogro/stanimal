@@ -159,7 +159,7 @@
 #'   pleiotropy in mammals. Genetics, 204(4), 1601-1612.
 #'   \doi{10.1534/genetics.116.189431}. Data deposited on figshare as
 #'   \dQuote{Data - Genetics - Porto et al 2016},
-#'   \url{https://figshare.com/articles/dataset/4055961}.
+#'   \doi{10.6084/m9.figshare.4055961}.
 #'
 #'   The coded marker files in that archive carry no individual identifiers, so
 #'   the animals are matched to the cranial measurements by row order. The two

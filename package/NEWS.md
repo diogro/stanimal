@@ -1,3 +1,36 @@
+# stanimal 0.7.4
+
+## Bug fixes
+
+* `breeding_values()` now computes reliability using the individual's prior
+  variance, `A[n,n] * G[k,k]`, instead of assuming unit diagonals in `A`.
+
+* Laplace fits write the optimization mode at high precision, avoiding a
+  Cholesky round-trip failure caused by insufficient CSV precision. They no
+  longer suppress warnings or retry unrelated errors; a failed Laplace stage
+  reports CmdStan output. Explicitly supplied unused model arguments warn as in
+  the samplers.
+
+## Changes in behaviour
+
+* `plot_prior_posterior()` and `plot_forest()` can now reconstruct the ordinary
+  factor-G prior by simulating its recorded horseshoe and factor settings.
+  Shared-factor fits still require explicitly supplied prior draws.
+
+* `plot_prior_posterior()` and `plot_forest()` now require explicit prior draws
+  for bare draws or fits missing the metadata needed to reconstruct the prior,
+  rather than silently assuming the default model. They validate supplied prior
+  labels and use recorded trait names, and warn when an LKJ override differs
+  from the fitted prior.
+
+## Documentation and tests
+
+* Added a runnable Laplace example and tests covering model configurations,
+  missing responses, error reporting, and a comparison with sampling.
+* Clarified prior, breeding-value and data documentation. Removed committed
+  build and check artifacts and updated the development workflow to keep them
+  outside the checkout.
+
 # stanimal 0.7.3
 
 ## Documentation
@@ -20,9 +53,6 @@
   animals: the colony pedigree shipped with the archive puts every pair at a
   kinship of 0.69 to 0.93, which leaves additive variance indistinguishable from
   a shared colony effect.
-* `ratones_pedigree` is no longer bundled. `ratones_morpho` records each mouse's
-  dam and sire, so the pedigree can be rebuilt from the data itself (with
-  unmeasured parents added as founders by `makeA()`), as the examples do.
 
 ## Changes in behaviour
 

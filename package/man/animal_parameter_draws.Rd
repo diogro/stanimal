@@ -7,11 +7,12 @@
 animal_parameter_draws(fit, trait_names = NULL)
 }
 \arguments{
-\item{fit}{A fit returned by \code{lmm_animal} with \code{cmd_stan = TRUE}, or
-a \code{posterior} draws object containing \code{h2} and, for several
+\item{fit}{A fit returned by \code{lmm_animal}, or a
+\code{posterior} draws object containing \code{h2} and, for several
 traits, \code{corrG}.}
 
-\item{trait_names}{Optional trait names.}
+\item{trait_names}{Optional trait names. Defaults to names recorded on the fit,
+or generic names when these are unavailable.}
 }
 \value{
 A long data frame with columns \code{type}, \code{parameter} and

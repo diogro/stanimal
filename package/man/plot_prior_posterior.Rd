@@ -24,20 +24,25 @@ plot_forest(
 )
 }
 \arguments{
-\item{fit}{A fit returned by \code{lmm_animal} with \code{cmd_stan = TRUE}, or
-a \code{posterior} draws object containing \code{h2} and, for several
+\item{fit}{A fit returned by \code{lmm_animal}, or a
+\code{posterior} draws object containing \code{h2} and, for several
 traits, \code{corrG}.}
 
-\item{trait_names}{Optional trait names.}
+\item{trait_names}{Optional trait names. Defaults to names recorded on the fit,
+or generic names when these are unavailable.}
 
 \item{lkj_prior}{Optional LKJ shape for the prior draws. The default
-\code{NULL} uses the shape recorded by the fit, and 2 when the fit does not
-carry one.}
+\code{NULL} uses the shape recorded by the fit. Supplying a different
+shape warns that the comparison no longer uses the fitted prior. It is
+ignored, with a warning, for factor-G or univariate fits, or when
+\code{prior} is given.}
 
 \item{n_prior}{Passed to \code{\link{animal_prior_draws}} as \code{n}.}
 
 \item{prior}{Optional prior draws in the format returned by
-\code{animal_prior_draws}; computed if \code{NULL}.}
+\code{animal_prior_draws}; computed if \code{NULL} and the fit's prior is
+known. Its parameter names and types must match the posterior. The caller
+is responsible for ensuring the draws represent the fitted prior.}
 
 \item{ncol}{Number of facet columns for \code{plot_prior_posterior}.}
 
@@ -57,9 +62,16 @@ Where prior and posterior overlap, the data add little information.
   The prior is drawn from the model configuration recorded by
   \code{\link{lmm_animal}}, so an \code{"h2"} fit is compared with its beta
   prior on the heritability and an unstructured fit with the LKJ shape it was
-  given. Two configurations have no prior this function can reproduce, and
-  both are errors rather than a comparison against the wrong prior: a sparse
-  factor fit, whose prior is on the loadings with the column decay on top, and
-  a fit sampled from a custom \code{model_file}, where the prior is whatever
-  that file says. Pass \code{prior} with draws from the prior you used.
+  given. For ordinary factor \code{G}, it simulates the regularized horseshoe
+  loadings using the recorded factor count, global scale, slab and column
+  decay, then constructs the genetic correlations. The current model uses
+  the recorded beta prior on trait heritability; older factor fits recorded as
+  \code{"variance"} use independent half-normal genetic and residual scales.
+  These prior draws use R's random number generator.
+
+  The shared-factor model and a fit sampled from a custom \code{model_file}
+  cannot be reconstructed here. Bare draws and older fits missing configuration
+  metadata cannot establish which prior was used either. In each case pass
+  \code{prior} with draws from the prior you used, using the same trait names
+  as the posterior. The same rules apply to \code{plot_forest()}.
 }

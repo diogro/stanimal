@@ -12,6 +12,10 @@ test_that("rstan fits keep the trait names for fit_draws", {
   expect_equal(attr(fit, "x_names"), colnames(sim_named$X))
   expect_equal(dimnames(fit_draws(fit)$G)[[1]], c("head", "tail", "leg"))
   expect_equal(names(draws_mean(fit, "h2")), c("head", "tail", "leg"))
+  expect_setequal(unique(animal_parameter_draws(fit)$parameter),
+                  c("head", "tail", "leg", "head ~ tail",
+                    "head ~ leg", "tail ~ leg"))
+  expect_s3_class(plot_prior_posterior(fit, n_prior = 100), "ggplot")
 })
 
 test_that("rstan path fits the multivariate G model with renamed beta", {
@@ -25,4 +29,19 @@ test_that("rstan path fits the multivariate G model with renamed beta", {
   expect_lt(max(s[, "Rhat"]), 1.1)
   Gm <- matrix(s[, "mean"], 3)
   expect_lt(max(abs(Gm - G3)), 0.8)
+})
+
+test_that("rstan factor G fits reconstruct the recorded prior", {
+  fit <- suppressWarnings(lmm_animal(sim$Y, sim$X, sim$A, cmd_stan = FALSE,
+                                     genetic_structure = "factor", n_factors = 1,
+                                     hs_slab_scale = 1.5, beta_prior = c(2, 8),
+                                     iter = 200, warmup = 100, chains = 1,
+                                     cores = 1, seed = 1, refresh = 0))
+  expect_s4_class(fit, "stanfit")
+  expect_equal(attr(fit, "hs_slab_scale"), 1.5)
+  set.seed(85)
+  d <- stanimal:::.prior_posterior(fit, NULL, NULL, 3000, NULL)
+  h2 <- d$value[d$source == "Prior" & d$type == "Heritability"]
+  expect_lt(abs(mean(h2) - 0.2), 0.02)
+  expect_s3_class(plot_forest(fit, n_prior = 100), "ggplot")
 })

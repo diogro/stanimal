@@ -59,6 +59,8 @@ test_that("factor G model samples and exposes factor summaries", {
                     dm[, sprintf("h2[%d]", 1:3)] < 1))
   expect_equal(attr(fit, "parametrization"), "h2")
   expect_equal(attr(fit, "beta_prior"), c(1, 1))
+  expect_s3_class(plot_prior_posterior(fit, n_prior = 100), "ggplot")
+  expect_s3_class(plot_forest(fit, n_prior = 100), "ggplot")
 })
 
 test_that("factor model uses the sublinear n_factors default", {

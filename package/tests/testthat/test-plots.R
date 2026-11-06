@@ -34,8 +34,9 @@ test_that("plots build", {
   vars <- c("h2[1]", "h2[2]", "corrG[1,2]", "corrG[2,1]")
   fit <- posterior::as_draws_array(array(
     stats::runif(200 * 2 * 4), c(200, 2, 4), dimnames = list(NULL, NULL, vars)))
-  expect_s3_class(plot_prior_posterior(fit, c("a", "b"), n_prior = 200), "ggplot")
-  p <- plot_forest(fit, c("a", "b"), n_prior = 200)
+  prior <- animal_prior_draws(2, 200, trait_names = c("a", "b"))
+  expect_s3_class(plot_prior_posterior(fit, c("a", "b"), prior = prior), "ggplot")
+  p <- plot_forest(fit, c("a", "b"), prior = prior)
   expect_s3_class(p, "ggplot")
   expect_no_error(ggplot2::ggplot_build(p))
 })
@@ -135,7 +136,7 @@ test_that("plot_forest validates prob", {
   expect_error(plot_forest(fit, n_prior = 100, prob = 1), "`prob`")
   expect_error(plot_forest(fit, n_prior = 100, prob = Inf), "`prob`")
   expect_error(plot_forest(fit, n_prior = 100, prob = c(0.5, 0.9)), "`prob`")
-  p <- plot_forest(fit, n_prior = 100, prob = 0.5)
+  p <- plot_forest(fit, prior = animal_prior_draws(2, 100), prob = 0.5)
   expect_s3_class(p, "ggplot")
   # the interval reported in the axis label follows prob
   expect_match(p$labels$x, "50%")

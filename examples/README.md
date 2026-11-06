@@ -18,6 +18,7 @@ Rscript examples/univariate.R
 | `phenotypic_covariance.R` | `lm_phen_cov()` with no pedigree, plus `size_shape()` and `back_transform()`, on the same mouse data |
 | `factor_phenotypic_covariance.R` | `lm_phen_cov(covariance_structure = "factor")` on the full 35-trait mouse covariance matrix, on the log-trait scale: a scree plot and parallel analysis to choose `n_factors`, sparse loadings, factor magnitudes, communality and uniqueness, an OLS residual-covariance check and correlation heatmaps |
 | `gibbs.R` | `lmm_animal_gibbs()`, the single-chain Gibbs sampler; its inverse-Wishart priors differ from `lmm_animal()` |
+| `laplace.R` | Compare the phenotypic Laplace approximation and sampler on the same simulated data, with diagnostics and limitations |
 | `multivariate_power_simulation.R` | Parallel simulation study of genetic-correlation recovery across sample sizes, writing summaries to `results/` |
 | `package_comparison.R` | The same bivariate animal model fitted with `stanimal`, `MCMCglmm`, `BGLR`, `sommer`, `lme4breeding` and ASReml-R, with estimates compared with the simulated truth, minimum ESS of `G` and timings |
 | `trait_comparison.R` | The same comparison for a user-chosen number of traits (first argument, default 5), reporting relative MSE of `G`, `E`, `h2` and `corrG`, minimum ESS of `G` and timings |

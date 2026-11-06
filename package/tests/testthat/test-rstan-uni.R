@@ -13,6 +13,7 @@ test_that("rstan path fits both univariate parametrizations", {
     expect_true(all(c("beta[Int]", "beta[x]", "beta[z]") %in% names(fit)))
     h2 <- rstan::extract(fit, "h2")[[1]]
     expect_true(all(h2 > 0 & h2 < 1))
+    expect_s3_class(plot_prior_posterior(fit, n_prior = 100), "ggplot")
   }
 })
 

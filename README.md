@@ -197,6 +197,23 @@ draws_quantile(fit, "corrG", probs = c(0.05, 0.95))   # 90% interval per element
 
 `fit_draws()` also accepts `lmm_animal_gibbs()` fits (returning its `R` as `E`), `lm_phen_cov()` fits, `posterior` draws objects and the output of `back_transform()`. Quantities the fit does not report, such as `corrE` or `P`, are derived from the ones it does.
 
+For an unstructured or ordinary factor-G animal fit, `plot_prior_posterior(fit)` and `plot_forest(fit)`
+compare heritabilities and genetic correlations with the priors recorded by the
+fit. Factor-G correlations are simulated from the fitted horseshoe and factor
+settings, not an LKJ prior. In a factor-G model, `lkj_prior` is used for residual
+correlations when E is unstructured; it is not used when E is diagonal. The
+default trait labels come from the fit. Shared-factor or custom models, bare draws and older fits
+without complete prior metadata need an explicit `prior` data frame in the
+format returned by `animal_prior_draws()`. Its names and types must match the
+posterior; the caller must ensure its distribution matches the model. For
+example, a bare two-trait draw object with a known unstructured variance prior
+can be compared with `plot_prior_posterior(draws, trait_names = c("a", "b"),
+prior = animal_prior_draws(2, trait_names = c("a", "b")))`. For a multivariate
+unstructured-G fit, a different explicit `lkj_prior` warns because the comparison
+no longer uses the fitted prior. For a factor-G fit, any explicit `lkj_prior`
+warns that it is ignored by the plot, which does not display residual correlations.
+It also warns when supplied with `prior`, or for a univariate fit.
+
 ## Comparing models, and checking that one fits
 
 Every model reports a pointwise `log_lik`, so any two fits to the same response can be compared with the [`loo`](https://mc-stan.org/loo/) package:
@@ -229,7 +246,7 @@ An animal model estimates the covariance structure. It does not report what any 
 # ebv <- breeding_values(fit)
 # ebv                # the first individuals, with standard errors and reliability
 # ebv$values         # individuals x traits, on the response scale
-# ebv$reliability    # 1 - Var(u | y) / diag(G), between 0 and 1
+# ebv$reliability    # 1 - Var(u | y) / (A_nn G_kk), between 0 and 1
 ```
 
 The prediction is the conditional mean
@@ -467,9 +484,13 @@ Models fit with cmdstanr are compiled once and the executable is reused in later
 
 `lmm_animal_gibbs()` is a quick single-chain Gibbs sampler for simulations and sanity checks. Its priors (inverse-Wishart) differ from those in `lmm_animal()`, so the results are not directly interchangeable.
 
+## Laplace approximation
+
+`lmm_animal_laplace()` and `lm_phen_cov_laplace()` fit the same models with a Laplace approximation (cmdstanr only). The approximation is Gaussian at the mode on the unconstrained scale; reported quantities transform draws from it, which are not posterior samples. `fit$summary` has their means, standard deviations and median absolute deviations. There are no MCMC convergence diagnostics, and draw-based functions (`fit_draws()`, `fit_loo()`, `breeding_values()`, `posterior_predictive()`, `imputed_data()`) refuse the object. Skewed or multimodal posteriors can be poorly approximated, particularly for variances and heritabilities: use this to explore and confirm with the sampler. CmdStan warnings and failures are surfaced, without automatic retries. See [`examples/laplace.R`](examples/laplace.R) for a comparison.
+
 # Examples
 
-Complete runnable scripts are in [`examples/`](examples/): `univariate.R`, `multivariate.R`, `factor_model.R` (sparse factor `G`), `structure_comparison.R` (the five covariance structures), `ratones.R` (real mouse data), `phenotypic_covariance.R`, `factor_phenotypic_covariance.R` (the full 35-trait factor P model, on the log-trait scale), `gibbs.R`, `multivariate_power_simulation.R`, and the cross-package comparisons `package_comparison.R` and `trait_comparison.R`. They compare the posterior with a simulated truth or with the data and write figures to `examples/figures/`; see [`examples/README.md`](examples/README.md) for what each one covers.
+Complete runnable scripts are in [`examples/`](examples/): `univariate.R`, `multivariate.R`, `factor_model.R` (sparse factor `G`), `structure_comparison.R` (the five covariance structures), `ratones.R` (real mouse data), `phenotypic_covariance.R`, `factor_phenotypic_covariance.R` (the full 35-trait factor P model, on the log-trait scale), `breeding_values.R`, `imputation.R`, `gibbs.R`, `multivariate_power_simulation.R`, and the cross-package comparisons `package_comparison.R` and `trait_comparison.R`. They compare the posterior with a simulated truth or with the data and write figures to `examples/figures/`; see [`examples/README.md`](examples/README.md) for what each one covers.
 
 ## A complete example
 

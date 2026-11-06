@@ -41,3 +41,8 @@ examples/figures/
 Rplots.pdf
 examples/figures/*
 stanimal.code-workspace
+
+# build and check artifacts
+*.Rcheck/
+*.tar.gz
+/coverage-report.txt

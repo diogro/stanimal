@@ -54,8 +54,9 @@ Write the model as \eqn{y = X\beta + u + e} with
 
   \code{se} is the square root of \eqn{\mathrm{Var}(u \mid y)}, which is
   \eqn{A \otimes G - (A \otimes G)V^{-1}(A \otimes G)} at the same parameter
-  values. \code{reliability} is \eqn{1 - \mathrm{Var}(u_{nk} \mid y)/G_{kk}},
-  the share of a trait's additive variance that the prediction accounts for,
+  values. \code{reliability} is \eqn{1 - \mathrm{Var}(u_{nk} \mid y)/(A_{nn}G_{kk})},
+  the share of the individual's prior additive variance (which is
+  \eqn{A_{nn}G_{kk}}, larger than \eqn{G_{kk}} for an inbred individual) that the prediction accounts for,
   between 0 and 1. A value near 1 means the individual's relatives and its own
   records pin its breeding value down; near 0 means the prediction is close to
   the population mean. These are the usual BLUP quantities, so they are
@@ -69,7 +70,9 @@ Write the model as \eqn{y = X\beta + u + e} with
   \code{\link{imputed_data}} and predicting from that mean, which is not the
   approximation it looks like: the predictor is linear in the response, so
   plugging in \eqn{E[y \mid y_\mathrm{observed}]} gives
-  \eqn{E[u \mid y_\mathrm{observed}]} exactly.
+  \eqn{E[u \mid y_\mathrm{observed}]} at fixed \code{G}, \code{E} and
+  \code{beta}. The imputed draws each use their own posterior draw of those
+  parameters, so the match with the plug-in values is approximate.
 
   Because \code{A} enters through its eigendecomposition, this is also a
   direct check on a fit: with \code{A} equal to the identity the predictions

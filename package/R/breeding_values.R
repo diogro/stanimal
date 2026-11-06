@@ -77,7 +77,8 @@
   marginal <- (Q^2) %*% variance
   standard_error <- sqrt(pmax(marginal, 0))
   dimnames(standard_error) <- list(individuals, traits)
-  reliability <- 1 - sweep(marginal, 2L, diag(G), "/")
+  # the prior variance of individual n is A[n, n] * G[k, k], not G[k, k]
+  reliability <- 1 - marginal / outer(diag(A), diag(G))
   # the diagonal of a conditional variance cannot exceed the unconditional one;
   # only rounding can push it past, so clamp rather than report 1 + 1e-16
   reliability <- pmin(pmax(reliability, 0), 1)
@@ -88,7 +89,8 @@
 # The posterior mean of a completed dataset, over the draws imputed_data()
 # returns. Averaging is legitimate here, unlike for a downstream analysis on
 # imputed data: the predictor below is linear in the response, so the mean of
-# the completed datasets gives exactly the conditional mean of u.
+# the completed datasets gives the conditional mean of u at fixed G, E and beta
+# (each draw imputes under its own parameters, so the match is approximate).
 .completed_mean <- function(imputation) {
   completed <- imputation$Y
   d <- dim(completed)
@@ -128,8 +130,9 @@
 #'
 #'   \code{se} is the square root of \eqn{\mathrm{Var}(u \mid y)}, which is
 #'   \eqn{A \otimes G - (A \otimes G)V^{-1}(A \otimes G)} at the same parameter
-#'   values. \code{reliability} is \eqn{1 - \mathrm{Var}(u_{nk} \mid y)/G_{kk}},
-#'   the share of a trait's additive variance that the prediction accounts for,
+#'   values. \code{reliability} is \eqn{1 - \mathrm{Var}(u_{nk} \mid y)/(A_{nn}G_{kk})},
+#'   the share of the individual's prior additive variance (which is
+#'   \eqn{A_{nn}G_{kk}}, larger than \eqn{G_{kk}} for an inbred individual) that the prediction accounts for,
 #'   between 0 and 1. A value near 1 means the individual's relatives and its own
 #'   records pin its breeding value down; near 0 means the prediction is close to
 #'   the population mean. These are the usual BLUP quantities, so they are
@@ -143,7 +146,9 @@
 #'   \code{\link{imputed_data}} and predicting from that mean, which is not the
 #'   approximation it looks like: the predictor is linear in the response, so
 #'   plugging in \eqn{E[y \mid y_\mathrm{observed}]} gives
-#'   \eqn{E[u \mid y_\mathrm{observed}]} exactly.
+#'   \eqn{E[u \mid y_\mathrm{observed}]} at fixed \code{G}, \code{E} and
+#'   \code{beta}. The imputed draws each use their own posterior draw of those
+#'   parameters, so the match with the plug-in values is approximate.
 #'
 #'   Because \code{A} enters through its eigendecomposition, this is also a
 #'   direct check on a fit: with \code{A} equal to the identity the predictions
@@ -230,7 +235,7 @@ print.stanimal_breeding_values <- function(x, n = 4L, ...) {
   if (is.null(x$reliability))
     cat("G, E and beta at their posterior means; no standard errors requested\n")
   else
-    cat("G, E and beta at their posterior means; reliability is 1 - Var(u | y) / diag(G)\n")
+    cat("G, E and beta at their posterior means; reliability is 1 - Var(u | y) / (A_nn G_kk)\n")
 
   selected <- seq_len(n)
   out <- data.frame(

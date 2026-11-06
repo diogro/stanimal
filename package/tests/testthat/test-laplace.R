@@ -2,11 +2,6 @@
 # return a summary rather than draws, and are refused by the draw-based
 # functions.
 
-skip_if_not_installed <- function(pkg) {
-  if (!requireNamespace(pkg, quietly = TRUE))
-    testthat::skip(paste(pkg, "not installed"))
-}
-
 small_animal_data <- function(n_gen = 3, n_breed = 20) {
   set.seed(11)
   ped <- data.frame(id = seq_len(n_gen * n_breed), sire = NA_integer_,
@@ -31,13 +26,17 @@ small_animal_data <- function(n_gen = 3, n_breed = 20) {
 }
 
 test_that("lmm_animal_laplace returns a summary and no draws to use", {
-  skip_if_not_installed("cmdstanr")
+  skip_if_no_cmdstan()
   d <- small_animal_data()
   fit <- lmm_animal_laplace(d$Y, d$X, d$A, draws = 200, seed = 1)
 
   expect_s3_class(fit, "stanimal_laplace")
   expect_named(fit, c("summary", "draws", "elapsed", "draws_requested",
                       "seed", "call"))
+  expect_named(fit$summary, c("quantity", "mean", "sd", "mad"))
+  expect_equal(fit$seed, 1)
+  expect_equal(fit$draws_requested, 200)
+  expect_equal(dim(fit$draws)[1], 200)
   expect_true(all(c("G[1,1]", "G[2,2]", "E[1,1]", "P[1,1]", "h2[1]") %in%
                     fit$summary$quantity))
   expect_true(all(fit$summary$sd[fit$summary$quantity == "G[1,1]"] > 0))
@@ -47,7 +46,7 @@ test_that("lmm_animal_laplace returns a summary and no draws to use", {
 })
 
 test_that("the data and model code match what the sampler would use", {
-  skip_if_not_installed("cmdstanr")
+  skip_if_no_cmdstan()
   d <- small_animal_data()
   seen <- new.env(parent = emptyenv())
 
@@ -80,26 +79,27 @@ test_that("the data and model code match what the sampler would use", {
 })
 
 test_that("univariate, factor and phenotypic Laplace fits work", {
-  skip_if_not_installed("cmdstanr")
+  skip_if_no_cmdstan()
   d <- small_animal_data()
 
   uni <- lmm_animal_laplace(d$Y[, 1, drop = FALSE], d$X, d$A,
                             draws = 100, seed = 1)
   expect_setequal(uni$summary$quantity, c("sigma_G", "sigma_E", "h2"))
 
-  fac <- suppressWarnings(
-    lmm_animal_laplace(d$Y, d$X, d$A, genetic_structure = "factor",
-                       n_factors = 1, draws = 100, seed = 1))
+  fac <- lmm_animal_laplace(d$Y, d$X, d$A, genetic_structure = "factor",
+                            n_factors = 1, draws = 100, seed = 1)
   expect_true(all(c("loadings[1,1]", "communality[1]", "factor_magnitude[1]") %in%
                     fac$summary$quantity))
 
   phen <- lm_phen_cov_laplace(d$Y, d$X, draws = 100, seed = 1)
   expect_true(all(c("P[1,1]", "corrP[2,1]", "sigma_P[1]") %in%
                     phen$summary$quantity))
+  phen_again <- lm_phen_cov_laplace(d$Y, d$X, draws = 100, seed = 1)
+  expect_equal(phen$summary, phen_again$summary)
 })
 
 test_that("draw-based functions refuse a Laplace object", {
-  skip_if_not_installed("cmdstanr")
+  skip_if_no_cmdstan()
   d <- small_animal_data()
   fit <- lmm_animal_laplace(d$Y, d$X, d$A, draws = 100, seed = 1)
 
@@ -107,4 +107,176 @@ test_that("draw-based functions refuse a Laplace object", {
   expect_error(draws_mean(fit, "G"), "needs posterior draws")
   expect_error(fit_loo(fit), "needs posterior draws")
   expect_error(breeding_values(fit), "does not carry the data")
+  expect_error(posterior_predictive(fit), "does not carry the data")
+  expect_error(imputed_data(fit), "does not carry the data")
+  expect_error(plot_prior_posterior(fit), "needs posterior draws")
+  expect_error(plot_forest(fit), "needs posterior draws")
+})
+
+test_that("unused arguments to the Laplace fitters warn", {
+  expect_silent(stanimal:::.warn_dots())
+  expect_warning(stanimal:::.warn_dots(iter = 10), "iter")
+  expect_warning(stanimal:::.warn_dots(10, iter = 10), "<unnamed>, iter")
+})
+
+test_that("Laplace failures and warnings are surfaced without guessing", {
+  calls <- 0L
+  model <- list(laplace = function(...) {
+    calls <<- calls + 1L
+    warning("optimizer warning")
+    stop("unrelated optimizer error")
+  })
+  expect_warning(expect_error(stanimal:::.laplace_run(model, list(), "h2", 10, 1),
+                              "unrelated optimizer error"), "optimizer warning")
+  expect_equal(calls, 1L)
+
+  model$laplace <- function(...) list(
+    return_codes = function() 1L,
+    output = function(...) cat("diagnostic: unit vector is invalid"))
+  expect_error(stanimal:::.laplace_run(model, list(), "h2", 10, 1),
+               "diagnostic: unit vector is invalid")
+
+  model$laplace <- function(...) {
+    args <- list(...)
+    expect_equal(args$seed, 9)
+    expect_equal(args$sig_figs, 18)
+    warning("successful optimizer warning")
+    list(return_codes = function() 0L,
+         summary = function(...) data.frame(variable = "h2", mean = 0.4,
+                                             sd = 0.1, mad = 0.1),
+         draws = function(...) matrix(0.4))
+  }
+  expect_warning(result <- stanimal:::.laplace_run(model, list(), "h2", 10, 9),
+                 "successful optimizer warning")
+  expect_equal(result$seed, 9)
+  expect_equal(result$summary$mean, 0.4)
+})
+
+test_that("both Laplace fitters match sampler model code and data", {
+  d <- small_animal_data()
+  d$Y[1, 1] <- NA_real_
+  seen <- new.env(parent = emptyenv())
+  local_mocked_bindings(
+    .resolve_stan_backend = function(cmd_stan) TRUE,
+    cstan = function(model_code, data, ...) {
+      seen$sampler <- list(code = model_code, data = data)
+      stop("capture sampler")
+    },
+    .laplace_fit = function(model_code, stan_data, ...) {
+      seen$laplace <- list(code = model_code, data = stan_data)
+      stop("capture Laplace")
+    },
+    .package = "stanimal"
+  )
+  cases <- list(
+    list(Y = d$Y[, 1, drop = FALSE], args = list()),
+    list(Y = d$Y[, 1, drop = FALSE], args = list(parametrization = "h2",
+                                                  beta_prior = c(2, 5))),
+    list(Y = d$Y, args = list()),
+    list(Y = d$Y, args = list(parametrization = "h2", beta_prior = c(2, 5),
+                               residual_structure = "diagonal")),
+    list(Y = d$Y, args = list(genetic_structure = "factor", n_factors = 1)),
+    list(Y = d$Y, args = list(genetic_structure = "factor", n_factors = 1,
+                               residual_structure = "diagonal",
+                               hs_global_scale = 0.7, hs_slab_scale = 1.5,
+                               column_decay = 0.6, beta_prior = c(2, 3))),
+    list(Y = d$Y, args = list(genetic_structure = "factor", n_factors = 1,
+                               residual_structure = "shared_factor"))
+  )
+  for (case in cases) {
+    args <- c(list(Y = case$Y, X = d$X, A = d$A), case$args)
+    expect_error(do.call(lmm_animal, args), "capture sampler")
+    expect_error(do.call(lmm_animal_laplace, args), "capture Laplace")
+    expect_identical(seen$laplace$code, seen$sampler$code)
+    expect_equal(seen$laplace$data, seen$sampler$data)
+  }
+  for (structure in c("unstructured", "factor")) {
+    args <- list(Y = d$Y, X = d$X, covariance_structure = structure)
+    if (structure == "factor") args$n_factors <- 1
+    expect_error(do.call(lm_phen_cov, args), "capture sampler")
+    expect_error(do.call(lm_phen_cov_laplace, args), "capture Laplace")
+    expect_identical(seen$laplace$code, seen$sampler$code)
+    expect_equal(seen$laplace$data, seen$sampler$data)
+  }
+})
+
+test_that("Laplace fitters warn about unused model arguments", {
+  d <- small_animal_data()
+  local_mocked_bindings(.laplace_fit = function(...) stop("capture"),
+                        .package = "stanimal")
+  expect_warning(expect_error(lmm_animal_laplace(d$Y, d$X, d$A,
+                                                   beta_prior = c(2, 2)),
+                              "capture"), "`beta_prior`")
+  expect_warning(expect_error(lmm_animal_laplace(
+    d$Y, d$X, d$A, residual_structure = "diagonal", lkj_prior = 3),
+    "capture"), "`lkj_prior`")
+  expect_warning(expect_error(lm_phen_cov_laplace(
+    d$Y, d$X, covariance_structure = "factor", n_factors = 1, lkj_prior = 3),
+    "capture"), "`lkj_prior`")
+  expect_warning(expect_error(lmm_animal_laplace(
+    d$Y, d$X, d$A, genetic_structure = "factor", n_factors = 1,
+    residual_structure = "shared_factor", lkj_prior = 3), "capture"),
+    "`lkj_prior`")
+  expect_warning(expect_error(lmm_animal_laplace(
+    d$Y, d$X, d$A, genetic_structure = "factor", n_factors = 1,
+    parametrization = "h2"), "capture"), "`parametrization`")
+})
+
+test_that("Laplace validates configurations and run arguments", {
+  d <- small_animal_data()
+  expect_error(lmm_animal_laplace(d$Y, d$X, d$A,
+                                   residual_structure = "shared_factor"),
+               "requires")
+  expect_error(lmm_animal_laplace(d$Y, d$X, d$A, n_factors = 1),
+               "only used")
+  expect_error(lm_phen_cov_laplace(d$Y, d$X,
+                                   covariance_structure = "factor",
+                                   n_factors = 2), "smaller")
+  expect_error(lm_phen_cov_laplace(d$Y, d$X, lkj_prior = 0), "lkj_prior")
+  expect_error(lm_phen_cov_laplace(d$Y, d$X, draws = 0), "draws")
+  expect_error(lm_phen_cov_laplace(d$Y, d$X, seed = -1), "seed")
+})
+
+test_that("additional Laplace model structures run with missing responses", {
+  skip_if_no_cmdstan()
+  d <- small_animal_data()
+  d$Y[1, 1] <- NA_real_
+  uni <- lmm_animal_laplace(d$Y[, 1, drop = FALSE], d$X, d$A,
+                            parametrization = "h2", draws = 100, seed = 1)
+  expect_true("h2" %in% uni$summary$quantity)
+  diagonal <- lmm_animal_laplace(d$Y, d$X, d$A,
+                                 residual_structure = "diagonal",
+                                 draws = 100, seed = 1)
+  expect_true("G[1,1]" %in% diagonal$summary$quantity)
+  shared <- lmm_animal_laplace(d$Y, d$X, d$A,
+                               genetic_structure = "factor", n_factors = 1,
+                               residual_structure = "shared_factor",
+                               draws = 100, seed = 1)
+  expect_true("factor_heritability[1]" %in% shared$summary$quantity)
+  phen <- lm_phen_cov_laplace(d$Y, d$X, covariance_structure = "factor",
+                              n_factors = 1, draws = 100, seed = 1)
+  expect_true("P[1,1]" %in% phen$summary$quantity)
+})
+
+test_that("Laplace and sampling locate the same region on a regular example", {
+  skip_if_no_cmdstan()
+  set.seed(2026)
+  n <- 200
+  X <- cbind(intercept = 1, predictor = rnorm(n))
+  P <- matrix(c(1, 0.4, 0.4, 1.5), 2)
+  Y <- X %*% rbind(c(0.5, -0.5), c(0.3, -0.2)) +
+    matrix(rnorm(n * 2), n) %*% chol(P)
+  approx <- lm_phen_cov_laplace(Y, X, draws = 2000, seed = 41)
+  sampled <- lm_phen_cov(Y, X, iter = 1000, warmup = 500, chains = 2,
+                         cores = 2, seed = 41, refresh = 0)
+  quantities <- c("P[1,1]", "P[2,2]", "corrP[2,1]")
+  a <- approx$summary[match(quantities, approx$summary$quantity), ]
+  s <- sampled$summary(quantities)
+  s <- s[match(quantities, s$variable), ]
+  expect_true(all(s$rhat < 1.05))
+  expect_equal(sum(sampled$diagnostic_summary()$num_divergent), 0)
+  # On this fixed example the measured relative diagonal differences are
+  # below 0.03 and the correlation difference is below 0.004.
+  expect_lt(max(abs(a$mean[1:2] / s$mean[1:2] - 1)), 0.06)
+  expect_lt(abs(a$mean[3] - s$mean[3]), 0.01)
 })

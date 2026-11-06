@@ -25,13 +25,18 @@
   FALSE
 }
 
+.animal_lkj_used <- function(k, genetic_structure, residual_structure) {
+  k > 1L && residual_structure != "shared_factor" &&
+    (genetic_structure == "unstructured" || residual_structure == "unstructured")
+}
+
 #' Fit linear mixed animal model
 #' 
 #' Fits a univariate or multivariate linear mixed animal model using a known relatedness matrix
 #' @param Y response variable, univariate or multivariate. Every trait must vary: constant traits cannot be standardized and are an error. Missing values (\code{NA}) are allowed and are not discarded: see Details.
 #' @param X Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.
 #' @param A Finite symmetric positive-definite relationship matrix matching the rows of Y. A matrix that is only positive semidefinite (duplicated individuals, for example) is rejected; set \code{blend_A = TRUE} to regularize it. When \code{A} and \code{Y} both have row names, they are used to put \code{A} in the order of \code{Y}; names that disagree are an error. Without names the rows are matched by position.
-#' @param lkj_prior Shape parameter of the LKJ prior on the correlation matrices of the multivariate model. \code{1} is uniform over correlation matrices, values above \code{1} shrink correlations toward zero, and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits: at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of genetic correlations, a well-known problem in quantitative genetics. A finite number above 0. It is used only by multivariate models with \code{residual_structure = "unstructured"} and not \code{shared_factor}; explicitly supplying it in other configurations warns that it is ignored.
+#' @param lkj_prior Positive shape parameter of the LKJ prior. \code{1} is uniform over correlation matrices, not over each pairwise correlation: their marginal distribution concentrates increasingly around zero as dimension increases. Larger shapes add shrinkage toward zero. For multivariate models it applies to unstructured \code{G}, including with diagonal \code{E}, and to unstructured \code{E}, including with factor \code{G}. It is unused for factor \code{G} with diagonal \code{E}, shared-factor and univariate models; explicitly supplying it there warns.
 #' @param beta_prior Parameters of the beta prior on h2. Used by the univariate model with \code{parametrization = "h2"}, by the unstructured multivariate model with \code{parametrization = "h2"}, by the ordinary factor model for the trait heritabilities, and by the shared-factor model for the factor heritabilities. The default \code{c(1, 1)} is flat on h2 and on each factor heritability. It is validated for every model; explicitly supplying it where it is not used warns that it is ignored.
 #' @param parametrization Which parameters carry the prior. \code{"variance"} (default) estimates the genetic and residual standard deviations with half-normal priors and derives h2. \code{"h2"} estimates a phenotypic standard deviation and a heritability per trait, and puts the beta prior (\code{beta_prior}) on h2. It is available for the univariate models and for the unstructured multivariate model, and the two differ only in the prior they imply on h2: because the response is standardized trait by trait, \eqn{s_G^2 + s_E^2} is the phenotypic variance, so the half-normal priors of \code{"variance"} are priors on a circle and they induce \eqn{p(h^2) \propto 1/\sqrt{h^2(1-h^2)}}, a density whose mass sits at the two ends. The two parameterizations agree when the data are informative and separate when they are not, so prefer \code{"h2"} when there are few individuals relative to the number of traits, when h2 is the object of inference rather than \code{G}, or when a \code{"variance"} fit puts its heritabilities against 0 or 1. No sample-size threshold has been validated, so treat that as a reason to check rather than a rule. The ordinary factor model has no switch: its scales are locked to the phenotypic scale and it always puts the beta prior on the trait heritabilities. Supplying this argument for the factor or shared-factor model warns that it is ignored, and a univariate \code{"variance"} fit with low E-BFMI already warns and suggests \code{"h2"}.
 #' @param iter Number of MCMC iterations, a whole number.
@@ -45,7 +50,7 @@
 #' @param residual_structure Residual covariance for multivariate fits: "unstructured" (default, full covariance between traits), "diagonal", or "shared_factor". With a diagonal residual, environmental covariances between traits are absorbed into the genetic covariance and inflate heritability, so "unstructured" is recommended when estimating G without a factor model. "shared_factor" requires \code{genetic_structure = "factor"} and fits the shared-factor model \eqn{G = \Lambda \mathrm{diag}(h^2_\text{factor}) \Lambda^T + \Psi_G}, \eqn{E = \Lambda \mathrm{diag}(1 - h^2_\text{factor}) \Lambda^T + \Psi_E}, so the same latent factors explain genetic and residual covariance and each factor has a heritability.
 #' @param genetic_structure Genetic covariance for multivariate fits: "unstructured" (default, direct scales and LKJ correlation) or "factor", which uses the sparse factor model \eqn{G = \mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)} on the correlation scale. The factor model gives loadings regularized-horseshoe priors for automatic shrinkage; loadings are not exactly zero. The ordinary factor model reports \code{loadings}, \code{factor_magnitude}, \code{uniqueness}, \code{communality} and \code{s_G}. With \code{residual_structure = "shared_factor"} the same loadings also structure E, and the fit reports \code{loadings}, \code{factor_magnitude}, \code{factor_heritability}, \code{genetic_uniqueness}, \code{residual_uniqueness}, \code{uniqueness} and \code{communality}. It is available only for multivariate fits and is not compatible with \code{model_file}.
 #' @param n_factors Number of factors when \code{genetic_structure = "factor"}; for \code{residual_structure = "shared_factor"} these are shared by \code{G} and \code{E}. It is a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model falls back to \code{min(K - 1, max(2, floor(sqrt(K))), 20)} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.
-#' @param hs_global_scale,hs_slab_scale Scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale. Smaller \code{hs_global_scale} gives stronger shrinkage and fewer effective loadings; \code{hs_slab_scale} bounds the largest loading in the slab, and through the row normalisation it sets the communality the prior expects, namely \code{hs_slab_scale^2 / (1 + hs_slab_scale^2)}: 0.5 at the default of 1, 0.8 at 2 and 0.94 at 4. Raise it when the factors are expected to absorb most of each trait's genetic variance, and report the value used, since the slab decides the posterior wherever the data are weak. Both must be positive and are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns that they are ignored. See Piironen and Vehtari (2017) on choosing the global scale from the expected number of nonzero loadings.
+#' @param hs_global_scale,hs_slab_scale Positive scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale, which limits the loading's prior standard deviation rather than bounding its realized value. For ordinary factor G, communality is \eqn{q/(1+q)}, where \eqn{q} is the random sum of squared unnormalized loadings. Its prior distribution depends on both scales, the local scales, the number of factors and column decay; it is not determined by the slab alone. The shared-factor model does not row-normalize its loadings, so its communality is a sum of squares on the standardized response scale, not a correlation-scale proportion. Report the settings, especially where data are weak. These arguments are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns. See Piironen and Vehtari (2017) on choosing the global scale.
 #' @param column_decay Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 0.8 orders the columns without forcing a strict hierarchy; with \code{column_decay = 1} the columns are exchangeable a priori and their labels are free to swap between chains. How strong the decay needs to be depends on how many columns have to be told apart: with two columns of comparable size 0.8 is often too mild and 0.5 is what separates them, while a strong decay works against a model with many columns, because \code{0.5^(m - 1)} cuts the prior of the fifth column to a sixteenth of the first. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. Explicitly supplying it outside \code{genetic_structure = "factor"} warns that it is ignored.
 #' @param ... additional parameters for stan sampling
 #' @return With \code{cmd_stan = TRUE}, a \code{CmdStanMCMC} object from cmdstanr: use \code{fit$draws()} (a \code{posterior} draws array) and \code{fit$summary()}, and pass these, or the fit itself, to bayesplot (e.g. \code{bayesplot::mcmc_trace(fit$draws("h2"))}, \code{bayesplot::nuts_params(fit)}). Fixed effects are \code{beta[j]} (univariate) or \code{beta[trait,j]} for column \code{j} of \code{X}; use \code{\link{rename_beta}} to get draws named after the columns of \code{X}. Use \code{\link{fit_draws}} to reshape the draws into trait by trait by draw arrays, and \code{\link{draws_mean}} or \code{\link{draws_quantile}} for posterior summaries that are already matrices. Factor fits also expose \code{loadings}, \code{factor_magnitude}, \code{uniqueness} and \code{communality}; shared-factor fits add \code{factor_heritability}, \code{genetic_uniqueness} and \code{residual_uniqueness}. With \code{cmd_stan = FALSE}, a \code{stanfit} object whose \code{beta} draws are named after the columns of \code{X}.
@@ -53,14 +58,13 @@
 #' \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}, plus the
 #' fixed effects \code{beta[trait, j]}.
 #'
-#' Every fit reports \code{log_lik}, one term per row of the response, and the
-#' terms sum to the joint log density. The basis is the catch: the model block
-#' works on the eigen-rotation of \code{A}, where the records are independent, so
-#' term \code{n} belongs to rotated record \code{n} and not to individual
-#' \code{n}. With \code{A} equal to the identity the two coincide. Otherwise the
-#' sum is still the exact joint log likelihood, but leave-one-out over rotated
-#' records is not leave-one-individual-out, so treat \code{loo} results as a
-#' model-comparison criterion rather than an individual-level predictive check.
+#' Every fit reports \code{log_lik}, one term per rotated response record. For
+#' complete data the terms sum to the joint log density, but leave-one-out over
+#' rotated records is not generally leave-one-individual-out. Comparisons need
+#' the same response and predictive units, including the same relationship
+#' matrix and eigenbasis. With missing responses the terms use the completed
+#' data rather than the marginalized observed-data likelihood, so
+#' \code{\link{fit_loo}} refuses these fits.
 #'
 #' Factor fits add quantities that describe the factor decomposition. They come
 #' in two groups. \code{communality}, \code{uniqueness} and
@@ -141,9 +145,11 @@
 #' \code{residual_structure = "diagonal"} model with a small sample is weakly
 #' identified once gaps loosen the residual structure, and can mix badly:
 #' prefer \code{"unstructured"}, which is the default and what the missing-data
-#' machinery is tested against. And \code{loo} on a fit with gaps compares
-#' models over the rotated records, as it does for complete data, so the terms
-#' are not leave-one-individual-out.
+#' machinery is tested against. For fits with gaps, \code{log_lik} uses the
+#' completed response including imputation parameters, not the marginalized
+#' observed-data likelihood; \code{\link{fit_loo}} refuses LOO and WAIC for
+#' these fits. Raw \code{log_lik} draws remain available, but are not an
+#' observed-data predictive criterion.
 #'
 #' The LKJ shape \code{lkj_prior} (default 2) deliberately shrinks correlations toward zero. With many traits, an unstructured correlation matrix fit under a flat prior tends to overestimate the magnitude of correlations, especially genetic correlations between traits with limited information, so a shape above 1 acts as a mild regularizer; increase it for stronger shrinkage. Note that fitting many traits remains expensive: the likelihood is cheap, but an unstructured \code{G} for \code{K = 40} traits has on the order of 1700 parameters and NUTS needs many leapfrog steps, so a single fit can take an hour or more. Fewer iterations, a larger \code{lkj_prior}, or \code{residual_structure = "diagonal"} all make fits faster.
 #'
@@ -263,8 +269,7 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
 
   beta_used <- (ncol(Y) == 1L && parametrization == "h2") || factor_model ||
     h2_param
-  lkj_used <- ncol(Y) > 1L && !shared_factor_model &&
-    residual_structure == "unstructured"
+  lkj_used <- .animal_lkj_used(ncol(Y), genetic_structure, residual_structure)
   factor_used <- factor_model
   .warn_ignored(beta_prior_supplied, beta_used, "beta_prior")
   .warn_ignored(lkj_prior_supplied, lkj_used, "lkj_prior")

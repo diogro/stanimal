@@ -46,6 +46,38 @@ test_that("user-supplied allele frequencies are used", {
   expect_false(isTRUE(all.equal(unname(G1), unname(G2))))
 })
 
+test_that("fully unobserved markers never change the GRM normalization", {
+  M <- cbind(observed = c(0, 1, 2, NA), empty = rep(NA_real_, 4))
+  rownames(M) <- letters[1:4]
+  expected <- genomic_relationship(M[, 1, drop = FALSE], p = 0.5,
+                                   max_missing = 1, blend = 0.1)
+  expect_warning(actual <- genomic_relationship(M, p = c(0.5, 0.5),
+                                                max_missing = 1, blend = 0.1),
+                 "fully missing")
+  expect_equal(actual, expected)
+  expect_equal(attr(actual, "n_markers"), 1L)
+  expect_equal(attr(actual, "scale"), 0.5)
+  expect_silent(filtered <- genomic_relationship(M, p = c(0.5, 0.5),
+                                                 max_missing = 0.25, blend = 0.1))
+  expect_equal(filtered, expected)
+  expect_silent(estimated <- genomic_relationship(M, max_missing = 1, blend = 0.1))
+  expect_equal(estimated, expected)
+  expect_error(genomic_relationship(M[, 2, drop = FALSE], p = 0.5,
+                                    max_missing = 1), "no markers left")
+  expect_error(genomic_relationship(M[, 2, drop = FALSE], max_missing = 1),
+               "no markers left")
+  partial <- cbind(M[, 1, drop = FALSE], c(0, NA, NA, NA))
+  p <- c(0.5, 0.25)
+  G <- genomic_relationship(partial, p = p, maf = 0, max_missing = 0.75)
+  Z <- sweep(partial, 2, 2 * p, "-")
+  Z[is.na(Z)] <- 0
+  expect_equal(unname(G), unname(tcrossprod(Z) / (2 * sum(p * (1 - p)))),
+               ignore_attr = TRUE)
+  expect_equal(attr(G, "n_markers"), 2L)
+  expect_equal(attr(genomic_relationship(partial, p = p, maf = 0,
+                                         max_missing = 0.74), "n_markers"), 1L)
+})
+
 test_that("blending toward the identity makes the matrix positive definite", {
   set.seed(5)
   M <- matrix(rbinom(50 * 20, 2, 0.4), 50)

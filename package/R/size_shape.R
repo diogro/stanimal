@@ -54,6 +54,12 @@
 # below uses the covariances only as ratios and the axes are eigenvectors, so
 # the difference never reaches the output.
 .normal_em <- function(Y, tol = 1e-10, max_iter = 500) {
+  centre <- colMeans(Y, na.rm = TRUE)
+  scale <- apply(Y, 2L, stats::sd, na.rm = TRUE)
+  if (any(!is.finite(scale) | scale <= 0))
+    stop("every trait must vary among its observed values for EM completion.",
+         call. = FALSE)
+  Y <- sweep(sweep(Y, 2L, centre, "-"), 2L, scale, "/")
   missing <- is.na(Y)
   n <- nrow(Y)
   k <- ncol(Y)
@@ -64,7 +70,7 @@
   })
 
   mean <- colMeans(Y, na.rm = TRUE)
-  covariance <- stats::cov(Y, use = "pairwise.complete.obs")
+  covariance <- diag(k)
   for (iteration in seq_len(max_iter)) {
     total <- numeric(k)
     product <- matrix(0, k, k)
@@ -90,14 +96,32 @@
     }
     new_mean <- total / n
     new_covariance <- product / n - tcrossprod(new_mean)
-    converged <- max(abs(new_covariance - covariance)) <
-      tol * max(1, max(abs(new_covariance)))
+    new_covariance <- (new_covariance + t(new_covariance)) / 2
+    if (any(!is.finite(new_mean)) || any(!is.finite(new_covariance)))
+      stop("EM completion produced non-finite estimates.", call. = FALSE)
+    eigenvalues <- eigen(new_covariance, symmetric = TRUE, only.values = TRUE)$values
+    if (min(eigenvalues) <= max(eigenvalues) * k * .Machine$double.eps)
+      stop("EM completion produced a singular or non-positive-definite ",
+           "covariance; check for collinear traits or insufficient data.",
+           call. = FALSE)
+    converged <- max(abs(new_covariance - covariance),
+                     abs(new_mean - mean)) <
+      tol * max(1, max(abs(new_covariance)), max(abs(new_mean)))
     mean <- new_mean
     covariance <- new_covariance
-    if (converged)
-      return(list(mean = mean, covariance = covariance, iterations = iteration))
+    if (converged) {
+      result_mean <- centre + scale * mean
+      result_covariance <- covariance * outer(scale, scale)
+      if (any(!is.finite(result_mean)) || any(!is.finite(result_covariance)))
+        stop("EM completion produced non-finite estimates on the response scale.",
+             call. = FALSE)
+      return(list(mean = result_mean, covariance = result_covariance,
+                  iterations = iteration))
+    }
   }
-  list(mean = mean, covariance = covariance, iterations = max_iter)
+  stop("EM completion did not converge after ", max_iter,
+       " iterations; check missingness, collinearity and sample size.",
+       call. = FALSE)
 }
 
 # Each row completed with its conditional mean, and the conditional covariance
@@ -109,16 +133,26 @@
   k <- ncol(Y)
   completed <- Y
   residual_covariance <- array(0, c(n, k, k))
+  scale <- sqrt(diag(covariance))
+  correlation <- covariance / outer(scale, scale)
   for (i in which(rowSums(missing) > 0L)) {
     gaps <- which(missing[i, ])
     observed <- setdiff(seq_len(k), gaps)
-    gain <- solve(covariance[observed, observed, drop = FALSE],
-                  covariance[observed, gaps, drop = FALSE])
+    gain <- solve(correlation[observed, observed, drop = FALSE],
+                  correlation[observed, gaps, drop = FALSE])
     completed[i, gaps] <- mean[gaps] +
-      drop((Y[i, observed] - mean[observed]) %*% gain)
-    residual_covariance[i, gaps, gaps] <-
-      covariance[gaps, gaps, drop = FALSE] -
-      covariance[gaps, observed, drop = FALSE] %*% gain
+      scale[gaps] * drop(((Y[i, observed] - mean[observed]) /
+                            scale[observed]) %*% gain)
+    conditional <-
+      correlation[gaps, gaps, drop = FALSE] -
+      correlation[gaps, observed, drop = FALSE] %*% gain
+    conditional <- (conditional + t(conditional)) / 2
+    eigenvalues <- eigen(conditional, symmetric = TRUE, only.values = TRUE)$values
+    tolerance <- k * .Machine$double.eps * 10
+    if (any(!is.finite(eigenvalues)) || min(eigenvalues) < -tolerance)
+      stop("EM completion produced an invalid conditional covariance for row ",
+           i, ".", call. = FALSE)
+    residual_covariance[i, gaps, gaps] <- conditional * outer(scale[gaps], scale[gaps])
   }
   list(Y = completed, covariance = residual_covariance)
 }
@@ -187,9 +221,11 @@ pc1_variance_share <- function(Y) {
 #'   Log-transformed measurements are the usual input. Missing values
 #'   (\code{NA}) are allowed and are not discarded: see Details.
 #' @param n_shape Number of shape axes to keep, between 1 and
-#'   \code{ncol(Y) - 1}. The default keeps all of them, so the transformation is
-#'   a bijection; fewer axes give a lower-rank (singular) covariance in the
-#'   original trait space.
+#'   \code{ncol(Y) - 1}, and no more than the numerical rank of the centered
+#'   shape data. The default requests all \code{ncol(Y) - 1} axes and errors
+#'   if the data cannot identify them; choose fewer explicitly in that case.
+#'   Keeping all axes makes the transformation a bijection; fewer axes give a
+#'   lower-rank (singular) covariance in the original trait space.
 #' @return A list of class \code{size_shape} with
 #'   \item{scores}{matrix with the size and shape scores, one column each, named
 #'     \code{size}, \code{shape1}, \code{shape2}, ...;}
@@ -212,7 +248,10 @@ pc1_variance_share <- function(Y) {
 #'   morphometric data set, but it need not be: it is the unweighted mean of the
 #'   traits, while the principal components are shaped by their covariance
 #'   structure. The shape axes are ordered by the residual variance they
-#'   explain.
+#'   explain. Their numerical rank is at most \code{min(nrow(Y) - 1,
+#'   ncol(Y) - 1)} and can be smaller if the shape data are collinear. It is
+#'   computed after completing missing values, using a relative singular-value
+#'   tolerance of \code{max(dim(Y)) * .Machine$double.eps}.
 #'
 #'   The transformation is linear, so genetic and residual covariance matrices
 #'   transform as \eqn{B M B^T}; use \code{\link{back_transform}} to do this for
@@ -244,6 +283,9 @@ pc1_variance_share <- function(Y) {
 #'   row with nothing observed carries no information and is an error, and two
 #'   traits never measured on the same individual make their covariance
 #'   unidentifiable, which is also an error.
+#'   The EM fit starts from a positive-definite diagonal covariance and errors
+#'   if it fails to converge or produces a singular covariance. Check the
+#'   missingness pattern, collinearity and sample size in that case.
 #'
 #'   The completion is a point estimate, not a multiple imputation: the scores
 #'   are then treated as data by the model they are passed to, and the
@@ -295,7 +337,17 @@ size_shape <- function(Y, n_shape = NULL) {
 
   size <- rowMeans(Y)
   shape <- Y - size
-  pca <- stats::prcomp(shape)
+  # Shift before centering to avoid spurious variation in identical rows.
+  pca <- stats::prcomp(sweep(shape, 2L, shape[1L, ], "-"))
+  rank <- min(nrow(Y) - 1L, k - 1L,
+              sum(pca$sdev > pca$sdev[1L] *
+                    max(dim(shape)) * .Machine$double.eps))
+  if (n_shape > rank)
+    stop("`n_shape` requests ", n_shape, " axes, but only ", rank,
+         " identifiable shape axes are available in the centered data.",
+         if (rank > 0L) paste0(" Set `n_shape` to at most ", rank, ".")
+         else " The shape data have no varying axis.",
+         call. = FALSE)
   axes <- seq_len(n_shape)
   B_shape <- pca$rotation[, axes, drop = FALSE]
   B <- cbind(size = 1, B_shape)

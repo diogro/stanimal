@@ -23,6 +23,28 @@ test_that("sign switching no longer cancels a factor out of the mean", {
   expect_equal(unname(draws_quantile(d, "loadings")[1, 1, ]), c(0.8, 0.8))
 })
 
+test_that("relabeling factor draws changes trait names but not factor names", {
+  for (m in list(flipping_loadings(),
+                 cbind(flipping_loadings(), "loadings[1,2]" = 0.2,
+                       "loadings[2,2]" = 0.6,
+                       "factor_magnitude[1]" = 1, "factor_magnitude[2]" = 2))) {
+    d <- fit_draws(m, traits = c("old1", "old2"))
+    original <- d
+    means <- draws_mean(d, traits = c("new1", "new2"))
+    q <- draws_quantile(d, "loadings", traits = c("new1", "new2"))
+    expect_equal(rownames(means$loadings), c("new1", "new2"))
+    expect_equal(dimnames(q)[[1]], c("new1", "new2"))
+    expect_equal(colnames(means$loadings), dimnames(d$loadings)[[2]])
+    expect_equal(dimnames(q)[[2]], dimnames(d$loadings)[[2]])
+    expect_equal(unname(means$loadings), unname(draws_mean(d, "loadings")))
+    expect_equal(unname(q), unname(draws_quantile(d, "loadings")))
+    expect_equal(names(means$h2), c("new1", "new2"))
+    if (!is.null(d$factor_magnitude))
+      expect_equal(names(means$factor_magnitude), rownames(d$factor_magnitude))
+    expect_identical(d, original)
+  }
+})
+
 test_that("the anchor is chosen from the whole posterior, not per draw", {
   # factor 1 loads 0.9 on t1 and 0.95 on t3, and the two swap rank between
   # draws; a per-draw anchor would flip them differently

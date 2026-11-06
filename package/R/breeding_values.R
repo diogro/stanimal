@@ -15,10 +15,11 @@
 #   u_hat = (A (x) G) V^-1 (y - X beta),   V = A (x) G + I (x) E
 #         = Cov(u, y) Var(y)^-1 (y - X beta).
 #
-# That is a linear function of the response, which is what makes the missing
-# data case cheap (see below).
+# That is a linear function of the response, so point predictions can use the
+# mean of completed responses (see below).
 #
-# The N x N system is never formed. With A = Q diag(lambda) Q', the rotated
+# For complete data, the full response covariance is never formed. With
+# A = Q diag(lambda) Q', the rotated
 # response Q'y has independent records and record i has covariance
 # lambda_i G + E, so
 #
@@ -38,7 +39,8 @@
 # built from. In the rotated basis this is block diagonal, one k x k block per
 # record, and the marginal variance of individual n comes back by the same
 # rotation: Var(u[n, k]) = sum_i Q[n, i]^2 * Var(u_rot[i, k]).
-.conditional_breeding_values <- function(Y, X, A, G, E, beta, se = TRUE) {
+.conditional_breeding_values <- function(Y, X, A, G, E, beta, se = TRUE,
+                                         missing = NULL) {
   n <- nrow(Y)
   k <- ncol(Y)
   traits <- colnames(Y) %||% paste0("trait", seq_len(k))
@@ -54,6 +56,9 @@
 
   u_rot <- matrix(0, n, k)
   variance <- if (se) matrix(0, n, k) else NULL
+  has_gaps <- se && !is.null(missing) && any(missing)
+  inverse <- if (has_gaps) array(0, c(n, k, k)) else NULL
+  gains <- if (has_gaps) array(0, c(n, k, k)) else NULL
   for (i in seq_len(n)) {
     # lambda_i G + E is positive definite whenever E is, which every model
     # guarantees: s_E > 0 times a correlation matrix, or s_E > 0 diagonal.
@@ -65,6 +70,10 @@
     if (se) {
       conditional <- lambda[i] * G - gain %*% precision %*% t(gain)
       variance[i, ] <- diag(conditional)
+      if (has_gaps) {
+        inverse[i, , ] <- solve(precision)
+        gains[i, , ] <- gain
+      }
     }
   }
 
@@ -75,6 +84,8 @@
 
   # The marginal variance of each prediction, rotating the per-record blocks
   marginal <- (Q^2) %*% variance
+  if (has_gaps)
+    marginal <- marginal + .missing_breeding_variance(Q, inverse, gains, missing)
   standard_error <- sqrt(pmax(marginal, 0))
   dimnames(standard_error) <- list(individuals, traits)
   # the prior variance of individual n is A[n, n] * G[k, k], not G[k, k]
@@ -84,6 +95,38 @@
   reliability <- pmin(pmax(reliability, 0), 1)
   dimnames(reliability) <- list(individuals, traits)
   list(values = values, se = standard_error, reliability = reliability)
+}
+
+# Var(u | y_obs) adds the variance of E[u | y_complete] over the missing
+# responses. Their conditional precision is the missing block of V^-1.
+.missing_breeding_variance <- function(Q, inverse, gains, missing) {
+  n <- nrow(Q)
+  k <- ncol(missing)
+  gaps <- which(missing, arr.ind = TRUE)
+  m <- nrow(gaps)
+  weights <- t(Q[gaps[, 1L], , drop = FALSE])
+  precision <- matrix(0, m, m)
+  for (a in seq_len(k)) for (b in seq_len(k)) {
+    ia <- which(gaps[, 2L] == a)
+    ib <- which(gaps[, 2L] == b)
+    if (!length(ia) || !length(ib)) next
+    precision[ia, ib] <- crossprod(weights[, ia, drop = FALSE],
+                                   weights[, ib, drop = FALSE] * inverse[, a, b])
+  }
+  precision <- (precision + t(precision)) / 2
+  L <- t(chol(precision))
+  extra <- matrix(0, n, k)
+  for (a in seq_len(k)) {
+    coefficients <- matrix(0, n, m)
+    for (b in seq_len(k)) {
+      ib <- which(gaps[, 2L] == b)
+      if (length(ib))
+        coefficients[, ib] <- weights[, ib, drop = FALSE] * gains[, a, b]
+    }
+    H <- Q %*% coefficients
+    extra[, a] <- colSums(forwardsolve(L, t(H))^2)
+  }
+  extra
 }
 
 # The posterior mean of a completed dataset, over the draws imputed_data()
@@ -103,8 +146,10 @@
 #' Predicts the additive genetic value of each individual from a fitted animal
 #' model, on the response scale. The model itself integrates the breeding values
 #' out and so never reports them; this recovers them by post-processing the fit,
-#' which is exact for the conditional mean once \code{G}, \code{E} and
-#' \code{beta} are set to their posterior means.
+#'   which gives the exact conditional mean for complete responses at posterior
+#'   mean \code{G}, \code{E} and \code{beta}. With missing responses, point
+#'   predictions use posterior imputations and are an approximation at those
+#'   plug-in parameters.
 #'
 #' @param fit A fit from \code{\link{lmm_animal}}.
 #' @param se Logical: also report the conditional standard error of each
@@ -128,9 +173,12 @@
 #'   does not propagate the uncertainty in the covariance parameters, and the
 #'   standard errors below are conditional on them.
 #'
-#'   \code{se} is the square root of \eqn{\mathrm{Var}(u \mid y)}, which is
-#'   \eqn{A \otimes G - (A \otimes G)V^{-1}(A \otimes G)} at the same parameter
-#'   values. \code{reliability} is \eqn{1 - \mathrm{Var}(u_{nk} \mid y)/(A_{nn}G_{kk})},
+#'   \code{se} is the square root of \eqn{\mathrm{Var}(u \mid y_\mathrm{observed})}
+#'   at the same plug-in parameters. For complete responses it is based on
+#'   \eqn{A \otimes G - (A \otimes G)V^{-1}(A \otimes G)}. For incomplete
+#'   responses it accounts for the conditional uncertainty in the gaps rather
+#'   than treating the imputations as observed.
+#'   \code{reliability} is \eqn{1 - \mathrm{Var}(u_{nk} \mid y_\mathrm{observed})/(A_{nn}G_{kk})},
 #'   the share of the individual's prior additive variance (which is
 #'   \eqn{A_{nn}G_{kk}}, larger than \eqn{G_{kk}} for an inbred individual) that the prediction accounts for,
 #'   between 0 and 1. A value near 1 means the individual's relatives and its own
@@ -148,7 +196,13 @@
 #'   plugging in \eqn{E[y \mid y_\mathrm{observed}]} gives
 #'   \eqn{E[u \mid y_\mathrm{observed}]} at fixed \code{G}, \code{E} and
 #'   \code{beta}. The imputed draws each use their own posterior draw of those
-#'   parameters, so the match with the plug-in values is approximate.
+#'   parameters, so the match with the plug-in values is approximate and
+#'   depends on the selected draws. The standard errors and reliabilities use
+#'   the observed-data conditional variance at the plug-in parameters, not the
+#'   variance across the imputed datasets and not full posterior uncertainty.
+#'   Computing them with \eqn{m} gaps requires a dense \eqn{m} by \eqn{m}
+#'   matrix and its Cholesky factorization; use \code{se = FALSE} to skip this
+#'   cost when only predictions are needed.
 #'
 #'   Because \code{A} enters through its eigendecomposition, this is also a
 #'   direct check on a fit: with \code{A} equal to the identity the predictions
@@ -191,13 +245,13 @@ breeding_values <- function(fit, se = TRUE, ndraws = 100, seed = NULL) {
   E <- if ("E" %in% names(d)) draws_mean(d, "E") else NULL
   if (is.null(G) || is.null(E)) {
     # a univariate fit reports the standard deviations, not the covariances
-    sigma_G <- if ("sigma_G" %in% names(d)) draws_mean(d, "sigma_G") else NULL
-    sigma_E <- if ("sigma_E" %in% names(d)) draws_mean(d, "sigma_E") else NULL
+    sigma_G <- d$sigma_G
+    sigma_E <- d$sigma_E
     if (is.null(sigma_G) || is.null(sigma_E))
       stop("this fit reports neither `G` and `E` nor `sigma_G` and `sigma_E`, ",
            "so the breeding values cannot be predicted from it.", call. = FALSE)
-    G <- diag(as.numeric(sigma_G)^2, k)
-    E <- diag(as.numeric(sigma_E)^2, k)
+    G <- diag(rowMeans(sigma_G^2), k)
+    E <- diag(rowMeans(sigma_E^2), k)
   }
   G <- matrix(G, k, k, dimnames = list(traits, traits))
   E <- matrix(E, k, k, dimnames = list(traits, traits))
@@ -211,11 +265,12 @@ breeding_values <- function(fit, se = TRUE, ndraws = 100, seed = NULL) {
     stop("this fit reports ", ncol(beta), " fixed effects but the design it ",
          "was given has ", ncol(data$X), " column(s).", call. = FALSE)
 
-  if (anyNA(Y))
+  missing <- is.na(Y)
+  if (any(missing))
     Y <- .completed_mean(imputed_data(fit, ndraws = ndraws, seed = seed))
 
   predicted <- .conditional_breeding_values(Y, data$X, data$A, G, E, beta,
-                                            se = se)
+                                            se = se, missing = missing)
   structure(list(values = predicted$values, se = predicted$se,
                  reliability = predicted$reliability, G = G, E = E,
                  traits = traits, individuals = rownames(predicted$values)),
@@ -235,7 +290,7 @@ print.stanimal_breeding_values <- function(x, n = 4L, ...) {
   if (is.null(x$reliability))
     cat("G, E and beta at their posterior means; no standard errors requested\n")
   else
-    cat("G, E and beta at their posterior means; reliability is 1 - Var(u | y) / (A_nn G_kk)\n")
+    cat("G, E and beta at their posterior means; reliability is 1 - Var(u | observed y) / (A_nn G_kk)\n")
 
   selected <- seq_len(n)
   out <- data.frame(

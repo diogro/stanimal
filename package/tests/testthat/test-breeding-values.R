@@ -116,6 +116,111 @@ test_that("only an animal fit has breeding values", {
   expect_error(breeding_values(gibbs), "does not carry the data")
 })
 
+test_that("univariate plug-in variances are the means of squared SD draws", {
+  m <- cbind("sigma_G" = c(1, 3), "sigma_E" = c(2, 4), "beta[1]" = c(0, 0))
+  Y <- matrix(c(-1, 1), 2, 1, dimnames = list(c("a", "b"), "trait"))
+  fit <- structure(list(draws = function(...) posterior::as_draws_matrix(m)),
+                   class = "CmdStanMCMC", y_names = "trait", x_names = "Int",
+                   stanimal_data = list(family = "animal", Y = Y,
+                                        X = matrix(1, 2, 1), A = diag(2)))
+  ebv <- breeding_values(fit)
+  expect_equal(unname(ebv$G), matrix(5))
+  expect_equal(unname(ebv$E), matrix(10))
+  expect_equal(unname(ebv$values), Y / 3, ignore_attr = TRUE)
+  expect_equal(unname(ebv$se), matrix(sqrt(10 / 3), 2, 1))
+  expect_equal(unname(ebv$reliability), matrix(1 / 3, 2, 1))
+})
+
+test_that("missing-response uncertainty conditions on observed entries", {
+  A <- matrix(c(1.3, 0.4, 0.2, 0.4, 1, 0.3, 0.2, 0.3, 0.8), 3)
+  G <- matrix(c(1.2, 0.4, 0.4, 0.9), 2)
+  E <- matrix(c(0.7, -0.15, -0.15, 0.6), 2)
+  Y <- matrix(c(0.3, -0.4, 0.6, 1.1, -0.2, 0.7), 3, 2)
+  X <- matrix(1, 3, 1)
+  beta <- matrix(c(0.2, -0.1), 2, 1)
+  K <- kronecker(G, A)
+  V <- K + kronecker(E, diag(3))
+  for (missing in list(matrix(c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE), 3),
+                       matrix(c(TRUE, FALSE, FALSE, FALSE, TRUE, FALSE), 3),
+                       matrix(c(TRUE, FALSE, FALSE, TRUE, FALSE, FALSE), 3),
+                       matrix(c(TRUE, FALSE, TRUE, FALSE, TRUE, TRUE), 3))) {
+    observed <- which(!as.vector(missing))
+    expected <- K - K[, observed, drop = FALSE] %*%
+      solve(V[observed, observed, drop = FALSE], K[observed, , drop = FALSE])
+    out <- stanimal:::.conditional_breeding_values(
+      Y, X, A, G, E, beta, missing = missing)
+    complete <- stanimal:::.conditional_breeding_values(Y, X, A, G, E, beta)
+    expect_equal(out$values, complete$values)
+    expect_equal(unname(out$se), matrix(sqrt(diag(expected)), 3, 2),
+                 tolerance = 1e-10)
+    expect_equal(unname(out$reliability),
+                 matrix(1 - diag(expected) / diag(K), 3, 2), tolerance = 1e-10)
+    expect_true(all(out$se >= complete$se - 1e-10))
+
+    mu <- as.vector(X %*% t(beta))
+    filled <- mu + V[, observed, drop = FALSE] %*%
+      solve(V[observed, observed, drop = FALSE],
+            as.vector(Y)[observed] - mu[observed])
+    expected_mean <- K[, observed, drop = FALSE] %*%
+      solve(V[observed, observed, drop = FALSE],
+            as.vector(Y)[observed] - mu[observed])
+    imputed <- stanimal:::.conditional_breeding_values(
+      matrix(filled, 3, 2), X, A, G, E, beta, missing = missing)
+    expect_equal(unname(imputed$values), matrix(expected_mean, 3, 2),
+                 tolerance = 1e-10)
+  }
+  all_missing <- matrix(TRUE, 3, 2)
+  out <- stanimal:::.conditional_breeding_values(
+    Y, X, A, G, E, beta, missing = all_missing)
+  expect_equal(unname(out$se), matrix(sqrt(diag(K)), 3, 2), tolerance = 1e-10)
+  expect_equal(unname(out$reliability), matrix(0, 3, 2), tolerance = 1e-10)
+})
+
+test_that("an unrelated individual with no observations has zero reliability", {
+  Y <- matrix(c(0, 1, -1), 3, 1)
+  missing <- matrix(c(TRUE, FALSE, FALSE), 3, 1)
+  out <- stanimal:::.conditional_breeding_values(
+    Y, matrix(1, 3, 1), diag(3), matrix(1), matrix(1), matrix(0),
+    missing = missing)
+  expect_equal(out$se[1, 1], 1)
+  expect_equal(out$reliability[1, 1], 0, tolerance = 1e-12)
+  expect_equal(out$se[2, 1], sqrt(0.5))
+  expect_equal(out$reliability[2, 1], 0.5)
+})
+
+test_that("breeding_values uses imputations for means and the observed mask for SE", {
+  Y <- matrix(c(NA, -1, 1), 3, 1)
+  m <- cbind("sigma_G" = c(1, 1), "sigma_E" = c(1, 1),
+             "beta[1]" = c(0, 0))
+  fit <- structure(list(draws = function(...) posterior::as_draws_matrix(m)),
+                   class = "CmdStanMCMC", y_names = "trait", x_names = "Int",
+                   stanimal_data = list(family = "animal", Y = Y,
+                                        X = matrix(1, 3, 1), A = diag(3)))
+  local_mocked_bindings(
+    imputed_data = function(fit, ndraws, seed) {
+      expect_equal(ndraws, 2)
+      expect_equal(seed, 17)
+      list(Y = array(c(2, -1, 1, 4, -1, 1), c(3, 1, 2)))
+    }, .package = "stanimal")
+  out <- breeding_values(fit, ndraws = 2, seed = 17)
+  expect_equal(out$values[1, 1], 1.5)
+  expect_equal(out$se[1, 1], 1)
+  expect_equal(out$reliability[1, 1], 0, tolerance = 1e-12)
+  no_se <- breeding_values(fit, se = FALSE, ndraws = 2, seed = 17)
+  expect_equal(no_se$values, out$values)
+  expect_null(no_se$se)
+  expect_null(no_se$reliability)
+})
+
+test_that("se FALSE does not compute the missing-data covariance correction", {
+  local_mocked_bindings(
+    .missing_breeding_variance = function(...) stop("unexpected correction"),
+    .package = "stanimal")
+  expect_silent(stanimal:::.conditional_breeding_values(
+    matrix(c(1, 2), 2), matrix(1, 2, 1), diag(2), matrix(1), matrix(1),
+    matrix(0), se = FALSE, missing = matrix(c(TRUE, FALSE), 2)))
+})
+
 skip_if_no_cmdstan()
 
 ebv_fit <- function(sim, iter = 800, ...) {
@@ -197,6 +302,21 @@ test_that("missing values are predicted through their conditional mean", {
   # and its reliability is below that of a mouse with its own record
   expect_lt(mean(ebv$reliability[c(3, 17, 25, 41), 1]),
             mean(ebv$reliability[-c(3, 17, 25, 41), 1]))
+  completed <- stanimal:::.completed_mean(imputed_data(fit, ndraws = 200, seed = 4))
+  baseline <- stanimal:::.conditional_breeding_values(
+    completed, sim$X, sim$A, ebv$G, ebv$E, draws_mean(fit, "beta"))
+  expect_equal(ebv$values, baseline$values)
+  K <- kronecker(ebv$G, sim$A)
+  V <- K + kronecker(ebv$E, diag(nrow(incomplete)))
+  observed <- which(!is.na(as.vector(incomplete)))
+  covariance <- K - K[, observed, drop = FALSE] %*%
+    solve(V[observed, observed, drop = FALSE], K[observed, , drop = FALSE])
+  expect_equal(unname(ebv$se),
+               matrix(sqrt(diag(covariance)), nrow(incomplete)),
+               tolerance = 1e-8)
+  expect_equal(unname(ebv$reliability),
+               matrix(1 - diag(covariance) / diag(K), nrow(incomplete)),
+               tolerance = 1e-8)
 })
 
 test_that("se = FALSE skips the uncertainty", {

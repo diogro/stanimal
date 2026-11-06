@@ -213,6 +213,36 @@ test_that("the animal density is the joint density of the completed data", {
   z <- forwardsolve(t(L), resid)
   joint <- sum(stats::dnorm(z, log = TRUE)) - sum(log(diag(L)))
   expect_equal(sum(get("log_lik")), joint, tolerance = 1e-5)
+
+  # Marginalize analytically over the gaps, then recover the completed density
+  # by multiplying by the conditional density of the sampled imputation.
+  obs <- which(!as.vector(miss))
+  mis <- which(as.vector(miss))
+  L_obs <- chol(Sigma[obs, obs, drop = FALSE])
+  z_obs <- forwardsolve(t(L_obs), resid[obs])
+  marginal <- sum(stats::dnorm(z_obs, log = TRUE)) - sum(log(diag(L_obs)))
+  cross <- Sigma[mis, obs, drop = FALSE]
+  conditional_mean <- cross %*% solve(Sigma[obs, obs, drop = FALSE], resid[obs])
+  conditional_cov <- Sigma[mis, mis, drop = FALSE] -
+    cross %*% solve(Sigma[obs, obs, drop = FALSE], t(cross))
+  L_cond <- chol(conditional_cov)
+  conditional_log_density <- function(values) {
+    z <- forwardsolve(t(L_cond), values - conditional_mean)
+    sum(stats::dnorm(z, log = TRUE)) - sum(log(diag(L_cond)))
+  }
+  expect_equal(joint, marginal + conditional_log_density(resid[mis]),
+               tolerance = 1e-8)
+  altered <- resid
+  altered[mis] <- as.vector(conditional_mean)
+  altered[mis[1]] <- altered[mis[1]] + 5 * sqrt(conditional_cov[1, 1])
+  z_altered <- forwardsolve(t(L), altered)
+  altered_joint <- sum(stats::dnorm(z_altered, log = TRUE)) - sum(log(diag(L)))
+  expect_equal(altered_joint, marginal + conditional_log_density(altered[mis]),
+               tolerance = 1e-8)
+  expect_equal(conditional_log_density(as.vector(conditional_mean)) -
+                 conditional_log_density(altered[mis]),
+               0.5 * (5 * sqrt(conditional_cov[1, 1]))^2 *
+                 solve(conditional_cov)[1, 1], tolerance = 1e-8)
 })
 
 test_that("univariate fits take missing records", {

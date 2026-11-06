@@ -484,9 +484,11 @@ plot_G_ellipses <- function(fit, Y, trait_names = NULL, n_show = 100,
   G <- array(unlist(df[as.vector(g_names)]), c(nrow(df), k, k))
 
   mean_G <- apply(G, c(2, 3), mean)
-  corr <- t(apply(G, 1, function(g) stats::cov2cor(g)[upper.tri(diag(k))]))
-  if (!is.matrix(corr)) corr <- matrix(corr, ncol = k * (k - 1) / 2)
   pairs <- .trait_pairs(trait_names)
+  pair_index <- cbind(pairs$i, pairs$j)
+  corr <- t(matrix(vapply(seq_len(dim(G)[1]), function(s)
+    stats::cov2cor(G[s, , ])[pair_index], numeric(nrow(pairs))),
+    nrow = nrow(pairs), ncol = dim(G)[1]))
   shown <- sample(dim(G)[1], min(n_show, dim(G)[1]))
   P_obs <- stats::cov(Y, use = "pairwise.complete.obs")
   centre <- colMeans(Y, na.rm = TRUE)

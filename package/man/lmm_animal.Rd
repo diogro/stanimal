@@ -35,7 +35,7 @@ lmm_animal(
 
 \item{A}{Finite symmetric positive-definite relationship matrix matching the rows of Y. A matrix that is only positive semidefinite (duplicated individuals, for example) is rejected; set \code{blend_A = TRUE} to regularize it. When \code{A} and \code{Y} both have row names, they are used to put \code{A} in the order of \code{Y}; names that disagree are an error. Without names the rows are matched by position.}
 
-\item{lkj_prior}{Shape parameter of the LKJ prior on the correlation matrices of the multivariate model. \code{1} is uniform over correlation matrices, values above \code{1} shrink correlations toward zero, and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits: at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of genetic correlations, a well-known problem in quantitative genetics. A finite number above 0. It is used only by multivariate models with \code{residual_structure = "unstructured"} and not \code{shared_factor}; explicitly supplying it in other configurations warns that it is ignored.}
+\item{lkj_prior}{Positive shape parameter of the LKJ prior. \code{1} is uniform over correlation matrices, not over each pairwise correlation: their marginal distribution concentrates increasingly around zero as dimension increases. Larger shapes add shrinkage toward zero. For multivariate models it applies to unstructured \code{G}, including with diagonal \code{E}, and to unstructured \code{E}, including with factor \code{G}. It is unused for factor \code{G} with diagonal \code{E}, shared-factor and univariate models; explicitly supplying it there warns.}
 
 \item{beta_prior}{Parameters of the beta prior on h2. Used by the univariate model with \code{parametrization = "h2"}, by the unstructured multivariate model with \code{parametrization = "h2"}, by the ordinary factor model for the trait heritabilities, and by the shared-factor model for the factor heritabilities. The default \code{c(1, 1)} is flat on h2 and on each factor heritability. It is validated for every model; explicitly supplying it where it is not used warns that it is ignored.}
 
@@ -63,7 +63,7 @@ lmm_animal(
 
 \item{n_factors}{Number of factors when \code{genetic_structure = "factor"}; for \code{residual_structure = "shared_factor"} these are shared by \code{G} and \code{E}. It is a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model falls back to \code{min(K - 1, max(2, floor(sqrt(K))), 20)} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.}
 
-\item{hs_global_scale, hs_slab_scale}{Scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale. Smaller \code{hs_global_scale} gives stronger shrinkage and fewer effective loadings; \code{hs_slab_scale} bounds the largest loading in the slab, and through the row normalisation it sets the communality the prior expects, namely \code{hs_slab_scale^2 / (1 + hs_slab_scale^2)}: 0.5 at the default of 1, 0.8 at 2 and 0.94 at 4. Raise it when the factors are expected to absorb most of each trait's genetic variance, and report the value used, since the slab decides the posterior wherever the data are weak. Both must be positive and are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns that they are ignored. See Piironen and Vehtari (2017) on choosing the global scale from the expected number of nonzero loadings.}
+\item{hs_global_scale, hs_slab_scale}{Positive scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale, which limits the loading's prior standard deviation rather than bounding its realized value. For ordinary factor G, communality is \eqn{q/(1+q)}, where \eqn{q} is the random sum of squared unnormalized loadings. Its prior distribution depends on both scales, the local scales, the number of factors and column decay; it is not determined by the slab alone. The shared-factor model does not row-normalize its loadings, so its communality is a sum of squares on the standardized response scale, not a correlation-scale proportion. Report the settings, especially where data are weak. These arguments are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns. See Piironen and Vehtari (2017) on choosing the global scale.}
 
 \item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 0.8 orders the columns without forcing a strict hierarchy; with \code{column_decay = 1} the columns are exchangeable a priori and their labels are free to swap between chains. How strong the decay needs to be depends on how many columns have to be told apart: with two columns of comparable size 0.8 is often too mild and 0.5 is what separates them, while a strong decay works against a model with many columns, because \code{0.5^(m - 1)} cuts the prior of the fifth column to a sixteenth of the first. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. Explicitly supplying it outside \code{genetic_structure = "factor"} warns that it is ignored.}
 
@@ -75,14 +75,13 @@ Multivariate fits report \code{G}, \code{E}, \code{P = G + E}, \code{corrG},
 \code{sigma_G}, \code{sigma_E} and \code{h2 = diag(G) / diag(P)}, plus the
 fixed effects \code{beta[trait, j]}.
 
-Every fit reports \code{log_lik}, one term per row of the response, and the
-terms sum to the joint log density. The basis is the catch: the model block
-works on the eigen-rotation of \code{A}, where the records are independent, so
-term \code{n} belongs to rotated record \code{n} and not to individual
-\code{n}. With \code{A} equal to the identity the two coincide. Otherwise the
-sum is still the exact joint log likelihood, but leave-one-out over rotated
-records is not leave-one-individual-out, so treat \code{loo} results as a
-model-comparison criterion rather than an individual-level predictive check.
+Every fit reports \code{log_lik}, one term per rotated response record. For
+complete data the terms sum to the joint log density, but leave-one-out over
+rotated records is not generally leave-one-individual-out. Comparisons need
+the same response and predictive units, including the same relationship
+matrix and eigenbasis. With missing responses the terms use the completed
+data rather than the marginalized observed-data likelihood, so
+\code{\link{fit_loo}} refuses these fits.
 
 Factor fits add quantities that describe the factor decomposition. They come
 in two groups. \code{communality}, \code{uniqueness} and
@@ -167,9 +166,11 @@ Two configurations are worth avoiding when many values are missing. A
 \code{residual_structure = "diagonal"} model with a small sample is weakly
 identified once gaps loosen the residual structure, and can mix badly:
 prefer \code{"unstructured"}, which is the default and what the missing-data
-machinery is tested against. And \code{loo} on a fit with gaps compares
-models over the rotated records, as it does for complete data, so the terms
-are not leave-one-individual-out.
+machinery is tested against. For fits with gaps, \code{log_lik} uses the
+completed response including imputation parameters, not the marginalized
+observed-data likelihood; \code{\link{fit_loo}} refuses LOO and WAIC for
+these fits. Raw \code{log_lik} draws remain available, but are not an
+observed-data predictive criterion.
 
 The LKJ shape \code{lkj_prior} (default 2) deliberately shrinks correlations toward zero. With many traits, an unstructured correlation matrix fit under a flat prior tends to overestimate the magnitude of correlations, especially genetic correlations between traits with limited information, so a shape above 1 acts as a mild regularizer; increase it for stronger shrinkage. Note that fitting many traits remains expensive: the likelihood is cheap, but an unstructured \code{G} for \code{K = 40} traits has on the order of 1700 parameters and NUTS needs many leapfrog steps, so a single fit can take an hour or more. Fewer iterations, a larger \code{lkj_prior}, or \code{residual_structure = "diagonal"} all make fits faster.
 

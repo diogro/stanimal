@@ -207,9 +207,9 @@ test_that("Laplace fitters warn about unused model arguments", {
   expect_warning(expect_error(lmm_animal_laplace(d$Y, d$X, d$A,
                                                    beta_prior = c(2, 2)),
                               "capture"), "`beta_prior`")
-  expect_warning(expect_error(lmm_animal_laplace(
+  expect_no_warning(expect_error(lmm_animal_laplace(
     d$Y, d$X, d$A, residual_structure = "diagonal", lkj_prior = 3),
-    "capture"), "`lkj_prior`")
+    "capture"))
   expect_warning(expect_error(lm_phen_cov_laplace(
     d$Y, d$X, covariance_structure = "factor", n_factors = 1, lkj_prior = 3),
     "capture"), "`lkj_prior`")
@@ -220,6 +220,33 @@ test_that("Laplace fitters warn about unused model arguments", {
   expect_warning(expect_error(lmm_animal_laplace(
     d$Y, d$X, d$A, genetic_structure = "factor", n_factors = 1,
     parametrization = "h2"), "capture"), "`parametrization`")
+})
+
+test_that("LKJ use reflects both genetic and residual structures in both fitters", {
+  d <- small_animal_data()
+  local_mocked_bindings(
+    .resolve_stan_backend = function(cmd_stan) TRUE,
+    cstan = function(...) stop("capture sampler"),
+    .laplace_fit = function(...) stop("capture Laplace"),
+    .package = "stanimal"
+  )
+  cases <- list(
+    list(Y = d$Y[, 1, drop = FALSE], args = list(), used = FALSE),
+    list(Y = d$Y, args = list(residual_structure = "unstructured"), used = TRUE),
+    list(Y = d$Y, args = list(residual_structure = "diagonal"), used = TRUE),
+    list(Y = d$Y, args = list(genetic_structure = "factor", n_factors = 1,
+                              residual_structure = "unstructured"), used = TRUE),
+    list(Y = d$Y, args = list(genetic_structure = "factor", n_factors = 1,
+                              residual_structure = "diagonal"), used = FALSE),
+    list(Y = d$Y, args = list(genetic_structure = "factor", n_factors = 1,
+                              residual_structure = "shared_factor"), used = FALSE)
+  )
+  for (case in cases) for (fn in list(lmm_animal, lmm_animal_laplace)) {
+    call <- function() do.call(fn, c(list(Y = case$Y, X = d$X, A = d$A,
+                                          lkj_prior = 3), case$args))
+    if (case$used) expect_no_warning(expect_error(call(), "capture"))
+    else expect_warning(expect_error(call(), "capture"), "`lkj_prior`")
+  }
 })
 
 test_that("Laplace validates configurations and run arguments", {

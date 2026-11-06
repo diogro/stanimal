@@ -99,7 +99,8 @@ Random-effect terms such as \code{(1 | animal)} are ignored, so
   If the response has three or more traits and its first principal component
   explains at least 80\% of the variance, a warning suggests fitting size and
   shape scores instead (see \code{\link{size_shape}});
-  \code{\link{pc1_variance_share}} reports that share.
+  \code{\link{pc1_variance_share}} reports that share. If the diagnostic
+  cannot be computed, a warning explains why; the design is still returned.
 }
 \examples{
 dat <- data.frame(trait = rnorm(6), x = rnorm(6),

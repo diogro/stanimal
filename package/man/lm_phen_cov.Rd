@@ -28,7 +28,7 @@ lm_phen_cov(
 
 \item{X}{Optional finite numeric fixed-effects matrix with the same rows as Y and full column rank. The default \code{NULL} fits an intercept-only model: one column of ones, named \code{"(Intercept)"}. A matrix must be able to represent a constant (an intercept column, or the 0/1 indicators of every level of a factor), so that the mean of the response can be reported. Continuous columns are centered and scaled internally; returned beta draws use original X units.}
 
-\item{lkj_prior}{Shape parameter of the LKJ prior on the correlation matrix. \code{1} is uniform; values above \code{1} shrink correlations toward zero and values below \code{1} favor larger correlations. The default \code{2} is recommended for many traits, because at high dimensionality the uniform prior concentrates mass near \code{+/-1} and overestimates the magnitude of correlations. A finite number above 0. It is used only by \code{covariance_structure = "unstructured"}; explicitly supplying it for the factor model warns that it is ignored.}
+\item{lkj_prior}{Positive shape of the LKJ prior on the correlation matrix. \code{1} is uniform over matrices, not individual correlations: pairwise marginals concentrate increasingly around zero as dimension increases. Values above \code{1} add shrinkage toward zero. Used only by \code{covariance_structure = "unstructured"}; explicitly supplying it for the factor model warns that it is ignored.}
 
 \item{iter}{Number of MCMC iterations, a whole number.}
 
@@ -48,7 +48,7 @@ lm_phen_cov(
 
 \item{n_factors}{Number of factors when \code{covariance_structure = "factor"}, a whole number between 1 and the number of traits minus one. If \code{NULL}, the model falls back to the same sublinear rule as \code{lmm_animal()} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.}
 
-\item{hs_global_scale, hs_slab_scale}{Scales of the regularized-horseshoe prior on the factor loadings. \code{hs_slab_scale} sets the communality the prior expects, \code{hs_slab_scale^2 / (1 + hs_slab_scale^2)}, which is 0.5 at the default of 1 and 0.8 at 2. Both must be positive and are only used by the factor model.}
+\item{hs_global_scale, hs_slab_scale}{Positive scales of the regularized-horseshoe prior on the factor loadings, used only by the factor model. The slab limits the prior standard deviation, not the realized loading. Communality is \eqn{q/(1+q)}, where \eqn{q} is the random sum of squared unnormalized loadings; its prior depends on both scales, local scales, factor count and column decay.}
 
 \item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. The default 0.8 orders the columns so that the factor labels stay meaningful; with \code{column_decay = 1} the columns are exchangeable a priori and their labels can swap between chains. Few factors need a stronger decay than many: with two columns of comparable size 0.8 is often too mild to separate them, while \code{0.5^(m - 1)} would shrink the fifth column of a many-factor model to a sixteenth of the first. Only used by the factor model, and explicitly supplying it otherwise warns that it is ignored.}
 

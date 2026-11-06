@@ -39,8 +39,10 @@ An object of class \code{stanimal_breeding_values}: a list with
 Predicts the additive genetic value of each individual from a fitted animal
 model, on the response scale. The model itself integrates the breeding values
 out and so never reports them; this recovers them by post-processing the fit,
-which is exact for the conditional mean once \code{G}, \code{E} and
-\code{beta} are set to their posterior means.
+  which gives the exact conditional mean for complete responses at posterior
+  mean \code{G}, \code{E} and \code{beta}. With missing responses, point
+  predictions use posterior imputations and are an approximation at those
+  plug-in parameters.
 }
 \details{
 Write the model as \eqn{y = X\beta + u + e} with
@@ -52,9 +54,12 @@ Write the model as \eqn{y = X\beta + u + e} with
   does not propagate the uncertainty in the covariance parameters, and the
   standard errors below are conditional on them.
 
-  \code{se} is the square root of \eqn{\mathrm{Var}(u \mid y)}, which is
-  \eqn{A \otimes G - (A \otimes G)V^{-1}(A \otimes G)} at the same parameter
-  values. \code{reliability} is \eqn{1 - \mathrm{Var}(u_{nk} \mid y)/(A_{nn}G_{kk})},
+  \code{se} is the square root of \eqn{\mathrm{Var}(u \mid y_\mathrm{observed})}
+  at the same plug-in parameters. For complete responses it is based on
+  \eqn{A \otimes G - (A \otimes G)V^{-1}(A \otimes G)}. For incomplete
+  responses it accounts for the conditional uncertainty in the gaps rather
+  than treating the imputations as observed.
+  \code{reliability} is \eqn{1 - \mathrm{Var}(u_{nk} \mid y_\mathrm{observed})/(A_{nn}G_{kk})},
   the share of the individual's prior additive variance (which is
   \eqn{A_{nn}G_{kk}}, larger than \eqn{G_{kk}} for an inbred individual) that the prediction accounts for,
   between 0 and 1. A value near 1 means the individual's relatives and its own
@@ -72,7 +77,13 @@ Write the model as \eqn{y = X\beta + u + e} with
   plugging in \eqn{E[y \mid y_\mathrm{observed}]} gives
   \eqn{E[u \mid y_\mathrm{observed}]} at fixed \code{G}, \code{E} and
   \code{beta}. The imputed draws each use their own posterior draw of those
-  parameters, so the match with the plug-in values is approximate.
+  parameters, so the match with the plug-in values is approximate and
+  depends on the selected draws. The standard errors and reliabilities use
+  the observed-data conditional variance at the plug-in parameters, not the
+  variance across the imputed datasets and not full posterior uncertainty.
+  Computing them with \eqn{m} gaps requires a dense \eqn{m} by \eqn{m}
+  matrix and its Cholesky factorization; use \code{se = FALSE} to skip this
+  cost when only predictions are needed.
 
   Because \code{A} enters through its eigendecomposition, this is also a
   direct check on a fit: with \code{A} equal to the identity the predictions

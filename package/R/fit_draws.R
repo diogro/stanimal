@@ -208,6 +208,7 @@ draws_quantile <- function(x, parameter = NULL, probs = c(0.025, 0.975),
       list(traits, traits, NULL) else list(traits, NULL)
   }
   if (!is.null(d$beta)) dimnames(d$beta)[[1L]] <- traits
+  if (!is.null(d$loadings)) dimnames(d$loadings)[[1L]] <- traits
   attr(d, "traits") <- traits
   d
 }

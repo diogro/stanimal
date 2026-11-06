@@ -12,9 +12,11 @@ Log-transformed measurements are the usual input. Missing values
 (\code{NA}) are allowed and are not discarded: see Details.}
 
 \item{n_shape}{Number of shape axes to keep, between 1 and
-\code{ncol(Y) - 1}. The default keeps all of them, so the transformation is
-a bijection; fewer axes give a lower-rank (singular) covariance in the
-original trait space.}
+\code{ncol(Y) - 1}, and no more than the numerical rank of the centered
+shape data. The default requests all \code{ncol(Y) - 1} axes and errors
+if the data cannot identify them; choose fewer explicitly in that case.
+Keeping all axes makes the transformation a bijection; fewer axes give a
+lower-rank (singular) covariance in the original trait space.}
 }
 \value{
 A list of class \code{size_shape} with
@@ -48,7 +50,10 @@ Size is the mean of the traits, \code{rowMeans(Y)}, i.e. the log
   morphometric data set, but it need not be: it is the unweighted mean of the
   traits, while the principal components are shaped by their covariance
   structure. The shape axes are ordered by the residual variance they
-  explain.
+  explain. Their numerical rank is at most \code{min(nrow(Y) - 1,
+  ncol(Y) - 1)} and can be smaller if the shape data are collinear. It is
+  computed after completing missing values, using a relative singular-value
+  tolerance of \code{max(dim(Y)) * .Machine$double.eps}.
 
   The transformation is linear, so genetic and residual covariance matrices
   transform as \eqn{B M B^T}; use \code{\link{back_transform}} to do this for
@@ -80,6 +85,9 @@ Size is the mean of the traits, \code{rowMeans(Y)}, i.e. the log
   row with nothing observed carries no information and is an error, and two
   traits never measured on the same individual make their covariance
   unidentifiable, which is also an error.
+  The EM fit starts from a positive-definite diagonal covariance and errors
+  if it fails to converge or produces a singular covariance. Check the
+  missingness pattern, collinearity and sample size in that case.
 
   The completion is a point estimate, not a multiple imputation: the scores
   are then treated as data by the model they are passed to, and the

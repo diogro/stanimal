@@ -16,6 +16,15 @@ factor_prior_fit <- function(parametrization = "h2", residual = "unstructured") 
   fit
 }
 
+prior_communality_reference <- function(m, n, global, slab, decay) {
+  tau <- abs(rcauchy(n, scale = global))
+  local <- matrix(abs(rcauchy(n * m)), n, m)
+  raw <- matrix(rnorm(n * m), n, m)
+  v <- pmin((local * tau * rep(decay^(seq_len(m) - 1), each = n))^2, 1e150)
+  q <- rowSums(raw^2 * (slab^2 * v / (slab^2 + v)))
+  q / (1 + q)
+}
+
 test_that("factor G priors are reconstructed for both residual structures", {
   for (residual in c("unstructured", "diagonal")) {
     fit <- factor_prior_fit(residual = residual)
@@ -142,7 +151,8 @@ test_that("factor G prior simulation agrees with the Stan transformation", {
     reference <- model$sample(data = data, fixed_param = TRUE, chains = 1,
                               iter_warmup = 0, iter_sampling = 5000,
                               seed = 91, refresh = 0, show_messages = FALSE)
-    ref <- as.matrix(reference$draws(c("h2", "corrG"), format = "draws_matrix"))
+    ref <- as.matrix(reference$draws(c("h2", "corrG", "communality_corr"),
+                                     format = "draws_matrix"))
     fit <- factor_prior_fit()
     attr(fit, "n_factors") <- data$M
     attr(fit, "hs_global_scale") <- data$hs_global_scale
@@ -160,5 +170,46 @@ test_that("factor G prior simulation agrees with the Stan transformation", {
       expect_lt(abs(mean(r) - mean(expected)), 0.04)
       expect_lt(unname(stats::ks.test(r, expected, exact = FALSE)$statistic), 0.04)
     }
+    set.seed(93)
+    simulated <- prior_communality_reference(data$M, 5000, data$hs_global_scale,
+                                              data$hs_slab_scale, data$column_decay)
+    expect_lt(unname(stats::ks.test(simulated, ref[, "communality_corr[1]"],
+                                    exact = FALSE)$statistic), 0.04)
+  }
+})
+
+test_that("communality simulation agrees with the phenotypic factor Stan model", {
+  skip_if_no_cmdstan()
+  stan <- readLines(system.file("stan", "phenotypicModelFactor.stan",
+                                package = "stanimal"))
+  start <- grep("  // Regularized horseshoe with deterministic", stan, fixed = TRUE)
+  end <- grep("^model \\{$", stan)
+  expect_length(start, 1)
+  expect_length(end, 1)
+  transform <- stan[seq.int(start, end - 2L)]
+  code <- paste(c(
+    "data { int<lower=2> K; int<lower=1> M; real<lower=0> hs_global_scale;",
+    "real<lower=0> hs_slab_scale; real<lower=0,upper=1> column_decay; }",
+    "generated quantities {",
+    "matrix[K,M] loadings_raw; matrix[K,M] local_scale;",
+    "real global_scale = abs(cauchy_rng(0, hs_global_scale));",
+    "vector[M] column_scale; matrix[K,M] loadings_tp;",
+    "vector[K] uniqueness_tp; vector[K] communality_tp;",
+    "for (m in 1:M) column_scale[m] = pow(column_decay, m-1);",
+    "for (k in 1:K) for (m in 1:M) { loadings_raw[k,m] = normal_rng(0,1);",
+    "local_scale[k,m] = abs(cauchy_rng(0,1)); }",
+    transform, "}"), collapse = "\n")
+  model <- cmdstanr::cmdstan_model(cmdstanr::write_stan_file(code), quiet = TRUE)
+  for (m in c(1L, 2L)) {
+    data <- list(K = 3L, M = m, hs_global_scale = 1, hs_slab_scale = 1,
+                 column_decay = 0.8)
+    reference <- model$sample(data = data, fixed_param = TRUE, chains = 1,
+                              iter_warmup = 0, iter_sampling = 5000,
+                              seed = 94, refresh = 0, show_messages = FALSE)
+    ref <- as.matrix(reference$draws("communality_tp", format = "draws_matrix"))
+    set.seed(95)
+    simulated <- prior_communality_reference(m, 5000, 1, 1, 0.8)
+    expect_lt(unname(stats::ks.test(simulated, ref[, "communality_tp[1]"],
+                                    exact = FALSE)$statistic), 0.04)
   }
 })

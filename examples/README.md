@@ -13,8 +13,8 @@ Rscript examples/univariate.R
 | `multivariate.R` | `lmm_animal()` with five correlated traits: `G`, `E`, `P`, `corrG`, `h2` and the fixed effects |
 | `factor_model.R` | `lmm_animal(genetic_structure = "factor")`: a sparse nine-factor `G` for twelve traits with a hierarchical size/block/sub-block structure, regularized-horseshoe loadings, column decay, and posterior summaries |
 | `ratones.R` | `lmm_animal()` on real data: four log cranial distances of 329 mice, with `A` built from the dam and sire recorded on each mouse |
-| `imputation.R` | Incomplete records: entries blanked out of the mouse data, fitted with the gaps in place instead of dropping rows, then `imputed_data()` puts them back. The deleted values are known, so the recovery is scored, and the plot shows each imputation against the value that was removed |
-| `breeding_values.R` | `breeding_values()` on the mouse data: predicted additive values, their standard errors and reliability, the ranking of candidates by breeding value against the ranking by measurement, and the shrinkage that separates the two |
+| `imputation.R` | Incomplete opossum records fitted with their existing gaps in place, followed by multiple imputations with `imputed_data()` |
+| `breeding_values.R` | `breeding_values()` on the opossum data: predicted additive values, their standard errors and reliability, the ranking of candidates by breeding value against the ranking by measurement, and the shrinkage that separates the two |
 | `phenotypic_covariance.R` | `lm_phen_cov()` with no pedigree, plus `size_shape()` and `back_transform()`, on the same mouse data |
 | `factor_phenotypic_covariance.R` | `lm_phen_cov(covariance_structure = "factor")` on the full 35-trait mouse covariance matrix, on the log-trait scale: a scree plot and parallel analysis to choose `n_factors`, sparse loadings, factor magnitudes, communality and uniqueness, an OLS residual-covariance check and correlation heatmaps |
 | `gibbs.R` | `lmm_animal_gibbs()`, the single-chain Gibbs sampler; its inverse-Wishart priors differ from `lmm_animal()` |
@@ -29,12 +29,12 @@ is the posterior mean, the thick and thin segments are the 80% and 99% credible
 intervals, and the simulated value is the hollow triangle. The true values are
 matched to the draws by name, not by position.
 
-All scripts need `stanimal` installed and CmdStan available
-(`cmdstanr::install_cmdstan()`), except `gibbs.R`, which needs neither.
+All scripts need `stanimal` installed. They also need CmdStan available
+(`cmdstanr::install_cmdstan()`), except `gibbs.R`, which does not use CmdStan.
 `structure_comparison.R` also needs the `loo` package for the predictive
-comparison. The mouse data used by `ratones.R`, `imputation.R`,
-`breeding_values.R`, `phenotypic_covariance.R` and
-`factor_phenotypic_covariance.R` ships with the package, so nothing is
-downloaded. The two comparison scripts install `MCMCglmm`, `BGLR`, `sommer` and
+comparison. The mouse data used by `ratones.R`, `phenotypic_covariance.R` and
+`factor_phenotypic_covariance.R`, and the opossum data used by `imputation.R`
+and `breeding_values.R`, ship with the package, so nothing is downloaded.
+The two comparison scripts install `MCMCglmm`, `BGLR`, `sommer` and
 `lme4breeding` if they are missing, and check for a licensed ASReml-R without
 trying to install it.

@@ -36,6 +36,31 @@ test_that("n_shape keeps fewer shape axes", {
   expect_equal(unname(ss$loadings[, "size"]), rep(1, 4))
 })
 
+test_that("shape axes are limited by the numerical rank of centered shape", {
+  set.seed(91)
+  wide <- matrix(rnorm(15), 3, 5)
+  expect_error(size_shape(wide), "2.*identifiable|identifiable.*2")
+  expect_error(size_shape(wide, n_shape = 3), "2.*identifiable|identifiable.*2")
+  ss <- size_shape(wide, n_shape = 2)
+  expect_equal(dim(ss$scores), c(3L, 3L))
+  expect_equal(dim(ss$loadings), c(5L, 3L))
+  expect_true(all(apply(ss$scores[, -1, drop = FALSE], 2, sd) > 0))
+
+  rank_one <- cbind(1:5, -(1:5), rep(0, 5))
+  expect_error(size_shape(rank_one), "1.*identifiable|identifiable.*1")
+  expect_equal(ncol(size_shape(rank_one, 1)$scores), 2L)
+  expect_error(size_shape(matrix(1, 4, 3)), "0.*identifiable|identifiable.*0")
+  repeated <- matrix(rep(c(0.1, 0.2, 0.7), each = 7), 7)
+  expect_error(size_shape(repeated, 1), "0.*identifiable|identifiable.*0")
+
+  square <- matrix(rnorm(16), 4, 4)
+  ss_square <- size_shape(square)
+  expect_equal(dim(ss_square$scores), c(4L, 4L))
+  expect_equal(scale(ss_square$scores %*% t(ss_square$loadings),
+                     scale = FALSE),
+               scale(square, scale = FALSE), ignore_attr = TRUE)
+})
+
 test_that("size_shape validates its input", {
   expect_error(size_shape(Y4[, 1]), "at least two traits")
   expect_error(size_shape(matrix("a", 5, 2)), "numeric")
@@ -229,6 +254,67 @@ test_that("the gap completion recovers the covariance of the complete data", {
   completed <- stanimal:::.conditional_gaps(Y, fit$mean, fit$covariance)$Y
   expect_equal(completed[!is.na(Y)], Y[!is.na(Y)])
   expect_false(anyNA(completed))
+})
+
+test_that("EM fails explicitly on non-convergence and singular inputs", {
+  Y <- gappy(Ybig, 64, seed = 22)
+  expect_error(stanimal:::.normal_em(Y, max_iter = 1), "did not converge")
+  constant <- cbind(a = rep(1, 10), b = seq_len(10), c = seq_len(10)^2)
+  constant[1, 2] <- NA
+  expect_error(stanimal:::.normal_em(constant), "vary|variance")
+  expect_error(size_shape(constant), "vary|variance")
+  expect_error(pc1_variance_share(constant), "vary|variance")
+  set.seed(12)
+  a <- rnorm(40)
+  near_singular <- cbind(a, a + 1e-10 * rnorm(40), rnorm(40))
+  near_singular[1, 3] <- NA
+  expect_error(size_shape(near_singular), "singular|positive-definite")
+  expect_error(pc1_variance_share(near_singular), "singular|positive-definite")
+  dat <- as.data.frame(near_singular)
+  names(dat) <- c("V1", "V2", "V3")
+  expect_warning(design <- animal_design(cbind(V1, V2, V3) ~ 1, dat),
+                 "diagnostic could not be computed.*singular")
+  expect_equal(design$Y, near_singular, ignore_attr = TRUE)
+
+  set.seed(5)
+  sparse <- matrix(rnorm(30), 10, 3)
+  sparse[matrix(runif(30) < 0.25, 10, 3)] <- NA
+  expect_error(size_shape(sparse), "did not converge")
+  expect_error(pc1_variance_share(sparse), "did not converge")
+})
+
+test_that("EM handles an indefinite pairwise covariance with a valid start", {
+  set.seed(65)
+  Y <- matrix(rnorm(45), 15, 3)
+  Y[matrix(runif(45) < 0.3, 15, 3)] <- NA
+  stanimal:::.check_gap_pattern(Y)
+  expect_lt(min(eigen(cov(Y, use = "pairwise.complete.obs"),
+                      symmetric = TRUE, only.values = TRUE)$values), 0)
+  fit <- stanimal:::.normal_em(Y)
+  expect_lt(fit$iterations, 500)
+  expect_gt(min(eigen(fit$covariance, symmetric = TRUE,
+                      only.values = TRUE)$values), 0)
+  expect_true(is.finite(pc1_variance_share(Y)))
+  expect_true(all(is.finite(size_shape(Y)$scores)))
+  shifted <- sweep(sweep(Y, 2, c(0.01, 2, 100), "*"), 2,
+                   c(100, -30, 5000), "+")
+  transformed <- stanimal:::.normal_em(shifted)
+  expect_equal(transformed$mean, fit$mean * c(0.01, 2, 100) +
+                 c(100, -30, 5000), tolerance = 1e-8)
+  expect_equal(transformed$covariance,
+               fit$covariance * outer(c(0.01, 2, 100), c(0.01, 2, 100)),
+               tolerance = 1e-8)
+  original <- stanimal:::.conditional_gaps(Y, fit$mean, fit$covariance)
+  shifted_completion <- stanimal:::.conditional_gaps(
+    shifted, transformed$mean, transformed$covariance)
+  expect_equal(shifted_completion$Y,
+               sweep(sweep(original$Y, 2, c(0.01, 2, 100), "*"), 2,
+                     c(100, -30, 5000), "+"), tolerance = 1e-8)
+  for (i in seq_len(nrow(Y)))
+    expect_equal(shifted_completion$covariance[i, , ],
+                 original$covariance[i, , ] *
+                   outer(c(0.01, 2, 100), c(0.01, 2, 100)),
+                 tolerance = 1e-8)
 })
 
 test_that("size_shape completes the gaps and says so", {

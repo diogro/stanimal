@@ -79,7 +79,7 @@ fit <- lmm_animal(y, X, A, parametrization = "h2")
 
 The multivariate model estimates `G` and the residual covariance `E` directly. Each is a vector of scales times an LKJ-distributed correlation matrix, with half-normal priors on the scales (of the standardized responses). There is no prior on h2 by default; `h2 = diag(G) / diag(P)` is derived. Two configurations put the prior on h2 instead: `parametrization = "h2"`, and the ordinary factor model, which has no other choice. Both write the scales as `s_G = sqrt(h2) s_P` and `s_E = sqrt(1 - h2) s_P`, so `beta_prior` is a prior on the trait heritabilities.
 
-- `lkj_prior` sets the LKJ shape for both correlation matrices (default 2; 1 is uniform, larger shrinks toward zero correlation). A shape above 1 is deliberately recommended for many traits: at high dimensionality, the uniform prior puts most of its mass near ±1 correlations and overestimates their magnitude, which is a well-known problem when estimating genetic correlations in quantitative genetics.
+- `lkj_prior` sets the LKJ shape for both unstructured correlation matrices (default 2; 1 is uniform over matrices, larger adds shrinkage toward zero). Even at 1, individual pairwise correlations concentrate more strongly around zero as the number of traits increases. An unstructured `G` uses it even with diagonal `E`; factor `G` uses it only for unstructured `E`.
 - `parametrization = "h2"` is worth reaching for when the data are thin. Because the response is standardized, the default half-normal priors on `s_G` and `s_E` are priors on a circle, and the density they induce on h2 is `1/sqrt(h2(1 - h2))`, which is densest at 0 and at 1. With enough individuals the likelihood overrides that and the two parameterizations agree, but with a few hundred individuals and many traits a fit can report whichever end the prior favours. No sample-size threshold has been validated, so the practical rule is to refit with `"h2"` whenever a `"variance"` fit puts its heritabilities against a boundary.
 - `residual_structure = "unstructured"` (default) fits a full residual covariance. `"diagonal"` assumes independent residuals, which pushes environmental covariance between traits into `G` and inflates heritability, so it is not recommended when estimating `G`.
 - Breeding values are marginalized using the eigendecomposition of `A`, so the model has no per-individual random effects. This is much faster and better mixing than sampling breeding values, and the likelihood only needs the eigenvalues of `A`, which is why a singular `A` works once it is regularized with `blend_A = TRUE`.
@@ -126,6 +126,23 @@ fit$summary(c("factor_heritability", "G", "E"))
 ```
 
 Factor fits report `loadings`, `factor_magnitude`, `factor_heritability`, `uniqueness` and `communality`. The last two are the less familiar quantities: `communality[k]` is the variance that trait `k` shares through the factors, and `uniqueness[k]` is its trait-specific remainder. In the ordinary factor model they are on the correlation scale, so `communality + uniqueness = 1`; multiplying them by `s_G[k]^2` gives the common and unique genetic variances. In shared-factor fits, `uniqueness = genetic_uniqueness + residual_uniqueness` and `factor_heritability[m]` is the genetic share of factor `m`. `factor_magnitude[m]` is the squared norm of loading column `m` across traits, not a per-trait quantity. Loadings and factor magnitudes both depend on how the factors are oriented, and nothing in the model fixes that orientation except the prior: two solutions with the same `G` can differ by a rotation, a sign flip or a permutation of the columns. So interpret `G`, `E`, the communalities and the uniquenesses, and treat a poor `Rhat` on `loadings` or `factor_magnitude` as an orientation that moved rather than as a failed fit. Lowering `column_decay` orders the columns and makes the magnitudes comparable. The factor prior reduces the number of covariance parameters, but the current Stan models still use a $K \times K$ eigendecomposition, so the factor structures help parameter count and parsimony more than the linear-algebra cost. `examples/factor_model.R` and `examples/structure_comparison.R` show both alternatives.
+
+For ordinary factor `G` and factor `P`, communality is `q / (1 + q)`, where `q` is the random sum of squared unnormalized loadings. Its prior depends on the global and slab scales, local scales, factor count and decay, not on the slab alone. The following simulates its marginal prior for one trait (the global scale is shared across traits within each draw):
+
+```r
+prior_communality <- function(m, n = 5000, global = 1, slab = 1, decay = 0.8) {
+  tau <- abs(rcauchy(n, scale = global))
+  local <- matrix(abs(rcauchy(n * m)), n, m)
+  raw <- matrix(rnorm(n * m), n, m)
+  v <- pmin((local * tau * rep(decay^(seq_len(m) - 1), each = n))^2, 1e150)
+  q <- rowSums(raw^2 * (slab^2 * v / (slab^2 + v)))
+  q / (1 + q)
+}
+set.seed(202)
+sapply(c(1, 2, 4), function(m) mean(prior_communality(m)))
+```
+
+In the shared-factor model loadings are not row-normalized; its communality is a sum of squares on the standardized response scale, not a correlation-scale proportion, so this simulation does not apply.
 
 ### Choosing the number of factors
 
@@ -216,7 +233,7 @@ It also warns when supplied with `prior`, or for a univariate fit.
 
 ## Comparing models, and checking that one fits
 
-Every model reports a pointwise `log_lik`, so any two fits to the same response can be compared with the [`loo`](https://mc-stan.org/loo/) package:
+Every model reports a pointwise `log_lik`; suitable fits can be compared with the [`loo`](https://mc-stan.org/loo/) package, subject to the restrictions below:
 
 ```r
 fit_loo(fit)                                   # PSIS-LOO
@@ -226,7 +243,7 @@ fit_loo(fit)                                   # PSIS-LOO
 
 `fit_loo()` also takes `criterion = "waic"`, and `loo(fit)` works if `stanimal` and `loo` are both loaded.
 
-One caveat matters for a quantitative geneticist: **the terms are not per individual.** The likelihood is evaluated where the records are independent, which is the eigen-rotation of `A`, so a term belongs to a rotated record rather than to one animal. The sum is the exact joint log density, so the criterion is valid for comparing model structures — unstructured against factor, different trait sets, different fixed effects — but leave-one-out here does not mean "predict this individual". The ELPD's absolute value also carries a constant from the standardization; it cancels between fits to the same data, which is all `loo_compare()` uses. Check `fit_loo(fit)$diagnostics$pareto_k` before trusting a comparison.
+For complete animal responses, **the terms are not generally per individual.** They describe records in the eigen-rotation of `A`, so leave-one-out does not mean "predict this individual". Compare model structures or fixed effects only for the same response values, missingness and corresponding predictive units; animal fits also need the same relationship matrix and eigenbasis. Different trait sets or measured values are not directly comparable. The standardization constant cancels only for the same response. `fit_loo()` refuses animal fits with missing responses, including custom models: the built-in `log_lik` uses completed data, not the marginalized observed-data likelihood. Phenotypic fits with gaps remain supported. Bare draw matrices and older fits without response metadata issue a warning because their suitability cannot be verified; custom likelihoods are the caller's responsibility. Passing extracted draws directly to `loo::loo()` or `loo::waic()` bypasses these checks. Check `fit_loo(fit)$diagnostics$pareto_k` before trusting a comparison.
 
 For the individual-level question — would the data look like this if the model were true — replicate the response from the posterior:
 
@@ -236,7 +253,7 @@ pp        # observed means, SDs and correlations against the replicates
 plot(pp)  # the replicate distributions
 ```
 
-The replicate is `X beta + u + e` for an animal fit, with `u ~ N(0, A ⊗ G)` and `e ~ N(0, I ⊗ E)`, and `X beta + e` with `e ~ N(0, P)` for a phenotypic one, using the draws the fit reports. `print()` compares the observed trait means, standard deviations and pairwise correlations with the replicate distributions: the 95% interval of the replicates, and `p`, the share of replicates at or above the observation — a posterior predictive tail probability. Under a well-specified model `p` is roughly uniform on (0, 1) rather than concentrated at any value, so a `p` near 0 or 1 marks a feature the model does not reproduce and a middling one says nothing either way.
+The replicate is `X beta + u + e` for an animal fit, with `u ~ N(0, A ⊗ G)` and `e ~ N(0, I ⊗ E)`, and `X beta + e` with `e ~ N(0, P)` for a phenotypic one, using the draws the fit reports. `print()` compares observed means, SDs and pairwise correlations with the replicates using the same observed entries for each statistic. It gives a 95% replicate interval and `p`, the share at or above the observed value. These posterior predictive tail probabilities are not generally uniform under a correct model because the data are used twice; extremes can flag a discrepancy, while a middling value does not establish a good fit.
 
 ## Breeding values
 
@@ -246,7 +263,7 @@ An animal model estimates the covariance structure. It does not report what any 
 # ebv <- breeding_values(fit)
 # ebv                # the first individuals, with standard errors and reliability
 # ebv$values         # individuals x traits, on the response scale
-# ebv$reliability    # 1 - Var(u | y) / (A_nn G_kk), between 0 and 1
+# ebv$reliability    # 1 - Var(u | observed y) / (A_nn G_kk), between 0 and 1
 ```
 
 The prediction is the conditional mean
@@ -255,12 +272,14 @@ $$
 \hat u = (A \otimes G)\,V^{-1}(y - X\beta), \qquad V = A \otimes G + I \otimes E,
 $$
 
-evaluated at the posterior means of `G`, `E` and `beta`. That makes it an empirical Bayes estimate: the uncertainty in the covariance parameters is not propagated, and `se` is conditional on them. The eigendecomposition of `A` is what keeps it cheap — one `k` by `k` solve per individual instead of an `N` by `N` system.
+evaluated at the posterior means of `G`, `E` and `beta` for a complete response. That makes it an empirical Bayes estimate: uncertainty in the covariance parameters is not propagated, and `se` is conditional on them. The calculation uses an eigendecomposition of `A` and one `k` by `k` solve per individual.
 
 Two consequences of the formula are worth knowing before reading the numbers.
 
 - **The predictions are shrunk.** Each one sits between the individual's own deviation from the fixed effects and the mean of its relatives, and moves toward the middle as the information about it thins out: a lone individual with one record lands near `h2` times its deviation, one with many measured relatives moves toward their average. This is why the ranking by breeding value is not the ranking by measurement, and why it is the better one to select on.
-- **Missing values are not a problem.** A gap is filled with its conditional mean and the prediction made from that, which is exact rather than approximate here: the predictor is linear in the response, so `E[u | y_obs]` is the predictor applied to `E[y | y_obs]`.
+- **Missing values are handled, not treated as observed.** The point prediction uses the mean of the imputations from `imputed_data()`. Because the predictor is linear, using the exact conditional mean of the gaps at the plug-in parameters would give the exact conditional prediction; the sampled imputations instead use varying posterior parameters, making that match approximate. The SE and reliability condition on the observed entries and account for missing-response uncertainty at the plug-in parameters. They do not include covariance-parameter posterior uncertainty.
+
+For `m` gaps the SE calculation forms and factorizes a dense `m` by `m` matrix; `se = FALSE` skips that cost.
 
 `reliability` is the share of a trait's additive variance that the prediction accounts for, between 0 and 1, and is the usual quantity for deciding how far to trust a candidate. It is a conditional variance at the posterior means, not a posterior distribution of `u`: a per-draw version would sample `u` in `generated quantities` at `O(N K^3)` per draw and store `N K` numbers per draw, which is a different feature.
 
@@ -373,7 +392,11 @@ The LKJ prior is not invariant under this change of traits: it acts on correlati
 
 Size is `rowMeans(Y)` and the shape axes are the principal components of `Y - size`, so `Y = scores %*% t(loadings)` up to the means and covariance matrices map exactly as $B M B^\top$. Keeping fewer axes (`n_shape`) gives a lower-rank, singular covariance in the original trait space. Heritabilities and genetic correlations are recomputed after the transformation, since neither is invariant under a change of traits; `beta` stays on the model scale. `back_transform()` also accepts an `lm_phen_cov()` fit, in which case it returns `P`, `corrP` and `sigma_P`.
 
+`size_shape()` requests `ncol(Y) - 1` shape axes by default. It errors if the centered shape data have insufficient numerical rank, as can happen with too few individuals or collinear traits; choose a smaller `n_shape` in that case. At most `min(nrow(Y) - 1, ncol(Y) - 1)` axes can vary.
+
 A gap in the traits is not a problem for the reparametrization, even though neither size nor shape is defined without every trait: `size_shape()` completes the response first. The mean and covariance of the traits are estimated by maximum likelihood from the values that were measured (EM under a multivariate normal), and a missing entry is replaced by its conditional mean given the traits that individual does have. `$gaps` says how many entries were completed, and `$scores_sd` gives the standard deviation of each completed score, which is worth reading before comparing an individual that was missing a trait with one that was not. It is one completion, not a multiple imputation: the scores are then treated as data by the model they are passed to.
+
+EM errors rather than returning an unconverged or singular estimate; examine the missingness pattern, collinearity and sample size if that occurs. `animal_design()` retains the design but warns if its principal-component diagnostic cannot be computed.
 
 ```r
 incomplete <- log_traits          # a copy, with one value removed
@@ -443,7 +466,7 @@ A <- genomic_relationship(M, blend = 0.01)
 fit <- lmm_animal(Y, X, A)
 ```
 
-Markers with low minor allele frequency (`maf`), too much missing data (`max_missing`) or no variation are dropped, and missing genotypes are set to their expected value. Known base-population allele frequencies can be passed with `p`. If there are fewer markers than individuals, or duplicated genotypes, the GRM is singular; a small `blend` mixes in the identity to make it positive definite.
+Markers with low minor allele frequency (`maf`), too much missing data (`max_missing`) or no variation are dropped, and missing genotypes are set to their expected value. Fully missing markers are always excluded from the GRM and its denominator, even with `max_missing = 1` and supplied frequencies; a warning identifies those that would otherwise pass the filters. Known base-population allele frequencies can be passed with `p`. If there are fewer markers than individuals, or duplicated genotypes, the GRM is singular; a small `blend` mixes in the identity to make it positive definite.
 
 ## Phenotypic covariance only (P)
 

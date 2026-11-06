@@ -22,7 +22,8 @@ Monomorphic markers (and, when \code{p} is estimated, markers with a single
 observed genotype class) are always dropped.}
 
 \item{max_missing}{Markers with a proportion of missing genotypes above this
-value are dropped.}
+value are dropped. Fully missing markers are always dropped, even when
+\code{max_missing = 1} and \code{p} is supplied.}
 
 \item{blend}{Weight \code{w} in \code{(1 - w) * G + w * I}. Default 0 returns
 the raw GRM; a small value (e.g. 0.01) makes a singular GRM, such as one
@@ -42,7 +43,9 @@ marker genotypes, for use as the \code{A} argument of \code{\link{lmm_animal}}.
 \details{
 The GRM is \code{G = Z \%*\% t(Z) / (2 * sum(p * (1 - p)))}, where
   \code{Z = M - 2p}. Missing genotypes are replaced by their expected value
-  \code{2p}, so they contribute zero to the relationship. With frequencies
+  \code{2p}, so they contribute zero to the numerator. Fully missing markers
+  are excluded from both numerator and denominator; if other markers remain,
+  a warning is issued when they would otherwise pass the filters. With frequencies
   estimated from the data, the diagonal averages about one plus the
   inbreeding coefficient, and the off-diagonals are relative to the
   sample average.

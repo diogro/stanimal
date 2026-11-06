@@ -1,14 +1,29 @@
 # Predictive model comparison for a fitted model.
 #
-# Every model in the package reports one pointwise `log_lik` term per record, so
-# leave-one-out cross-validation is a matter of handing those draws to the `loo`
-# package with the chain structure intact (the effective sample size correction
-# needs to know which draws belong to which chain).
+# Suitable fits report one `log_lik` term per record. Keep the chain structure
+# intact when handing those draws to `loo` for its effective sample size correction.
 #
 # The terms are on the rotated scale the model block works on, which is where
-# the records are independent. That is what makes the sum exact, and it is also
-# the caveat: one term is one *rotated* record, not one individual, so this
-# compares model structures on the same data rather than leaving out an animal.
+# the records are independent for complete animal responses. One term is one
+# *rotated* record, not one individual. Missing animal responses are imputed
+# parameters, so those terms are not suitable for an observed-data criterion.
+
+.check_loo_data <- function(fit) {
+  data <- attr(fit, "stanimal_data")
+  if (is.null(data) || !is.list(data) ||
+      !(identical(data$family, "animal") ||
+        identical(data$family, "phenotypic")) || is.null(data$Y)) {
+    warning("Cannot verify whether `log_lik` is suitable for LOO or WAIC: ",
+            "response and model metadata are unavailable. Ensure the terms ",
+            "are appropriate observed-data predictive units; incomplete animal ",
+            "fits' completed-data terms are not.", call. = FALSE)
+  } else if (identical(data$family, "animal") && anyNA(data$Y)) {
+    stop("LOO and WAIC are unavailable for animal fits with missing responses: ",
+         "their `log_lik` uses imputed values rather than an observed-data ",
+         "likelihood. Use `posterior_predictive()` for a model check.",
+         call. = FALSE)
+  }
+}
 
 # Draws of `log_lik` with their chain structure: a draws by records matrix, as
 # `loo` wants, and the chain each draw came from.
@@ -23,12 +38,14 @@
     stop("`lmm_animal_gibbs()` does not support LOO or WAIC. Use "
          , "`lmm_animal()` for model comparison.", call. = FALSE)
   if (inherits(fit, "stanfit")) {
+    .check_loo_data(fit)
     # rstan keeps the declared parameters here, so this asks the fit instead of
     # catching a failed extraction
     draws <- if ("log_lik" %in% methods::slot(fit, "model_pars"))
       as.array(fit, pars = "log_lik") else NULL
   } else if (inherits(fit, "CmdStanFit") ||
              (is.list(fit) && is.function(fit$draws))) {
+    .check_loo_data(fit)
     # ask the fit what it holds rather than catching a failure to read it: a
     # genuine read error must not be reported as a missing `log_lik`
     if (!"log_lik" %in% fit$metadata()$stan_variables)
@@ -37,6 +54,7 @@
       draws <- as.array(fit$draws(variables = "log_lik",
                                   format = "draws_array"))
   } else if (is.matrix(fit) && !is.null(colnames(fit))) {
+    .check_loo_data(fit)
     draws <- fit[, grep("^log_lik", colnames(fit)), drop = FALSE]
     return(list(log_lik = draws, chain_id = rep(1L, nrow(draws))))
   } else {
@@ -55,10 +73,11 @@
 #'
 #' Computes the expected log pointwise predictive density with Pareto-smoothed
 #' importance sampling, by handing the model's `log_lik` draws to
-#' \code{\link[loo]{loo}}. Every model in the package reports that quantity, so
-#' this works for univariate, multivariate, factor and phenotypic fits alike.
+#' \code{\link[loo]{loo}}. Built-in models report that quantity, but incomplete
+#' animal fits cannot be compared this way (see Details).
 #'
-#' @param x A fit from \code{\link{lmm_animal}} or \code{\link{lm_phen_cov}}.
+#' @param x A fit from \code{\link{lmm_animal}} or \code{\link{lm_phen_cov}},
+#'   or a draws matrix with \code{log_lik} columns.
 #' @param criterion \code{"loo"} for Pareto-smoothed importance sampling, or
 #'   \code{"waic"} for the widely applicable information criterion.
 #' @param r_eff Relative effective sample sizes, one per observation. Computed
@@ -70,18 +89,30 @@
 #'   \code{waic} object. \code{loo_compare()} accepts several of them, which is
 #'   how fits are compared; the differences in ELPD are what matters, not the
 #'   absolute value.
-#' @details The pointwise terms are those of the model block, one per record of
-#'   the rotated response the likelihood factorizes over. When \code{A} is the
-#'   identity that is one term per individual; otherwise the rotation mixes
-#'   individuals, so the terms still sum to the exact joint log likelihood but a
-#'   term is not one animal left out. Read the result as a comparison between
-#'   model structures on the same data — unstructured against factor, different
-#'   trait sets, different fixed effects — and not as an individual-level
-#'   predictive check. For the latter, use \code{\link{posterior_predictive}}.
+#' @details Phenotypic models use one term per individual, integrating missing
+#'   traits out. Animal models use one term per rotated response record. For
+#'   complete animal responses the terms sum to the joint log likelihood, but
+#'   the rotation can mix individuals, so a term is not one animal left out.
+#'   Read the result as a comparison between
+#'   model structures or fixed effects on the same response, observations and
+#'   missingness pattern, with corresponding predictive units. Animal fits
+#'   must also have the same relationship matrix and eigenbasis. Different
+#'   response traits or values are not directly comparable. This is not an
+#'   individual-level predictive check.
 #'
 #'   The terms are the density of the standardized response, so the absolute
 #'   ELPD carries a constant that depends on the data's scale; it cancels in
 #'   comparisons between fits to the same response.
+#'   Animal fits with missing responses are refused, including custom-model
+#'   fits: the built-in terms use imputed values, not the marginalized
+#'   observed-data likelihood. \code{\link{posterior_predictive}} remains
+#'   available for model checking. If response or model metadata are unavailable
+#'   (including for a bare draws matrix or older fit), a warning is issued:
+#'   the caller must verify that the terms are suitable predictive units.
+#'   Custom models may define different likelihoods, so their suitability
+#'   cannot be verified from metadata alone. Extracting raw draws and passing
+#'   them directly to \code{loo::loo()} or \code{loo::waic()} bypasses these
+#'   checks.
 #' @seealso \code{\link{posterior_predictive}}
 #' @examples
 #' \dontrun{

@@ -46,11 +46,11 @@ utils::globalVariables("replicated")
 #'   \code{print()} reports, for the trait means, standard deviations and
 #'   pairwise correlations, the observed value, the 95\% interval of the
 #'   replicates, and \code{p}: the share of replicates at or above the observed
-#'   value, a posterior predictive tail probability. Under a well-specified
-#'   model \code{p} is roughly uniform on (0, 1) rather than concentrated at any
-#'   value, so a \code{p} near 0 or 1 marks a feature the model does not
-#'   reproduce and a middling one says nothing either way. \code{plot()} shows
-#'   the replicate distributions.
+#'   value, a posterior predictive tail probability. These probabilities are
+#'   not generally uniform under a correct model because the data are used
+#'   both to fit and to check it. Values near 0 or 1 can flag a discrepancy;
+#'   a middling value does not establish a good fit. \code{plot()} shows the
+#'   replicate distributions.
 #' @details For an animal fit the replicate is
 #'   \eqn{X\beta + u + e} with \eqn{u \sim N(0, A \otimes G)} and
 #'   \eqn{e \sim N(0, I \otimes E)}; for a phenotypic fit it is
@@ -59,8 +59,10 @@ utils::globalVariables("replicated")
 #'
 #'   Replicates are simulated for every trait of every individual, including the
 #'   entries that were not observed, so \code{y} is the response as it was passed
-#'   in and has \code{NA} where the data are incomplete. Compare on the observed
-#'   entries.
+#'   in and has \code{NA} where the data are incomplete. Printed and plotted
+#'   summaries compare each replicate on the same observed entries as the
+#'   corresponding statistic in \code{y}. Pairs with fewer than two jointly
+#'   observed values or constant observed values are omitted with a warning.
 #' @seealso \code{\link{fit_loo}}
 #' @examples
 #' \dontrun{
@@ -112,7 +114,7 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
   take <- if (ndraws >= kept) seq_len(kept) else
     unique(round(seq(1, kept, length.out = ndraws)))
 
-  L_A <- if (data$family == "animal") chol(data$A + .jitter(data$A)) else NULL
+  L_A <- if (data$family == "animal") t(chol(data$A + .jitter(data$A))) else NULL
   # individuals, then traits, then draws: the layout fit_draws() uses, so the
   # draws are last in every array the package returns
   yrep <- array(NA_real_, c(n, k, length(take)),
@@ -155,9 +157,7 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
 }
 
 # The posterior predictive tail probability: the share of replicates at or above
-# the observation. A statistic the model reproduces has about half the
-# replicates above it, so a value near 0 or 1 is a feature the model does not
-# reproduce.
+# the observation.
 .predictive_tail <- function(replicated, observed) mean(replicated >= observed)
 
 # Observed and replicated values of the summaries that describe a covariance
@@ -175,7 +175,8 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
 
   # draws are the last dimension, so each statistic is taken over margin 3
   across_draws <- function(f, j) {
-    apply(yrep[, j, , drop = FALSE], 3L, f, na.rm = TRUE)
+    observed <- !is.na(y[, j])
+    apply(yrep[observed, j, , drop = FALSE], 3L, f)
   }
   per_trait <- function(prefix, f) {
     do.call(rbind, lapply(seq_len(k), function(j) data.frame(
@@ -187,17 +188,33 @@ posterior_predictive <- function(fit, ndraws = 100, seed = NULL, ...) {
   sds <- per_trait("sd: ", stats::sd)
 
   cors <- list()
+  omitted <- character()
   if (k > 1L)
     for (a in seq_len(k - 1L)) for (b in (a + 1L):k) {
-      r <- stats::cor(y[, a], y[, b], use = "complete.obs")
-      if (!is.finite(r)) next
+      observed <- !is.na(y[, a]) & !is.na(y[, b])
+      pair <- paste0(traits[a], "-", traits[b])
+      if (sum(observed) < 2L || stats::sd(y[observed, a]) == 0 ||
+          stats::sd(y[observed, b]) == 0) {
+        omitted <- c(omitted, pair)
+        next
+      }
+      r <- stats::cor(y[observed, a], y[observed, b])
+      replicated <- vapply(seq_len(dim(yrep)[3L]), function(s) {
+        a_rep <- yrep[observed, a, s]
+        b_rep <- yrep[observed, b, s]
+        if (any(!is.finite(a_rep)) || any(!is.finite(b_rep)) ||
+            stats::sd(a_rep) == 0 || stats::sd(b_rep) == 0)
+          stop("replicated correlation is undefined for ", pair, ".",
+               call. = FALSE)
+        stats::cor(a_rep, b_rep)
+      }, numeric(1))
       cors[[length(cors) + 1L]] <- data.frame(
-        statistic = paste0("cor: ", traits[a], "-", traits[b]),
-        observed = r,
-        replicated = vapply(seq_len(dim(yrep)[3L]),
-                            function(s) stats::cor(yrep[, a, s], yrep[, b, s]),
-                            numeric(1)))
+        statistic = paste0("cor: ", pair), observed = r, replicated = replicated)
     }
+  if (length(omitted))
+    warning("observed correlation is undefined for: ",
+            paste(omitted, collapse = ", "), "; omitted from the summaries.",
+            call. = FALSE)
   do.call(rbind, c(list(means, sds), cors))
 }
 
@@ -220,19 +237,14 @@ print.stanimal_yrep <- function(x, ...) {
     check.names = FALSE
   )
   names(out)[3:4] <- c("q2.5", "q97.5")
-  # the posterior predictive tail probability: the share of replicates at or
-  # above the observation. Under a correct model that is roughly uniform on
-  # (0, 1), so most statistics land somewhere in the middle and values near the
-  # ends are the ones to read.
   out$p <- vapply(seq_along(labels), function(i)
     .predictive_tail(replicated[[i]], observed[i]), numeric(1))
   print(out, digits = 3, row.names = FALSE)
   cat("\n`observed` is the data, `q2.5` and `q97.5` are the 95% interval of the\n",
       "replicates, and `p` is the share of replicates at or above the observed\n",
-      "value: a posterior predictive tail probability. Under a well-specified\n",
-      "model it is roughly uniform on (0, 1), not concentrated at any value, so\n",
-      "read a `p` near 0 or 1 as a feature the model does not reproduce and leave\n",
-      "the middle alone.\n", sep = "")
+      "value: a posterior predictive tail probability, not a calibrated\n",
+      "uniform p-value. Values near 0 or 1 can flag a discrepancy; a middling\n",
+      "value does not establish a good fit.\n", sep = "")
   invisible(x)
 }
 

@@ -145,6 +145,9 @@ test_that("fit_draws accepts back_transform output", {
   colnames(m) <- c(sprintf("G[%d,%d]", rep(1:k, k), rep(1:k, each = k)),
                    sprintf("E[%d,%d]", rep(1:k, k), rep(1:k, each = k)))
   post <- back_transform(m, ss)
+  converted <- to_draws_list(back_transform(m, ss))
+  expect_s3_class(converted$G, "draws_matrix")
+  expect_equal(attr(converted, "traits"), ss$raw_traits)
   d <- fit_draws(post)
   expect_equal(dim(d$G), c(3L, 3L, 4L))
   expect_equal(attr(d, "traits"), ss$raw_traits)

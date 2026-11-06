@@ -127,8 +127,8 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
                 (ncol(Y) == 1L && parametrization == "h2") || factor_model ||
                   h2_param, "beta_prior")
   .warn_ignored(lkj_prior_supplied,
-                ncol(Y) > 1L && !shared_factor_model &&
-                  residual_structure == "unstructured", "lkj_prior")
+                .animal_lkj_used(ncol(Y), genetic_structure, residual_structure),
+                "lkj_prior")
   .warn_ignored(parametrization_supplied, !factor_model, "parametrization")
 
   n <- nrow(Y)

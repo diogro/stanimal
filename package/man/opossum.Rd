@@ -12,8 +12,9 @@ Two objects.
       \code{id}, \code{sex}, \code{age} in days, and the 35 cranial distances
       as measured, named after the landmarks they span, with underscores as in
       \code{\link{ratones_morpho}}. Row names are the individual IDs. 22
-      individuals are missing every trait, which \code{\link{lmm_animal}}
-      and \code{\link{lm_phen_cov}} handle, and 505 have no missing value in
+      individuals are missing every trait. \code{\link{lmm_animal}} accepts
+      fully missing response rows, but they must be removed before fitting
+      \code{\link{lm_phen_cov}}. 505 individuals have no missing value in
       any trait or covariate.}
     \item{\code{opossum_grm}}{a 553 by 553 genomic relationship matrix
       computed as \eqn{ZZ^\top/m} from 3,696 markers, \eqn{Z} being the

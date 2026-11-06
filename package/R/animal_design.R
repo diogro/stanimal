@@ -71,7 +71,8 @@
 #'   If the response has three or more traits and its first principal component
 #'   explains at least 80\% of the variance, a warning suggests fitting size and
 #'   shape scores instead (see \code{\link{size_shape}});
-#'   \code{\link{pc1_variance_share}} reports that share.
+#'   \code{\link{pc1_variance_share}} reports that share. If the diagnostic
+#'   cannot be computed, a warning explains why; the design is still returned.
 #' @seealso \code{\link{lmm_animal}}, \code{\link{makeA}},
 #'   \code{\link{genomic_relationship}}, \code{\link{rename_beta}}
 #' @examples
@@ -166,7 +167,11 @@ animal_design <- function(formula, data, na.action = stats::na.omit,
   if (ncol(Y) >= 3L && nrow(Y) >= 3L) {
     # a diagnostic, not a step of the design: an incomplete response is fine
     # here, and a pattern that cannot be completed is not a reason to fail
-    pc1_share <- tryCatch(pc1_variance_share(Y), error = function(e) NULL)
+    pc1_share <- tryCatch(pc1_variance_share(Y), error = function(e) {
+      warning("the principal-component diagnostic could not be computed: ",
+              conditionMessage(e), call. = FALSE)
+      NULL
+    })
     if (!is.null(pc1_share) && pc1_share >= 0.8)
       warning("the first principal component of Y explains ",
               round(100 * pc1_share), "% of the variance. If these are raw ",

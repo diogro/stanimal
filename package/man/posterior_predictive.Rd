@@ -33,11 +33,11 @@ An object of class \code{stanimal_yrep}: a list with
   \code{print()} reports, for the trait means, standard deviations and
   pairwise correlations, the observed value, the 95\% interval of the
   replicates, and \code{p}: the share of replicates at or above the observed
-  value, a posterior predictive tail probability. Under a well-specified
-  model \code{p} is roughly uniform on (0, 1) rather than concentrated at any
-  value, so a \code{p} near 0 or 1 marks a feature the model does not
-  reproduce and a middling one says nothing either way. \code{plot()} shows
-  the replicate distributions.
+  value, a posterior predictive tail probability. These probabilities are
+  not generally uniform under a correct model because the data are used
+  both to fit and to check it. Values near 0 or 1 can flag a discrepancy;
+  a middling value does not establish a good fit. \code{plot()} shows the
+  replicate distributions.
 }
 \description{
 Draws replicate datasets from the fitted model, one per posterior draw, so
@@ -55,8 +55,10 @@ For an animal fit the replicate is
 
   Replicates are simulated for every trait of every individual, including the
   entries that were not observed, so \code{y} is the response as it was passed
-  in and has \code{NA} where the data are incomplete. Compare on the observed
-  entries.
+  in and has \code{NA} where the data are incomplete. Printed and plotted
+  summaries compare each replicate on the same observed entries as the
+  corresponding statistic in \code{y}. Pairs with fewer than two jointly
+  observed values or constant observed values are omitted with a warning.
 }
 \examples{
 \dontrun{

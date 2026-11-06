@@ -53,6 +53,49 @@ test_that("plot_G_ellipses builds", {
   expect_error(plot_G_ellipses(d, Y[, 1, drop = FALSE]), "two traits")
 })
 
+test_that("ellipse labels and intervals match every trait pair", {
+  set.seed(12)
+  for (k in 2:5) {
+    pairs <- utils::combn(k, 2)
+    correlations <- seq_len(ncol(pairs)) * 0.0213
+    for (scales in list(c(0.6, 0.7, 0.9, 1.2), 1)) {
+      matrices <- lapply(scales, function(s) {
+        R <- diag(k)
+        R[t(pairs)] <- correlations * s
+        R[t(pairs[2:1, , drop = FALSE])] <- correlations * s
+        R
+      })
+      vars <- as.vector(outer(seq_len(k), seq_len(k),
+                              function(i, j) sprintf("G[%d,%d]", i, j)))
+      values <- array(0, c(length(scales), 1, k * k),
+                      dimnames = list(NULL, NULL, vars))
+      for (s in seq_along(matrices)) values[s, 1, ] <- as.vector(matrices[[s]])
+      draws <- posterior::as_draws_array(values)
+      Y <- matrix(stats::rnorm(40 * k), 40, k,
+                  dimnames = list(NULL, LETTERS[seq_len(k)]))
+      p <- plot_G_ellipses(draws, Y, n_show = 1, prob = 0.5)
+      text_layer <- which(vapply(p$layers, function(layer)
+        inherits(layer$geom, "GeomText"), logical(1)))[[1]]
+      built <- ggplot2::ggplot_build(p)
+      panels <- built$layout$layout
+      labels <- built$data[[text_layer]]
+      for (m in seq_len(ncol(pairs))) {
+        panel <- panels$PANEL[as.character(panels$row) == LETTERS[pairs[1, m]] &
+                                as.character(panels$col) == LETTERS[pairs[2, m]]]
+        actual <- labels$label[labels$PANEL == panel]
+        interval <- if (length(scales) == 1L) c(1, 1) else c(0.6, 0.9)
+        expected <- sprintf("genetic correlation\n%.2f\n50%% HPD [%.2f, %.2f]",
+                            mean(scales) * correlations[m],
+                            interval[1] * correlations[m],
+                            interval[2] * correlations[m])
+        expect_identical(actual, expected,
+                         info = paste(k, "traits, pair", paste(pairs[, m], collapse = "-"),
+                                      "draws", length(scales)))
+      }
+    }
+  }
+})
+
 test_that("plot_corr builds and keeps matrix labels", {
   M <- stats::cor(mtcars[, 1:4])
   p <- plot_corr(M, "t")

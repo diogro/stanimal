@@ -3,9 +3,10 @@
 `stanimal` fits Bayesian quantitative-genetic models in Stan (CmdStan via cmdstanr,
 with an rstan fallback). Covariances, standard deviations, heritabilities and
 fixed effects are returned on the **original data scale**, so they can be compared
-with the trait values directly. Factor-specific quantities keep their documented
-model scale: `loadings` and `communality`/`uniqueness` are on the correlation
-scale, and `s_G` is on the standardized response scale.
+with the trait values directly. In ordinary factor models, `loadings` and
+`communality`/`uniqueness` are on the correlation scale; in shared-factor
+models they are on the standardized response scale. `s_G` is on the
+standardized response scale.
 
 This file is the interface guide: what to call, what comes back, and how to make
 the prior choices that the function signatures do not make for you. It is written
@@ -84,14 +85,11 @@ functions record different things:
 | shared factor | + `loadings`, `uniqueness`, `communality`, `factor_magnitude`, `factor_heritability`, `genetic_uniqueness`, `residual_uniqueness` |
 | `lm_phen_cov()` | `P`, `corrP`, `sigma_P`, `beta`, `log_lik` (+ `loadings`, `uniqueness`, `communality`, `factor_magnitude` for `"factor"`) |
 
-`h2` exists only for animal fits. Every model reports `log_lik`, one term per row
-of the response, and the terms sum to the joint log density. The basis is the
-catch: the model block works on the eigen-rotation of `A`, where the records are
-independent, so term `n` belongs to rotated record `n` and not to individual `n`.
-With `A = I` the two coincide; otherwise the sum is still the exact joint log
-likelihood, but leave-one-out over rotated records is not leave-one-individual-out.
-`loo` will run on the matrix — read the result as a model-comparison criterion
-rather than an individual-level predictive check.
+`h2` exists only for animal fits. Every model reports `log_lik`, one term per
+record. For complete animal responses the terms sum to the joint log density,
+but refer to records in the eigenbasis of `A`, not generally to individuals.
+Incomplete animal fits instead use completed-data densities, not the marginal
+observed-data likelihood. See the model-comparison caveats below.
 
 ### Reading the draws
 
@@ -101,8 +99,11 @@ fit_draws(fit)                     # list of arrays: traits first, draws last
 draws_mean(fit, "G")               # posterior mean as a named matrix
 draws_quantile(fit, "corrG")       # 2.5% and 97.5% as a 3-d array
 rename_beta(fit)                   # beta named after the columns of X
-to_draws_list(fit)                 # one posterior draws matrix per quantity
 ```
+
+For a fit of size/shape scores, `to_draws_list(back_transform(fit, transform))`
+returns one posterior draws matrix per back-transformed quantity; `transform`
+is the corresponding `size_shape()` object.
 
 `draws_mean()`/`draws_quantile()` take `parameter = NULL` for everything, and a
 `traits` argument to relabel. Factor extras keep their natural shape:
@@ -163,6 +164,12 @@ take gaps too:
   object records `gaps` and `scores_sd`, the latter being the standard deviation
   of each completed score: it is `0` for rows that were fully measured, and it is
   the reason a score should not be compared across individuals without it.
+- The default requests `ncol(Y) - 1` shape axes. If the centered completed shape
+  data have insufficient numerical rank, set `n_shape` to at most the reported
+  rank; no more than `min(nrow(Y) - 1, ncol(Y) - 1)` axes can vary.
+- EM errors if it does not converge or its covariance is singular.
+  `animal_design()` still returns the design but warns if the PC diagnostic
+  cannot be computed.
 - This is *point* completion, unlike `imputed_data()`. The scores are then
   passed to a model that treats them as data, so the uncertainty in
   `scores_sd` does not reach that model's posterior. Say so if asked why the
@@ -175,7 +182,7 @@ take gaps too:
 
 ## Model comparison and predictive checks
 
-Every model reports `log_lik`, so all of them can be compared.
+Built-in models report `log_lik`, but not every fit can be compared with it.
 
 ```r
 fit_loo(fit)                                   # PSIS-LOO
@@ -187,12 +194,16 @@ posterior_predictive(fit)                      # replicates of the response
 - `fit_loo()` wraps `loo::loo` on the `log_lik` draws, with the chain structure
   kept so the effective-sample-size correction works. `criterion = "waic"` gives
   WAIC instead. It needs the `loo` package (a Suggests).
-- **What LOO means here is not leave-one-individual-out.** The terms come from
-  the model block, one per record of the rotated response, which is where the
-  records are independent. Their sum is the exact joint log density, so the
-  criterion is valid, but with a non-identity `A` a term is not one animal. Use
-  it to compare model structures on the same data, not to make statements about
-  predicting a particular individual; for that, use `posterior_predictive()`.
+- **What LOO means here is not leave-one-individual-out.** For complete animal
+  responses, terms refer to rotated records, not generally individual animals.
+  Compare the same response values, observations, missingness and predictive
+  units; animal fits also need the same relationship matrix and eigenbasis.
+  `fit_loo()` refuses incomplete animal fits (including custom models) because
+  their built-in completed-data densities are not the marginalized observed-data
+  likelihood. Incomplete phenotypic fits remain supported. Bare matrices and
+  older fits without response metadata warn because their suitability cannot be
+  verified; custom likelihoods are the caller's responsibility. Passing
+  extracted draws directly to `loo::loo()` or `loo::waic()` bypasses the checks.
 - The terms are the density of the *standardized* response, so the absolute ELPD
   carries a constant that depends on the data. It cancels between fits to the
   same response, which is what `loo_compare()` uses.
@@ -203,8 +214,9 @@ posterior_predictive(fit)                      # replicates of the response
   response from each of `ndraws` posterior draws using the reported `G`, `E`
   (animal) or `P` (phenotypic). `print()` shows the observed trait means, standard
   deviations and pairwise correlations against the replicate distributions, with
-  a `p` that is near 0 or 1 when the model does not reproduce that feature, and
-  `plot()` shows the distributions.
+  a posterior predictive `p`. Extremes can flag discrepancies, but the `p` is
+  not generally uniform under a correct model and a middling value does not
+  establish a good fit. Summaries use matching observed-entry masks.
 
 ## Breeding values
 
@@ -216,7 +228,7 @@ ebv <- breeding_values(fit)
 ebv$values        # individuals x traits, response scale
                    # deviations from the fixed effects
 ebv$se            # conditional SD, at the posterior means of G, E and beta
-ebv$reliability   # 1 - Var(u | y) / (A_nn G_kk), in [0, 1]
+ebv$reliability   # 1 - Var(u | observed y) / (A_nn G_kk), in [0, 1]
 ```
 
 - It is the conditional mean `(A ⊗ G) V^-1 (y - X beta)` with
@@ -227,14 +239,17 @@ ebv$reliability   # 1 - Var(u | y) / (A_nn G_kk), in [0, 1]
   and `lm_phen_cov()` fits do not have one, so they are refused rather than
   silently given a different `A`.
 - Missing traits are fine: the gaps are replaced by their posterior mean from
-  `imputed_data()` first; the predictor is linear in the response, so this is
-  close to exact (each imputed draw uses its own parameter draw).
+  `imputed_data()` for the point prediction. It is exact for a conditional gap
+  mean at fixed plug-in parameters, but these imputations use varying posterior
+  draws, so their mean is only an approximation to that quantity. SE and
+  reliability condition on the observed entries and include gap uncertainty at
+  fixed plug-in parameters, not covariance-parameter uncertainty.
 - Use it as a check as well as an output: with `A = I` the prediction reduces to
   shrinking each individual's own residual by `G (G + E)^-1`, and a prediction
   that is not correlated with a simulated `u` means the fit, not the prediction,
   is wrong.
-- `se = FALSE` skips the conditional variance, which is the only part that costs
-  `O(N^2)`; the predictions themselves are `O(N K^3)`.
+- `se = FALSE` skips the conditional variance. With `m` missing entries the
+  SE calculation forms and factorizes a dense `m` by `m` matrix.
 
 ## Choosing the model
 
@@ -308,22 +323,22 @@ summaries multimodal.
 
 ### 3. `hs_global_scale`, `hs_slab_scale` — the loading shrinkage
 
-Regularized horseshoe (Piironen & Vehtari 2017). Through the row normalisation,
-`hs_slab_scale` (default 1) sets the communality the prior expects, namely
-`s^2 / (1 + s^2)`: 0.5 at 1, 0.8 at 2, 0.94 at 4. It is the setting that moves
-the posterior where the data are weak (on the mouse data the heritability went
-0.10, 0.21, 0.78, 0.80 at slabs 0.5, 1, 2, 4), so report it with a factor fit.
-`hs_global_scale` (default 1) is the half-Cauchy scale on the global shrinkage
-and is nearly inert in practice (0.785 to 0.790 across 0.1 to 4). For a scale
-derived from an expected number of nonzero loadings, see the reference in
-`?lmm_animal`.
+Regularized horseshoe (Piironen & Vehtari 2017). The slab limits loading prior
+standard deviations, not realized loadings. For ordinary factor G and P,
+communality is `q / (1 + q)`, where `q` is the random sum of squared raw
+loadings after shrinkage. Its prior depends on both scales, the local scales,
+factor count and decay, not on the slab alone. The shared-factor model does not
+row-normalize its loadings and its communality is on the standardized response
+scale. See the reproducible prior simulation in `README.md`; report all the
+prior settings when data are weak.
 
 ### 4. `lkj_prior` and `beta_prior`
 
-`lkj_prior` (default 2) shrinks correlations toward zero and is used only by the
-multivariate unstructured `E` (including factor `G` with unstructured `E`). It is
-**ignored** for `"diagonal"` and `"shared_factor"`, and explicitly passing it
-there warns.
+`lkj_prior` (default 2) is used for multivariate unstructured `G` (also with
+diagonal `E`) and unstructured `E` (also with factor `G`). It is ignored for
+factor `G` with diagonal `E`, shared-factor and univariate models. LKJ(1) is
+uniform over correlation matrices, not individual correlations; their
+marginals concentrate near zero as the number of traits increases.
 
 `beta_prior` (default `c(1, 1)`) is the prior on h2 for
 `parametrization = "h2"`, on the trait heritabilities for the ordinary factor

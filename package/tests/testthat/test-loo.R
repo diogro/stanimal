@@ -45,7 +45,7 @@ test_that("WAIC and model comparison work from the same draws", {
   expect_true(all(c("elpd_diff", "se_diff") %in% colnames(comparison)))
 })
 
-test_that("a fit with incomplete records is comparable too", {
+test_that("incomplete animal fits refuse LOO and WAIC", {
   skip_if_no_cmdstan()
   skip_if_no_loo()
   sim <- simulate_animal(n_fam = 8, size = 5, G = G3, E = E3, seed = 72)
@@ -55,19 +55,62 @@ test_that("a fit with incomplete records is comparable too", {
   fit <- suppressWarnings(lmm_animal(Y, sim$X, sim$A, iter = 400, chains = 2,
                                      cores = 2, seed = 1, refresh = 0,
                                      show_messages = FALSE))
-  out <- suppressWarnings(fit_loo(fit))
-  expect_equal(length(out$diagnostics$pareto_k), nrow(Y))
+  expect_error(fit_loo(fit), "unavailable for animal fits with missing")
+  expect_error(fit_loo(fit, criterion = "waic"),
+               "unavailable for animal fits with missing")
+  stanimal:::.onLoad()
+  expect_error(loo::loo(fit), "unavailable for animal fits with missing")
 })
 
-test_that("phenotypic fits report the same quantities", {
+test_that("phenotypic fits with incomplete records support LOO and WAIC", {
   skip_if_no_cmdstan()
   skip_if_no_loo()
   sim <- simulate_animal(n_fam = 8, size = 5, G = G3, E = E3, seed = 73)
-  fit <- lm_phen_cov(sim$Y, sim$X, iter = 400, chains = 2, cores = 2, seed = 1,
+  Y <- sim$Y
+  Y[1, 1] <- NA
+  fit <- lm_phen_cov(Y, sim$X, iter = 400, chains = 2, cores = 2, seed = 1,
                      refresh = 0, show_messages = FALSE)
   out <- suppressWarnings(fit_loo(fit))
   expect_s3_class(out, "psis_loo")
-  expect_equal(length(out$diagnostics$pareto_k), nrow(sim$Y))
+  expect_equal(length(out$diagnostics$pareto_k), nrow(Y))
+  expect_s3_class(suppressWarnings(fit_loo(fit, criterion = "waic")), "waic")
+})
+
+test_that("likelihood eligibility uses metadata and warns when it is absent", {
+  skip_if_no_loo()
+  draws <- cbind("log_lik[1]" = seq(-2, -1, length.out = 100),
+                 "log_lik[2]" = seq(-1, -2, length.out = 100))
+  expect_warning(result <- fit_loo(draws, criterion = "waic"),
+                 "Cannot verify whether")
+  expect_s3_class(result, "waic")
+
+  mock <- list(metadata = function() list(stan_variables = "log_lik"),
+               draws = function(...) array(draws, dim = c(100, 1, 2)))
+  expect_warning(stanimal:::.log_lik_draws(mock), "Cannot verify whether")
+  attr(mock, "stanimal_data") <- list(family = "animal",
+                                     Y = matrix(c(1, NA), ncol = 1))
+  attr(mock, "custom_model") <- TRUE
+  expect_error(fit_loo(mock), "unavailable for animal fits with missing")
+  expect_error(fit_loo(mock, criterion = "waic"),
+               "unavailable for animal fits with missing")
+  attr(mock, "stanimal_data")$Y[2, 1] <- 2
+  expect_no_warning(stanimal:::.log_lik_draws(mock))
+  attr(mock, "stanimal_data") <- list(family = "phenotypic",
+                                     Y = matrix(c(1, NA), ncol = 1))
+  expect_no_warning(stanimal:::.log_lik_draws(mock))
+})
+
+test_that("rstan dispatch also refuses incomplete animal fits", {
+  skip_if_no_rstan()
+  skip_if_no_loo()
+  fit <- methods::new("stanfit")
+  attr(fit, "stanimal_data") <- list(family = "animal",
+                                     Y = matrix(c(1, NA), ncol = 1))
+  stanimal:::.onLoad()
+  expect_error(fit_loo(fit), "unavailable for animal fits with missing")
+  expect_error(fit_loo(fit, criterion = "waic"),
+               "unavailable for animal fits with missing")
+  expect_error(loo::loo(fit), "unavailable for animal fits with missing")
 })
 
 test_that("fits without a pointwise likelihood say so", {

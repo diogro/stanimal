@@ -1,3 +1,29 @@
+# stanimal (development version)
+
+* `plot_G_ellipses()` now labels each trait pair with its own genetic
+  correlation and interval when there are four or more traits.
+* `fit_loo()` and the `loo()` fit methods now refuse LOO and WAIC for animal
+  fits with missing responses; fits without response metadata warn that their
+  likelihood terms cannot be verified.
+* `breeding_values()` retains imputation-based predictions but now computes
+  standard errors and reliabilities conditional only on observed responses.
+* Animal posterior predictive replicates now use the correct relationship
+  covariance between individuals.
+* `size_shape()` now reports an actionable error when the requested shape axes
+  exceed the numerical rank of the centered shape data.
+* `genomic_relationship()` excludes fully missing markers even with supplied
+  frequencies and `max_missing = 1`, warning when they would otherwise pass
+  the filters.
+* Relabeling `fit_draws` now also updates the trait labels of factor loadings.
+* Corrected the opossum data help and example and agent guides.
+* Corrected LKJ-use warnings, prior and model-comparison guidance, and
+  posterior predictive tail-probability explanations.
+* Predictive summaries now use the same observed-entry masks as the data.
+* Missing-data EM starts with a positive-definite covariance and errors on
+  non-convergence or singularity; design diagnostics warn if unavailable.
+* Univariate breeding values use the posterior mean variances, not squared
+  posterior mean standard deviations.
+
 # stanimal 0.7.4
 
 ## Bug fixes
@@ -56,19 +82,16 @@
 
 ## Changes in behaviour
 
-* `hs_slab_scale` now defaults to 1 instead of 2. Through the row normalisation
-  the slab sets the communality the prior expects,
-  `hs_slab_scale^2 / (1 + hs_slab_scale^2)`, so the old default asserted a
-  communality of 0.8 before any data arrived and the new one asserts 0.5. The
-  change bites only where the data are weak: with 600 individuals and 12 traits
+* `hs_slab_scale` now defaults to 1 instead of 2. The earlier explanation that
+  the slab alone determines expected communality was incorrect: the entire
+  horseshoe prior, factor count and decay determine its distribution. With 600 individuals and 12 traits
   the factor model recovers a simulated `G` to a relative MSE of 0.07 at a slab
   of 2, while on the mice data the slab moved the posterior mean heritability
   through 0.10, 0.21, 0.78 and 0.80 at slabs of 0.5, 1, 2 and 4. A factor fit is
   therefore reproducible only if the slab is reported with it, and
-  `hs_slab_scale` is now documented as a statement about communality rather than
-  as a bound on a single loading. `hs_global_scale` is left at 1, since it turns
-  out to be nearly inert: across 0.1 to 4 the same mouse fit moved its
-  heritability between 0.785 and 0.790.
+  `hs_slab_scale` should be reported alongside the other factor prior settings.
+  `hs_global_scale` is left at 1; across 0.1 to 4 the same mouse fit moved its
+  heritability between 0.785 and 0.790, a result specific to that example.
 
 # stanimal 0.7.2
 

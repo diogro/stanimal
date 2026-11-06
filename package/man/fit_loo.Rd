@@ -34,22 +34,34 @@ An object from the \code{loo} package: a \code{psis_loo} or
 \description{
 Computes the expected log pointwise predictive density with Pareto-smoothed
 importance sampling, by handing the model's `log_lik` draws to
-\code{\link[loo]{loo}}. Every model in the package reports that quantity, so
-this works for univariate, multivariate, factor and phenotypic fits alike.
+\code{\link[loo]{loo}}. Built-in models report that quantity, but incomplete
+animal fits cannot be compared this way (see Details).
 }
 \details{
-The pointwise terms are those of the model block, one per record of
-  the rotated response the likelihood factorizes over. When \code{A} is the
-  identity that is one term per individual; otherwise the rotation mixes
-  individuals, so the terms still sum to the exact joint log likelihood but a
-  term is not one animal left out. Read the result as a comparison between
-  model structures on the same data — unstructured against factor, different
-  trait sets, different fixed effects — and not as an individual-level
-  predictive check. For the latter, use \code{\link{posterior_predictive}}.
+Phenotypic models use one term per individual, integrating missing
+  traits out. Animal models use one term per rotated response record. For
+  complete animal responses the terms sum to the joint log likelihood, but
+  the rotation can mix individuals, so a term is not one animal left out.
+  Read the result as a comparison between
+  model structures or fixed effects on the same response, observations and
+  missingness pattern, with corresponding predictive units. Animal fits
+  must also have the same relationship matrix and eigenbasis. Different
+  response traits or values are not directly comparable. This is not an
+  individual-level predictive check.
 
   The terms are the density of the standardized response, so the absolute
   ELPD carries a constant that depends on the data's scale; it cancels in
   comparisons between fits to the same response.
+  Animal fits with missing responses are refused, including custom-model
+  fits: the built-in terms use imputed values, not the marginalized
+  observed-data likelihood. \code{\link{posterior_predictive}} remains
+  available for model checking. If response or model metadata are unavailable
+  (including for a bare draws matrix or older fit), a warning is issued:
+  the caller must verify that the terms are suitable predictive units.
+  Custom models may define different likelihoods, so their suitability
+  cannot be verified from metadata alone. Extracting raw draws and passing
+  them directly to \code{loo::loo()} or \code{loo::waic()} bypasses these
+  checks.
 }
 \examples{
 \dontrun{

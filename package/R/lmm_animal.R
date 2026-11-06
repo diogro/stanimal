@@ -47,6 +47,7 @@
 #' @param control Named list of sampler controls, passed to whichever engine runs: \code{adapt_delta}, \code{adapt_engaged}, \code{max_treedepth}, \code{step_size} (rstan's \code{stepsize} is accepted), \code{init_buffer}, \code{term_buffer}, \code{window} and \code{metric}. Any other name is an error, so a control is never silently ignored.
 #' @param cmd_stan Logical, use cmdstanr. If FALSE, uses rstan. Both engines are suggested packages: when cmdstanr is not installed the fit falls back to rstan with a warning, and when neither is installed the fit errors.
 #' @param blend_A If TRUE, replace A with 0.99 * A + 0.01 * I before fitting, making singular A positive definite.
+#' @param eigen_A Optional eigendecomposition of \code{A}, a list with elements \code{Q} (the \eqn{N \times N} eigenvectors, as columns) and \code{lambda} (the \code{N} eigenvalues, floored at 0). When supplied, the model takes \code{Q} and \code{lambda} as data instead of \code{A}, so a caller that fits many models on the same relationship matrix pays the \code{O(N^3)} decomposition once. The pair is validated by reconstructing \code{A}, and the eigenvalues and eigenvectors need only be consistently paired, not in any particular order. Supported for multivariate unstructured fits with \code{parametrization = "variance"} only; not compatible with \code{model_file} or \code{genetic_structure = "factor"}.
 #' @param residual_structure Residual covariance for multivariate fits: "unstructured" (default, full covariance between traits), "diagonal", or "shared_factor". With a diagonal residual, environmental covariances between traits are absorbed into the genetic covariance and inflate heritability, so "unstructured" is recommended when estimating G without a factor model. "shared_factor" requires \code{genetic_structure = "factor"} and fits the shared-factor model \eqn{G = \Lambda \mathrm{diag}(h^2_\text{factor}) \Lambda^T + \Psi_G}, \eqn{E = \Lambda \mathrm{diag}(1 - h^2_\text{factor}) \Lambda^T + \Psi_E}, so the same latent factors explain genetic and residual covariance and each factor has a heritability.
 #' @param genetic_structure Genetic covariance for multivariate fits: "unstructured" (default, direct scales and LKJ correlation) or "factor", which uses the sparse factor model \eqn{G = \mathrm{diag}(s_G)(\Lambda\Lambda^T + \Psi)\mathrm{diag}(s_G)} on the correlation scale. The factor model gives loadings regularized-horseshoe priors for automatic shrinkage; loadings are not exactly zero. The ordinary factor model reports \code{loadings}, \code{factor_magnitude}, \code{uniqueness}, \code{communality} and \code{s_G}. With \code{residual_structure = "shared_factor"} the same loadings also structure E, and the fit reports \code{loadings}, \code{factor_magnitude}, \code{factor_heritability}, \code{genetic_uniqueness}, \code{residual_uniqueness}, \code{uniqueness} and \code{communality}. It is available only for multivariate fits and is not compatible with \code{model_file}.
 #' @param n_factors Number of factors when \code{genetic_structure = "factor"}; for \code{residual_structure = "shared_factor"} these are shared by \code{G} and \code{E}. It is a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model falls back to \code{min(K - 1, max(2, floor(sqrt(K))), 20)} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.
@@ -209,7 +210,8 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                                              "shared_factor"),
                       genetic_structure = c("unstructured", "factor"),
                       n_factors = NULL, hs_global_scale = 1,
-                      hs_slab_scale = 1, column_decay = 0.8, ...){
+                      hs_slab_scale = 1, column_decay = 0.8,
+                      eigen_A = NULL, ...){
   beta_prior_supplied <- !missing(beta_prior)
   lkj_prior_supplied <- !missing(lkj_prior)
   hs_global_scale_supplied <- !missing(hs_global_scale)
@@ -240,6 +242,19 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
     stop("`residual_structure = \"shared_factor\"` requires `genetic_structure = \"factor\"`.",
          call. = FALSE)
   shared_factor_model <- factor_model && residual_structure == "shared_factor"
+  if (!is.null(eigen_A)) {
+    if (factor_model)
+      stop("`eigen_A` cannot be combined with `genetic_structure = \"factor\"`.",
+           call. = FALSE)
+    if (!is.null(model_file))
+      stop("`eigen_A` cannot be combined with `model_file`.", call. = FALSE)
+    if (ncol(Y) < 2L)
+      stop("`eigen_A` is only supported for multivariate fits.", call. = FALSE)
+    if (parametrization == "h2")
+      stop("`eigen_A` is only supported with `parametrization = \"variance\"`.",
+           call. = FALSE)
+    eigen_A <- .check_eigen_A(eigen_A, A)
+  }
   # The ordinary factor model has no choice about its parameters, so this only
   # distinguishes the two parameterisations of the unstructured multivariate
   # model. Trait h2 is what the beta prior is about either way.
@@ -352,6 +367,11 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
     } else {
       stan_data$lkj_prior <- lkj_prior
       stan_data$unstructured_E <- as.integer(residual_structure == "unstructured")
+      if (!is.null(eigen_A)) {
+        stan_data$Q <- eigen_A$Q
+        stan_data$lambda <- eigen_A$lambda
+        stan_data$A <- NULL
+      }
       if (h2_param) stan_data$beta_prior <- beta_prior
       if (factor_model) {
         stan_data$M <- n_factors
@@ -370,6 +390,8 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
       "animalModelGFactor.stan"
     } else if (h2_param) {
       "animalModelGH2.stan"
+    } else if (!is.null(eigen_A)) {
+      "animalModelGQR.stan"
     } else {
       "animalModelG.stan"
     }
@@ -428,6 +450,7 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   # a custom Stan file can use any prior it likes, so nothing below can be
   # recovered from the recorded arguments alone
   attr(fit, "custom_model") <- !is.null(model_file)
+  attr(fit, "eigen_A") <- !is.null(eigen_A)
   # record every prior the fit ran with, used or not, so that the two fitters
   # expose the same metadata and a stored fit can be reconstructed without the
   # call that produced it

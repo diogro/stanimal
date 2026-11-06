@@ -25,6 +25,7 @@ lmm_animal(
   hs_global_scale = 1,
   hs_slab_scale = 1,
   column_decay = 0.8,
+  eigen_A = NULL,
   ...
 )
 }
@@ -66,6 +67,8 @@ lmm_animal(
 \item{hs_global_scale, hs_slab_scale}{Positive scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale, which limits the loading's prior standard deviation rather than bounding its realized value. For ordinary factor G, communality is \eqn{q/(1+q)}, where \eqn{q} is the random sum of squared unnormalized loadings. Its prior distribution depends on both scales, the local scales, the number of factors and column decay; it is not determined by the slab alone. The shared-factor model does not row-normalize its loadings, so its communality is a sum of squares on the standardized response scale, not a correlation-scale proportion. Report the settings, especially where data are weak. These arguments are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns. See Piironen and Vehtari (2017) on choosing the global scale.}
 
 \item{column_decay}{Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 0.8 orders the columns without forcing a strict hierarchy; with \code{column_decay = 1} the columns are exchangeable a priori and their labels are free to swap between chains. How strong the decay needs to be depends on how many columns have to be told apart: with two columns of comparable size 0.8 is often too mild and 0.5 is what separates them, while a strong decay works against a model with many columns, because \code{0.5^(m - 1)} cuts the prior of the fifth column to a sixteenth of the first. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. Explicitly supplying it outside \code{genetic_structure = "factor"} warns that it is ignored.}
+
+\item{eigen_A}{Optional eigendecomposition of \code{A}, a list with elements \code{Q} (the \eqn{N \times N} eigenvectors, as columns) and \code{lambda} (the \code{N} eigenvalues, floored at 0). When supplied, the model takes \code{Q} and \code{lambda} as data instead of \code{A}, so a caller that fits many models on the same relationship matrix pays the \code{O(N^3)} decomposition once. The pair is validated by reconstructing \code{A}, and the eigenvalues and eigenvectors need only be consistently paired, not in any particular order. Supported for multivariate unstructured fits with \code{parametrization = "variance"} only; not compatible with \code{model_file} or \code{genetic_structure = "factor"}.}
 
 \item{...}{additional parameters for stan sampling}
 }

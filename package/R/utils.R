@@ -195,3 +195,38 @@
          call. = FALSE)
   invisible(list(chains = chains, cores = cores))
 }
+
+# Validate a precomputed eigendecomposition of the relationship matrix, as
+# passed to `lmm_animal(eigen_A = ...)`. The decomposition is only worth
+# trusting if it actually reproduces A: a silently wrong Q or lambda would give
+# a plausible-looking fit of the wrong model, so the reconstruction is checked
+# rather than assumed.
+.check_eigen_A <- function(eigen_A, A) {
+  if (!is.list(eigen_A) || is.null(eigen_A$Q) || is.null(eigen_A$lambda))
+    stop("`eigen_A` must be a list with elements `Q` and `lambda`.",
+         call. = FALSE)
+  Q <- as.matrix(eigen_A$Q)
+  lambda <- as.numeric(eigen_A$lambda)
+  n <- nrow(A)
+  if (!identical(dim(Q), c(n, n)))
+    stop("`eigen_A$Q` must be a ", n, " by ", n, " matrix, matching `A`.",
+         call. = FALSE)
+  if (length(lambda) != n)
+    stop("`eigen_A$lambda` must have ", n, " elements, matching `A`.",
+         call. = FALSE)
+  if (anyNA(Q) || anyNA(lambda) || any(!is.finite(Q)) || any(!is.finite(lambda)))
+    stop("`eigen_A` contains missing or non-finite values.", call. = FALSE)
+  if (any(lambda < 0))
+    stop("`eigen_A$lambda` must be non-negative (floor the eigenvalues at 0).",
+         call. = FALSE)
+  reconstructed <- Q %*% (lambda * t(Q))
+  scale <- max(abs(A))
+  if (scale == 0) scale <- 1
+  deviation <- max(abs(reconstructed - A)) / scale
+  if (deviation > 1e-8)
+    stop("`eigen_A` does not reconstruct `A` (relative deviation ",
+         format(deviation, digits = 3),
+         "); check the eigenvector convention and the eigenvalue order.",
+         call. = FALSE)
+  list(Q = Q, lambda = lambda)
+}

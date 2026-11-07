@@ -21,8 +21,14 @@
 #'   \itemize{
 #'     \item \code{summary} a data frame of posterior means and standard
 #'       deviations for the covariance quantities the model reports, on the
-#'       original data scale.
-#'     \item \code{draws} the draws from the approximation, for inspection only.
+#'       original data scale. Quantities are labelled with the column names of
+#'       \code{Y} (and \code{X} for \code{beta}), e.g. \code{G[wing,tail]}
+#'       and \code{h2[tail]}, as \code{fit_draws()} names sampler fits; an
+#'       unnamed \code{Y} keeps Stan's indices (\code{G[2,1]}).
+#'     \item \code{draws} the draws from the approximation, for inspection
+#'       only, with the same labels.
+#'     \item \code{y_names}, \code{x_names} the column names of \code{Y} and
+#'       \code{X}.
 #'     \item \code{elapsed} seconds the fit took.
 #'     \item \code{call} the matched call.
 #'   }
@@ -201,7 +207,8 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
     }
   }
 
-  .laplace_fit(model_code, stan_data, quantities, draws, seed, call)
+  .laplace_fit(model_code, stan_data, quantities, draws, seed, call,
+               y_names = colnames(Y), x_names = colnames(X))
 }
 
 #' @rdname laplace
@@ -280,7 +287,8 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
     quantities <- c(quantities, "loadings", "uniqueness", "communality",
                     "factor_magnitude")
 
-  .laplace_fit(model_code, stan_data, quantities, draws, seed, call)
+  .laplace_fit(model_code, stan_data, quantities, draws, seed, call,
+               y_names = colnames(Y), x_names = colnames(X))
 }
 
 # `...` is kept for symmetry with the samplers but nothing consumes it here
@@ -297,7 +305,8 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
 }
 
 # Run the Laplace approximation on a compiled model and wrap the summaries.
-.laplace_fit <- function(model_code, stan_data, quantities, draws, seed, call) {
+.laplace_fit <- function(model_code, stan_data, quantities, draws, seed, call,
+                         y_names = NULL, x_names = NULL) {
   draws <- .check_count(draws, "draws")
   if (!is.null(seed)) seed <- .check_whole(seed, "seed")
   if (!requireNamespace("cmdstanr", quietly = TRUE))
@@ -314,10 +323,18 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
 
   summary <- result$summary
   colnames(summary) <- c("quantity", "mean", "sd", "mad")
+  # Label trait and predictor indices with the names of Y and X, as
+  # fit_draws() does for sampler fits: G[2,1] -> G[wing,tail].
+  summary$quantity <- .label_quantities(summary$quantity, y_names, x_names)
+  laplace_draws <- result$fit$draws()
+  posterior::variables(laplace_draws) <- .label_quantities(
+    posterior::variables(laplace_draws), y_names, x_names)
 
   structure(
     list(summary = summary,
-         draws = result$fit$draws(),
+         draws = laplace_draws,
+         y_names = y_names,
+         x_names = x_names,
          elapsed = elapsed,
          draws_requested = draws,
          seed = result$seed,
@@ -356,4 +373,39 @@ print.stanimal_laplace <- function(x, digits = 3, ...) {
   print(as.data.frame(x$summary[, c("quantity", "mean", "sd")]),
         digits = digits, row.names = FALSE)
   invisible(x)
+}
+
+# Replace numeric trait (and predictor) indices in Stan variable names with
+# the names of Y (and X). Trait-by-trait matrices get both indices labelled,
+# per-trait vectors their one index, loadings their trait index (the factor
+# index stays a number), and beta its trait and predictor. Anything else, and
+# everything when there are no names, is returned unchanged.
+.label_quantities <- function(vars, y_names = NULL, x_names = NULL) {
+  if (is.null(y_names)) return(vars)
+  by_trait_2 <- c("G", "E", "P", "corrG", "corrE", "corrP")
+  by_trait_1 <- c("h2", "sigma_G", "sigma_E", "sigma_P", "s_G", "uniqueness",
+                  "communality", "genetic_uniqueness", "residual_uniqueness")
+  m <- regmatches(vars, regexec("^([A-Za-z_][A-Za-z0-9_]*)\\[([0-9]+)(,([0-9]+))?\\]$",
+                                vars))
+  out <- vars
+  for (k in seq_along(vars)) {
+    p <- m[[k]]
+    if (!length(p)) next
+    base <- p[2L]
+    i <- as.integer(p[3L])
+    j <- if (nzchar(p[5L])) as.integer(p[5L]) else NA_integer_
+    label <- function(names, n) if (!is.na(n) && n <= length(names)) names[n] else NA
+    new <- if (base %in% by_trait_2 && !is.na(j)) {
+      c(label(y_names, i), label(y_names, j))
+    } else if (base %in% by_trait_1 && is.na(j)) {
+      label(y_names, i)
+    } else if (base == "loadings" && !is.na(j)) {
+      c(label(y_names, i), j)
+    } else if (base == "beta" && !is.na(j) && !is.null(x_names)) {
+      c(label(y_names, i), label(x_names, j))
+    } else NULL
+    if (!is.null(new) && !anyNA(new))
+      out[k] <- paste0(base, "[", paste(new, collapse = ","), "]")
+  }
+  out
 }

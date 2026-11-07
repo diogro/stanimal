@@ -1,3 +1,12 @@
+# stanimal (development version)
+
+* Laplace fits (`lmm_animal_laplace()`, `lm_phen_cov_laplace()`) label their
+  summary and draws with the column names of `Y` and `X` (`G[wing,tail]`,
+  `h2[tail]`, `beta[tail,size]`), as `fit_draws()` names sampler fits, and
+  record them as `y_names` and `x_names`. An unnamed `Y` keeps Stan's indices.
+  Code that looked quantities up as `G[1,1]` on a named `Y` must use the
+  names.
+
 # stanimal 0.8.1
 
 ## Bug fixes

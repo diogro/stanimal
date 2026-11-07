@@ -83,8 +83,14 @@ An object of class \code{stanimal_laplace}, a list with
   \itemize{
     \item \code{summary} a data frame of posterior means and standard
       deviations for the covariance quantities the model reports, on the
-      original data scale.
-    \item \code{draws} the draws from the approximation, for inspection only.
+      original data scale. Quantities are labelled with the column names of
+      \code{Y} (and \code{X} for \code{beta}), e.g. \code{G[wing,tail]}
+      and \code{h2[tail]}, as \code{fit_draws()} names sampler fits; an
+      unnamed \code{Y} keeps Stan's indices (\code{G[2,1]}).
+    \item \code{draws} the draws from the approximation, for inspection
+      only, with the same labels.
+    \item \code{y_names}, \code{x_names} the column names of \code{Y} and
+      \code{X}.
     \item \code{elapsed} seconds the fit took.
     \item \code{call} the matched call.
   }

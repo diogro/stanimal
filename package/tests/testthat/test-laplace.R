@@ -31,18 +31,19 @@ test_that("lmm_animal_laplace returns a summary and no draws to use", {
   fit <- lmm_animal_laplace(d$Y, d$X, d$A, draws = 200, seed = 1)
 
   expect_s3_class(fit, "stanimal_laplace")
-  expect_named(fit, c("summary", "draws", "elapsed", "draws_requested",
-                      "seed", "call"))
+  expect_named(fit, c("summary", "draws", "y_names", "x_names", "elapsed",
+                      "draws_requested", "seed", "call"))
   expect_named(fit$summary, c("quantity", "mean", "sd", "mad"))
   expect_equal(fit$seed, 1)
   expect_equal(fit$draws_requested, 200)
   expect_equal(dim(fit$draws)[1], 200)
-  expect_true(all(c("G[1,1]", "G[2,2]", "E[1,1]", "P[1,1]", "h2[1]") %in%
-                    fit$summary$quantity))
-  expect_true(all(fit$summary$sd[fit$summary$quantity == "G[1,1]"] > 0))
+  # quantities are labelled with the trait names of Y (t1, t2)
+  expect_true(all(c("G[t1,t1]", "G[t2,t2]", "E[t1,t1]", "P[t1,t1]",
+                    "h2[t1]") %in% fit$summary$quantity))
+  expect_true(all(fit$summary$sd[fit$summary$quantity == "G[t1,t1]"] > 0))
   # the covariance is reported on the data scale, not on the standardized one
-  expect_gt(fit$summary$mean[fit$summary$quantity == "P[1,1]"],
-            fit$summary$mean[fit$summary$quantity == "G[1,1]"])
+  expect_gt(fit$summary$mean[fit$summary$quantity == "P[t1,t1]"],
+            fit$summary$mean[fit$summary$quantity == "G[t1,t1]"])
 })
 
 test_that("the data and model code match what the sampler would use", {
@@ -88,11 +89,11 @@ test_that("univariate, factor and phenotypic Laplace fits work", {
 
   fac <- lmm_animal_laplace(d$Y, d$X, d$A, genetic_structure = "factor",
                             n_factors = 1, draws = 100, seed = 1)
-  expect_true(all(c("loadings[1,1]", "communality[1]", "factor_magnitude[1]") %in%
+  expect_true(all(c("loadings[t1,1]", "communality[t1]", "factor_magnitude[1]") %in%
                     fac$summary$quantity))
 
   phen <- lm_phen_cov_laplace(d$Y, d$X, draws = 100, seed = 1)
-  expect_true(all(c("P[1,1]", "corrP[2,1]", "sigma_P[1]") %in%
+  expect_true(all(c("P[t1,t1]", "corrP[t2,t1]", "sigma_P[t1]") %in%
                     phen$summary$quantity))
   phen_again <- lm_phen_cov_laplace(d$Y, d$X, draws = 100, seed = 1)
   expect_equal(phen$summary, phen_again$summary)
@@ -274,7 +275,7 @@ test_that("additional Laplace model structures run with missing responses", {
   diagonal <- lmm_animal_laplace(d$Y, d$X, d$A,
                                  residual_structure = "diagonal",
                                  draws = 100, seed = 1)
-  expect_true("G[1,1]" %in% diagonal$summary$quantity)
+  expect_true("G[t1,t1]" %in% diagonal$summary$quantity)
   shared <- lmm_animal_laplace(d$Y, d$X, d$A,
                                genetic_structure = "factor", n_factors = 1,
                                residual_structure = "shared_factor",
@@ -282,7 +283,7 @@ test_that("additional Laplace model structures run with missing responses", {
   expect_true("factor_heritability[1]" %in% shared$summary$quantity)
   phen <- lm_phen_cov_laplace(d$Y, d$X, covariance_structure = "factor",
                               n_factors = 1, draws = 100, seed = 1)
-  expect_true("P[1,1]" %in% phen$summary$quantity)
+  expect_true("P[t1,t1]" %in% phen$summary$quantity)
 })
 
 test_that("Laplace and sampling locate the same region on a regular example", {
@@ -306,4 +307,27 @@ test_that("Laplace and sampling locate the same region on a regular example", {
   # below 0.03 and the correlation difference is below 0.004.
   expect_lt(max(abs(a$mean[1:2] / s$mean[1:2] - 1)), 0.06)
   expect_lt(abs(a$mean[3] - s$mean[3]), 0.01)
+})
+
+test_that("Laplace quantities are labelled with the trait and predictor names", {
+  label <- stanimal:::.label_quantities
+  y <- c("tail", "wing"); x <- c("Int", "size")
+  expect_equal(label(c("G[2,1]", "corrP[1,2]", "h2[2]", "sigma_G", "beta[2,1]",
+                       "loadings[1,3]", "lp__", "factor_magnitude[1]"), y, x),
+               c("G[wing,tail]", "corrP[tail,wing]", "h2[wing]", "sigma_G",
+                 "beta[wing,Int]", "loadings[tail,3]", "lp__",
+                 "factor_magnitude[1]"))
+  # no names: unchanged; an index beyond the names: unchanged
+  expect_equal(label(c("G[2,1]", "h2[1]"), NULL), c("G[2,1]", "h2[1]"))
+  expect_equal(label("G[3,1]", y), "G[3,1]")
+
+  skip_if_no_cmdstan()
+  d <- simulate_animal(n_fam = 8, size = 5, G = diag(2), E = diag(2))
+  Y <- d$Y
+  colnames(Y) <- c("tail", "wing")
+  fit <- lmm_animal_laplace(Y, d$X, d$A, draws = 100, seed = 1)
+  expect_true(all(c("G[tail,tail]", "G[wing,tail]", "h2[wing]") %in%
+                    fit$summary$quantity))
+  expect_true("G[wing,tail]" %in% posterior::variables(fit$draws))
+  expect_identical(fit$y_names, c("tail", "wing"))
 })

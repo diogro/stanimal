@@ -64,7 +64,32 @@ intercept; `A` is a symmetric positive-definite relationship matrix whose rows
 are matched to `Y` by name when both have names. `A` is decomposed once per fit
 (`eigen(A)`, the `O(N^3)` step); when fitting many models on the same `A`, pass
 `eigen_A = list(Q = e$vectors, lambda = e$values)` with
-`e <- eigen(A, symmetric = TRUE)` to do it once. `...` is forwarded to the
+`e <- eigen(A, symmetric = TRUE)` to do it once.
+
+### The relationship matrix enters through its eigendecomposition (since 0.8.0)
+
+The animal models never decompose `A` in Stan any more: `lmm_animal()` computes
+`eigen(A)` once per fit in R (in Stan's ascending order) and passes `Q` and
+`lambda` as data. What that means in practice:
+
+- **Fitting many models on one `A`** — trait subsets, bootstrap replicates,
+  prior sensitivity runs — decompose it once and pass `eigen_A` to every fit.
+  At N = 4000 that removes about a minute of setup from each fit.
+- **Speed follows R's BLAS.** With the reference LAPACK a large single fit is
+  slightly slower than before (~6% of wall clock at N = 4000); with OpenBLAS,
+  MKL or Accelerate it is faster. `eigen_A` also accepts a decomposition from
+  any other solver (e.g. `torch::linalg_eigh()` on a GPU).
+- **`eigen_A` is checked, not trusted**: a mismatched or non-orthonormal pair
+  is an error before anything is fitted. Pass the decomposition of `A` in the
+  row order you pass `A`; reordering by name and `blend_A` are applied for you.
+- **The model did not change.** Same likelihood, same priors, and in the tests
+  draw-for-draw identical fits to 0.7.x. With repeated eigenvalues in `A`
+  (common for pedigrees) the basis within an eigenspace may differ from
+  0.7.x's, so a fixed seed can give a different trajectory to the same
+  posterior. `log_lik` terms still refer to records in the (ascending)
+  eigenbasis of `A`.
+- A custom `model_file` written for 0.7.x that declares `A` keeps working: it
+  receives `A` as well as `Q` and `lambda`. `...` is forwarded to the
 sampler, so `seed`, `refresh`, `init` and `show_messages` work there.
 
 Both model functions return a `CmdStanMCMC` (or an `stanfit` with

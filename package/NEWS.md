@@ -1,37 +1,62 @@
-# stanimal (development version)
+# stanimal 0.8.0
 
-* The animal models now take the eigendecomposition of `A` as data instead of
+## New features
+
+* `lmm_animal()` gains `eigen_A`, a precomputed eigendecomposition of `A`
+  (`list(Q =, lambda =)`, e.g. from `eigen(A, symmetric = TRUE)`). A caller
+  fitting many models on the same relationship matrix, such as one model per
+  trait subset, pays the `O(N^3)` decomposition once instead of once per fit.
+  It works with every structure and parametrization, is checked against `A`
+  (reconstruction and orthonormality) before fitting, follows `A` when it is
+  reordered to match `Y`, and takes `blend_A`. The decomposition can come from
+  any solver, including a GPU one.
+
+## Changes in behaviour
+
+* The animal models take the eigendecomposition of `A` as data instead of
   decomposing `A` themselves in Stan. `lmm_animal()` and
-  `lmm_animal_laplace()` decompose it once per fit in R, where every chain
-  used to repeat it, and the new `eigen_A` argument of `lmm_animal()` accepts
-  a precomputed decomposition (`list(Q =, lambda =)`) so that a caller fitting
-  many models on the same `A` pays the `O(N^3)` step once. It works with every
-  structure and parametrization, and is checked against `A` before fitting.
-  The eigenvalues are passed in Stan's ascending order, so fits reproduce
-  earlier versions; a custom `model_file` that declares `A` still receives it.
-* `plot_G_ellipses()` now labels each trait pair with its own genetic
-  correlation and interval when there are four or more traits.
+  `lmm_animal_laplace()` decompose it once per fit in R; previously every
+  chain repeated it, computing the eigenvectors and the eigenvalues
+  separately. The model is unchanged: the eigenvalues are passed in Stan's
+  ascending order, and in the tests a model that decomposes `A` the old way
+  reproduces the new one draw for draw. Where `A` has repeated eigenvalues
+  the two libraries may choose different bases for them, which can change
+  the MCMC trajectory through rounding but not the posterior. A custom
+  `model_file` that declares `A` still receives it.
+* The decomposition now runs on R's BLAS/LAPACK. With an optimised library
+  (OpenBLAS, MKL, Accelerate) it is several times faster than Stan's; with
+  R's reference LAPACK it is about 1.5 times slower, so a single large fit
+  can take slightly longer in wall clock (about 6% at N = 4000) while using a
+  third of the CPU. Use an optimised BLAS for large `N`, or pass `eigen_A`.
 * `fit_loo()` and the `loo()` fit methods now refuse LOO and WAIC for animal
   fits with missing responses; fits without response metadata warn that their
   likelihood terms cannot be verified.
-* `breeding_values()` retains imputation-based predictions but now computes
-  standard errors and reliabilities conditional only on observed responses.
+* `plot_G_ellipses()` now labels each trait pair with its own genetic
+  correlation and interval when there are four or more traits.
+
+## Bug fixes
+
 * Animal posterior predictive replicates now use the correct relationship
   covariance between individuals.
+* `breeding_values()` retains imputation-based predictions but now computes
+  standard errors and reliabilities conditional only on observed responses.
+* Univariate breeding values use the posterior mean variances, not squared
+  posterior mean standard deviations.
+* Predictive summaries now use the same observed-entry masks as the data.
 * `size_shape()` now reports an actionable error when the requested shape axes
   exceed the numerical rank of the centered shape data.
 * `genomic_relationship()` excludes fully missing markers even with supplied
   frequencies and `max_missing = 1`, warning when they would otherwise pass
   the filters.
 * Relabeling `fit_draws` now also updates the trait labels of factor loadings.
+* Missing-data EM starts with a positive-definite covariance and errors on
+  non-convergence or singularity; design diagnostics warn if unavailable.
+
+## Documentation
+
 * Corrected the opossum data help and example and agent guides.
 * Corrected LKJ-use warnings, prior and model-comparison guidance, and
   posterior predictive tail-probability explanations.
-* Predictive summaries now use the same observed-entry masks as the data.
-* Missing-data EM starts with a positive-definite covariance and errors on
-  non-convergence or singularity; design diagnostics warn if unavailable.
-* Univariate breeding values use the posterior mean variances, not squared
-  posterior mean standard deviations.
 
 # stanimal 0.7.4
 

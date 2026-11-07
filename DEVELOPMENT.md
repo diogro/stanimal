@@ -113,6 +113,14 @@ directory, not the repository; the check output identifies their location.
 
 ## Traps that have already cost time
 
+- **cmdstanr output names collide under a shared random state.** Files are
+  named from the model, the minute, the PID and one `runif()`, so two fits of
+  one model after the same `set.seed()` within a minute share a CSV: the first
+  fit silently reads the second's draws, and collecting it deletes the
+  second's files. `.unique_output()` in `R/cmdstan_support.r` gives every run
+  a `tempfile()`-based `output_basename`; keep it on every new call into
+  cmdstanr (`test-cstan.R` reproduces the collision).
+
 - **`quad_form_diag(P_std, y_sd)` with a data-derived scale pins the diagonal.**
   In a factor model with `communality + uniqueness = 1`, the covariance's diagonal
   then equals the *marginal* variance while the likelihood is on residuals, so the

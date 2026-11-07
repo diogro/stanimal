@@ -61,7 +61,24 @@ cstan <- function(model_code, data = list(), chains = 1, cores = 1, iter = 1000,
   if (threads > 1) args$threads_per_chain <- threads
   args <- utils::modifyList(args, control)
   args <- utils::modifyList(args, list(...))
+  args <- .unique_output(args, stan_file)
   do.call(mod$sample, args)
+}
+
+# cmdstanr names output files from the model, the minute, the process id and a
+# single runif(). Two fits of the same model in one session that start from the
+# same random state (a set.seed() before each fit) within a minute therefore
+# write to the same CSV: the first fit then silently reads the second fit's
+# draws, and collecting the first fit deletes the second's files. A basename
+# from tempfile(), which does not use R's random stream, keeps every run's
+# files apart while leaving cmdstanr's cleanup of temporary output in place.
+# A caller who chose an output location keeps it.
+.unique_output <- function(args, stan_file) {
+  if (is.null(args$output_basename) && is.null(args$output_dir))
+    args$output_basename <- paste0(
+      tools::file_path_sans_ext(basename(stan_file)), "-",
+      basename(tempfile("")))
+  args
 }
 
 #' Location of the compiled Stan model cache

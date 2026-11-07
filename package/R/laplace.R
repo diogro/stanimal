@@ -309,7 +309,7 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
 
   seed <- if (is.null(seed)) sample.int(1e6, 1L) else seed
   start <- proc.time()[["elapsed"]]
-  result <- .laplace_run(mod, stan_data, quantities, draws, seed)
+  result <- .laplace_run(mod, stan_data, quantities, draws, seed, stan_file)
   elapsed <- proc.time()[["elapsed"]] - start
 
   summary <- result$summary
@@ -326,9 +326,13 @@ lm_phen_cov_laplace <- function(Y, X = NULL, lkj_prior = 2,
   )
 }
 
-.laplace_run <- function(model, stan_data, quantities, draws, seed) {
-  fit <- model$laplace(data = stan_data, draws = draws, refresh = 0,
-                       seed = seed, sig_figs = 18, show_messages = FALSE)
+.laplace_run <- function(model, stan_data, quantities, draws, seed,
+                         stan_file = "laplace.stan") {
+  args <- .unique_output(list(data = stan_data, draws = draws, refresh = 0,
+                               seed = seed, sig_figs = 18,
+                               show_messages = FALSE),
+                          stan_file)
+  fit <- do.call(model$laplace, args)
   codes <- fit$return_codes()
   if (!length(codes) || anyNA(codes) || any(codes != 0)) {
     output <- utils::capture.output(fit$output())

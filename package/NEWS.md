@@ -1,3 +1,16 @@
+# stanimal (development version)
+
+## Bug fixes
+
+* Two fits of the same model in one session that started from the same random
+  state within a minute (for example with `set.seed()` before each fit) wrote
+  to the same CmdStan output files. The first fit then silently returned the
+  second fit's draws, and garbage-collecting the first fit deleted the
+  second's files. cmdstanr builds output names from the minute, the process id
+  and one `runif()`; stanimal now gives every sampler and Laplace run a unique
+  `output_basename` (from `tempfile()`, which `set.seed()` does not affect).
+  An `output_dir` or `output_basename` passed through `...` is respected.
+
 # stanimal 0.8.0
 
 ## New features

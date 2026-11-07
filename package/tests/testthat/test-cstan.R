@@ -46,3 +46,41 @@ test_that("control is validated once, for both engines", {
   expect_error(stanimal:::.check_control(list(step_size = 0.3, stepsize = 0.4)),
                "more than once")
 })
+
+test_that("fits from the same random state keep their own output files", {
+  skip_if_no_cmdstan()
+  # cmdstanr names output from the minute, the pid and one runif(): without a
+  # unique basename these two fits share a CSV, fit 1 reads fit 2's draws, and
+  # collecting fit 1 deletes fit 2's output.
+  A <- make_A(10, 5)
+  set.seed(10)
+  Y1 <- t(chol(A)) %*% matrix(rnorm(100), 50) + matrix(rnorm(100), 50)
+  Y2 <- Y1 + 5
+  fit <- function(Y) {
+    set.seed(1)
+    lmm_animal(Y, NULL, A, chains = 1, iter = 200, seed = 3, init = 0.5,
+               refresh = 0, show_messages = FALSE)
+  }
+  f1 <- suppressWarnings(fit(Y1))
+  f2 <- suppressWarnings(fit(Y2))
+
+  expect_false(any(f1$output_files() %in% f2$output_files()))
+  beta <- function(f) colMeans(posterior::as_draws_matrix(f$draws("beta")))
+  expect_equal(unname(beta(f1)), unname(colMeans(Y1)), tolerance = 0.5)
+  expect_equal(unname(beta(f2)), unname(colMeans(Y2)), tolerance = 0.5)
+
+  files2 <- f2$output_files()
+  rm(f1); invisible(gc())
+  expect_true(all(file.exists(files2)))
+})
+
+test_that("a caller's output location is kept", {
+  args <- stanimal:::.unique_output(list(output_dir = "somewhere"), "m.stan")
+  expect_null(args$output_basename)
+  args <- stanimal:::.unique_output(list(output_basename = "mine"), "m.stan")
+  expect_identical(args$output_basename, "mine")
+  set.seed(1); a <- stanimal:::.unique_output(list(), "m.stan")$output_basename
+  set.seed(1); b <- stanimal:::.unique_output(list(), "m.stan")$output_basename
+  expect_false(identical(a, b))
+  expect_match(a, "^m-")
+})

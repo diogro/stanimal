@@ -27,6 +27,15 @@ rather than changing it, read `AGENTS.md` instead.
 | `phenotypicModel.stan` | unstructured `P` |
 | `phenotypicModelFactor.stan` | sparse factor `P` |
 
+The animal models never see `A`: they take its eigendecomposition (`Q`,
+`lambda`, ascending) as data. `.animal_relationship()` in `R/utils.R` builds the
+pair once per fit, or validates a caller's `eigen_A`, and `lmm_animal()` and
+`lmm_animal_laplace()` both go through it. Keep the ascending order (Stan's
+`eigenvectors_sym` convention): it is what keeps fits bit-identical to versions
+that decomposed `A` in Stan, which `test-eigen-A.R` checks against a model
+written the old way. A custom `model_file` also receives `A`, since older
+custom models declare it.
+
 - `examples/*.R` are runnable scripts that write figures to `examples/figures/`
   (gitignored). `examples/README.md` indexes them.
 

@@ -131,24 +131,19 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
                 "lkj_prior")
   .warn_ignored(parametrization_supplied, !factor_model, "parametrization")
 
-  n <- nrow(Y)
-  A <- .check_relationship_matrix(A, Y)
-  A <- .check_symmetric(A)
-  eigenvalues <- .check_positive_semidefinite(A)
-  if (blend_A) {
-    A <- 0.99 * A + 0.01 * diag(n)
-    eigenvalues <- .relationship_eigenvalues(A)
-  }
-  if (min(eigenvalues) <= .eigen_tolerance(eigenvalues))
-    stop("`A` must be positive definite for the Laplace approximation; set ",
-         "`blend_A = TRUE` to regularize it.", call. = FALSE)
+  relationship <- .animal_relationship(A, Y, blend_A = blend_A,
+                                       need = "for the Laplace approximation")
+  A <- relationship$A
 
   if (ncol(Y) == 1L) {
     stan_data <- list(J = ncol(X), N = nrow(Y), X = X, Y = as.numeric(Y),
-                      A = A, miss = as.integer(missing$miss),
+                      Q = relationship$Q,
+                      lambda = relationship$lambda, miss = as.integer(missing$miss),
                       n_missing = missing$n_missing,
                       mis_row = as.array(missing$mis_row),
                       x_mean_weight = YX$x_mean_weight)
+    # a custom model may still declare A; extra data are ignored
+    if (!is.null(model_file)) stan_data$A <- A
     model_code <- .read_animal_model_code(
       model_file,
       if (parametrization == "h2") "animalModelUniH2.stan" else "animalModelUni.stan"
@@ -157,7 +152,8 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
     quantities <- c("sigma_G", "sigma_E", "h2")
   } else {
     stan_data <- list(K = ncol(Y), J = ncol(X), N = nrow(Y), X = X, Y = Y,
-                      A = A, miss = missing$miss,
+                      Q = relationship$Q,
+                      lambda = relationship$lambda, miss = missing$miss,
                       n_missing = missing$n_missing,
                       mis_row = as.array(missing$mis_row),
                       mis_col = as.array(missing$mis_col),
@@ -191,6 +187,8 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
     } else {
       "animalModelG.stan"
     }
+    # a custom model may still declare A; extra data are ignored
+    if (!is.null(model_file)) stan_data$A <- A
     model_code <- .read_animal_model_code(model_file, default_model)
     quantities <- c("G", "E", "P", "corrG", "sigma_G", "sigma_E", "h2")
     if (shared_factor_model) {

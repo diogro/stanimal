@@ -9,12 +9,11 @@ data {
   array[N] int<lower=0, upper=1> miss; // 1 where the record is missing
   int<lower=0> n_missing; // number of gaps; each is one parameter
   array[n_missing] int<lower=1, upper=N> mis_row; // row of each gap
-  matrix[N, N] A; // known relationship matrix (symmetric, PSD)
+  matrix[N, N] Q; // eigenvectors of the relationship matrix A, as columns
+  vector<lower=0>[N] lambda; // matching eigenvalues of A, floored at 0
   vector[J] x_mean_weight; // X * x_mean_weight is a column of ones
 }
 transformed data {
-  vector[N] lambda;
-  matrix[N, N] Q = eigenvectors_sym(A);
   real y_sd;
   real y_mean;
   vector[J] x_center;
@@ -25,12 +24,6 @@ transformed data {
   vector[J] x_constant_value;
   vector[N] Ys_observed; // rotated standardized response, gaps at zero
   matrix[N, J] Xs;
-
-  {
-    vector[N] ev = eigenvalues_sym(A);
-    for (n in 1:N)
-      lambda[n] = fmax(ev[n], 0);
-  }
 
   {
     matrix[N, J] X_std;

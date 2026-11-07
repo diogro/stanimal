@@ -47,7 +47,8 @@ lmm_animal(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
            cmd_stan = TRUE, blend_A = FALSE,
            residual_structure = c("unstructured", "diagonal", "shared_factor"),
            genetic_structure = c("unstructured", "factor"), n_factors = NULL,
-           hs_global_scale = 1, hs_slab_scale = 1, column_decay = 0.8, ...)
+           hs_global_scale = 1, hs_slab_scale = 1, column_decay = 0.8,
+           eigen_A = NULL, ...)
 
 lm_phen_cov(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(iter/2),
             chains = 4, cores = chains, control = list(adapt_delta = 0.99),
@@ -60,7 +61,10 @@ lmm_animal_gibbs(Y, X = NULL, A, iter = 1000, warmup = floor(iter/2), thin = 1)
 
 `Y` is a numeric matrix (individuals × traits) or a vector; `X` defaults to an
 intercept; `A` is a symmetric positive-definite relationship matrix whose rows
-are matched to `Y` by name when both have names. `...` is forwarded to the
+are matched to `Y` by name when both have names. `A` is decomposed once per fit
+(`eigen(A)`, the `O(N^3)` step); when fitting many models on the same `A`, pass
+`eigen_A = list(Q = e$vectors, lambda = e$values)` with
+`e <- eigen(A, symmetric = TRUE)` to do it once. `...` is forwarded to the
 sampler, so `seed`, `refresh`, `init` and `show_messages` work there.
 
 Both model functions return a `CmdStanMCMC` (or an `stanfit` with

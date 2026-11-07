@@ -196,11 +196,28 @@
   invisible(list(chains = chains, cores = cores))
 }
 
+# The eigendecomposition of A that the animal models take as data. The models
+# used to compute it themselves in `transformed data`, once per chain; doing it
+# here costs one decomposition per fit, and lets a caller that fits many models
+# on the same A (`eigen_A`) pay for it once. Eigenvalues come in ascending
+# order, Stan's convention, so the rotated records are in the order the models
+# used when they decomposed A themselves; eigenvector signs do not matter to a
+# Gaussian likelihood.
+.relationship_eigen <- function(A) {
+  eig <- eigen(A, symmetric = TRUE)
+  ascending <- rev(seq_len(nrow(A)))
+  list(Q = eig$vectors[, ascending, drop = FALSE],
+       lambda = eig$values[ascending])
+}
+
 # Validate a precomputed eigendecomposition of the relationship matrix, as
-# passed to `lmm_animal(eigen_A = ...)`. The decomposition is only worth
-# trusting if it actually reproduces A: a silently wrong Q or lambda would give
-# a plausible-looking fit of the wrong model, so the reconstruction is checked
-# rather than assumed.
+# passed through `eigen_A`. A silently wrong Q or lambda would give a
+# plausible-looking fit of the wrong model, so the pair is checked, not
+# assumed: it must reproduce A and Q must be orthonormal (a rescaled Q with
+# rescaled eigenvalues reproduces A too, but rotates the data by a
+# non-orthogonal map). Both are checked on two fixed probe vectors, which
+# costs O(N^2) where rebuilding A would cost O(N^3), and uses no random
+# numbers.
 .check_eigen_A <- function(eigen_A, A) {
   if (!is.list(eigen_A) || is.null(eigen_A$Q) || is.null(eigen_A$lambda))
     stop("`eigen_A` must be a list with elements `Q` and `lambda`.",
@@ -216,17 +233,58 @@
          call. = FALSE)
   if (anyNA(Q) || anyNA(lambda) || any(!is.finite(Q)) || any(!is.finite(lambda)))
     stop("`eigen_A` contains missing or non-finite values.", call. = FALSE)
-  if (any(lambda < 0))
+  if (min(lambda) < -.eigen_tolerance(lambda))
     stop("`eigen_A$lambda` must be non-negative (floor the eigenvalues at 0).",
          call. = FALSE)
-  reconstructed <- Q %*% (lambda * t(Q))
-  scale <- max(abs(A))
-  if (scale == 0) scale <- 1
-  deviation <- max(abs(reconstructed - A)) / scale
-  if (deviation > 1e-8)
+
+  index <- seq_len(n)
+  probes <- cbind(sin(index), cos(1.3 * index))
+  Qt_probes <- crossprod(Q, probes)
+  orthonormal <- max(abs(Q %*% Qt_probes - probes)) /
+    max(1, max(abs(probes)))
+  if (orthonormal > 1e-7)
+    stop("`eigen_A$Q` is not orthonormal; pass the eigenvectors of `A` ",
+         "unscaled, as returned by `eigen()`.", call. = FALSE)
+  target <- A %*% probes
+  deviation <- max(abs(Q %*% (lambda * Qt_probes) - target)) /
+    max(1, max(abs(target)))
+  if (deviation > 1e-7)
     stop("`eigen_A` does not reconstruct `A` (relative deviation ",
          format(deviation, digits = 3),
-         "); check the eigenvector convention and the eigenvalue order.",
+         "); check that each eigenvalue is paired with its eigenvector.",
          call. = FALSE)
   list(Q = Q, lambda = lambda)
+}
+
+# A validated relationship matrix and its eigendecomposition, ready for the
+# animal models: A matched to the rows of Y and symmetrized, Q and lambda from
+# `eigen_A` when supplied (its rows permuted with A's) or computed here, and
+# `blend_A` applied to both. `need` is the text of the error for an A that is
+# not positive definite.
+.animal_relationship <- function(A, Y, eigen_A = NULL, blend_A = FALSE,
+                                 need = "for Stan") {
+  original_ids <- rownames(as.matrix(A))
+  A <- .check_relationship_matrix(A, Y)
+  A <- .check_symmetric(A)
+  if (is.null(eigen_A)) {
+    eig <- .relationship_eigen(A)
+  } else {
+    # .check_relationship_matrix() reorders A to the rows of Y by name, and
+    # P A P' has eigenvectors P Q, so the rows of Q follow A's.
+    if (!is.null(original_ids) && !is.null(rownames(A)) &&
+        is.matrix(eigen_A$Q) && nrow(eigen_A$Q) == length(original_ids))
+      eigen_A$Q <- eigen_A$Q[match(rownames(A), original_ids), , drop = FALSE]
+    eig <- .check_eigen_A(eigen_A, A)
+  }
+  if (min(eig$lambda) < -.eigen_tolerance(eig$lambda))
+    stop("`A` must be positive semidefinite.", call. = FALSE)
+  if (blend_A) {
+    # 0.99 A + 0.01 I shares A's eigenvectors
+    A <- 0.99 * A + 0.01 * diag(nrow(A))
+    eig$lambda <- 0.99 * eig$lambda + 0.01
+  }
+  if (min(eig$lambda) <= .eigen_tolerance(eig$lambda))
+    stop("`A` must be positive definite ", need, "; set `blend_A = TRUE` to ",
+         "regularize it.", call. = FALSE)
+  list(A = A, Q = eig$Q, lambda = pmax(eig$lambda, 0))
 }

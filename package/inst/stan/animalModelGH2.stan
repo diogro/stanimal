@@ -60,7 +60,8 @@ data {
   int<lower=0> n_missing; // number of gaps; each is one parameter
   array[n_missing] int<lower=1, upper=N> mis_row; // row of each gap
   array[n_missing] int<lower=1, upper=K> mis_col; // trait of each gap
-  matrix[N, N] A; // known relationship matrix (symmetric, PSD)
+  matrix[N, N] Q; // eigenvectors of the relationship matrix A, as columns
+  vector<lower=0>[N] lambda; // matching eigenvalues of A, floored at 0
   real<lower=0> lkj_prior; // LKJ shape for the correlation matrices
   vector[J] x_mean_weight; // X * x_mean_weight is a column of ones
   int<lower=0, upper=1> unstructured_E; // 1: full residual covariance, 0: diagonal
@@ -68,8 +69,6 @@ data {
 }
 transformed data {
   int E_dim = unstructured_E ? K : 0;
-  vector[N] lambda;
-  matrix[N, N] Q = eigenvectors_sym(A);
   vector[K] y_sd;
   vector[K] y_mean;
   vector[J] x_center;
@@ -80,12 +79,6 @@ transformed data {
   vector[J] x_constant_value;
   matrix[N, K] Ys_observed; // rotated standardized responses, gaps at zero
   matrix[N, J] Xs;
-
-  {
-    vector[N] ev = eigenvalues_sym(A);
-    for (n in 1:N)
-      lambda[n] = fmax(ev[n], 0);
-  }
 
   {
     matrix[N, K] Y_std;

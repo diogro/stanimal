@@ -1,5 +1,14 @@
 # stanimal (development version)
 
+* The animal models now take the eigendecomposition of `A` as data instead of
+  decomposing `A` themselves in Stan. `lmm_animal()` and
+  `lmm_animal_laplace()` decompose it once per fit in R, where every chain
+  used to repeat it, and the new `eigen_A` argument of `lmm_animal()` accepts
+  a precomputed decomposition (`list(Q =, lambda =)`) so that a caller fitting
+  many models on the same `A` pays the `O(N^3)` step once. It works with every
+  structure and parametrization, and is checked against `A` before fitting.
+  The eigenvalues are passed in Stan's ascending order, so fits reproduce
+  earlier versions; a custom `model_file` that declares `A` still receives it.
 * `plot_G_ellipses()` now labels each trait pair with its own genetic
   correlation and interval when there are four or more traits.
 * `fit_loo()` and the `loo()` fit methods now refuse LOO and WAIC for animal

@@ -27,7 +27,8 @@ data {
   int<lower=0> n_missing; // number of gaps; each is one parameter
   array[n_missing] int<lower=1, upper=N> mis_row; // row of each gap
   array[n_missing] int<lower=1, upper=K> mis_col; // trait of each gap
-  matrix[N, N] A; // known relationship matrix (symmetric, PSD)
+  matrix[N, N] Q; // eigenvectors of the relationship matrix A, as columns
+  vector<lower=0>[N] lambda; // matching eigenvalues of A, floored at 0
   vector[J] x_mean_weight; // X * x_mean_weight is a column of ones
   real<lower=0> hs_global_scale; // half-Cauchy scale for the global shrinkage
   real<lower=0> hs_slab_scale; // slab scale of the regularized horseshoe
@@ -36,8 +37,6 @@ data {
   real<lower=0> h2_prior_b; // beta prior shape for factor heritabilities
 }
 transformed data {
-  vector[N] lambda;
-  matrix[N, N] Q = eigenvectors_sym(A);
   vector[M] column_scale;
   vector[K] y_sd;
   vector[K] y_mean;
@@ -52,12 +51,6 @@ transformed data {
 
   for (m in 1:M)
     column_scale[m] = pow(column_decay, m - 1);
-
-  {
-    vector[N] ev = eigenvalues_sym(A);
-    for (n in 1:N)
-      lambda[n] = fmax(ev[n], 0);
-  }
 
   {
     matrix[N, K] Y_std;

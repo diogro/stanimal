@@ -119,7 +119,11 @@ directory, not the repository; the check output identifies their location.
   fit silently reads the second's draws, and collecting it deletes the
   second's files. `.unique_output()` in `R/cmdstan_support.r` gives every run
   a `tempfile()`-based `output_basename`; keep it on every new call into
-  cmdstanr (`test-cstan.R` reproduces the collision).
+  cmdstanr that returns a fit the user keeps (`test-cstan.R` reproduces the
+  collision). Not on `$laplace()`: released cmdstanr 0.9.0 reuses the
+  basename for its internal mode file and CmdStan refuses the run, a failure
+  the development cmdstanr does not show — test such changes against the
+  CRAN cmdstanr.
 
 - **`quad_form_diag(P_std, y_sd)` with a data-derived scale pins the diagonal.**
   In a factor model with `communality + uniqueness = 1`, the covariance's diagonal

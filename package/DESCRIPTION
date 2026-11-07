@@ -1,5 +1,5 @@
 Package: stanimal
-Version: 0.8.0
+Version: 0.8.1
 Date: 2026-11-06
 Title: Animal Models in Stan
 Description: Fit linear animal models in Stan for one or more traits.

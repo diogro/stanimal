@@ -1,4 +1,4 @@
-# stanimal (development version)
+# stanimal 0.8.1
 
 ## Bug fixes
 

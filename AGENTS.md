@@ -460,8 +460,10 @@ covariance, and recovery of `G`/`P` can be scored directly.
   and a relative error.
 - **Do not assume `P` is the marginal covariance.** It is the covariance of the
   residuals after `X`.
-- **Do not assume chains share a start.** No `init` is forced: each chain draws
-  its own. Pass `init` if you need reproducibility at a specific point.
+- **Do not assume chains share a start.** Each chain draws its own start,
+  uniform on (-1, 1) on the unconstrained scale (`init = 1`, narrower than the
+  engines' (-2, 2), which stalls correlation factors over many traits). Pass
+  `init` if you need reproducibility at a specific point.
 
 ## Where to look next
 

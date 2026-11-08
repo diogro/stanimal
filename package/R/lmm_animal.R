@@ -709,10 +709,12 @@ rename_beta <- function(fit, variables = NULL, ...) {
 }
 
 .rstan_sample <- function(model, stan_data, iter, warmup, chains, control, ...) {
-  # Each chain draws its own start, as in cstan(): a shared start would make the
-  # chains agree by construction. Overridden by an explicit `init` in `...`.
+  # Each chain draws its own start in U(-1, 1), as in cstan(): a shared start
+  # would make the chains agree by construction, and the engine default
+  # U(-2, 2) stalls on correlation factors over many traits. Overridden by an
+  # explicit `init` or `init_r` in `...`.
   control <- .rstan_control(.check_control(control))
   args <- list(object = model, data = stan_data, iter = iter, warmup = warmup,
-               chains = chains, control = control)
+               chains = chains, control = control, init_r = 1)
   do.call(rstan::sampling, utils::modifyList(args, list(...)))
 }

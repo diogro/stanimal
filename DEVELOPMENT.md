@@ -133,7 +133,11 @@ directory, not the repository; the check output identifies their location.
   the residual SD, not `sd(Y)`.
 - **A shared `init` hides multimodality.** Passing `init = 0` made all chains
   start at the same point, so `communality` looked perfectly converged on a
-  posterior with two modes. No `init` is passed now; each chain draws its own.
+  posterior with two modes. Each chain now draws its own start, from
+  U(-1, 1) (`init = 1` in `cstan()`, `init_r = 1` for rstan). Don't widen it
+  back to the engines' U(-2, 2): with 35 traits the correlation factor starts
+  nearly singular, the step size collapses to ~1e-21 in warmup and the chains
+  never move (seen in `examples/phenotypic_covariance.R`).
 - **Factor summaries are rotation-dependent.** `loadings` and `factor_magnitude`
   are only pinned by the prior, so a poor `Rhat` there is not a failure. The
   exception is a bimodal `communality`, which is real.

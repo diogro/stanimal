@@ -24,6 +24,16 @@ test_that("cstan passes adapt_delta and max_treedepth from control", {
   expect_equal(fit$metadata()$max_treedepth, 5)
 })
 
+test_that("chains start from init = 1 unless init is passed", {
+  skip_if_no_cmdstan()
+  # The engines' default U(-2, 2) stalls correlation factors over many traits.
+  code <- "parameters { real x; } model { x ~ normal(0, 1); }"
+  fit <- function(...) suppressWarnings(stanimal:::cstan(
+    code, list(), chains = 1, iter = 100, refresh = 0, show_messages = FALSE, ...))
+  expect_equal(fit()$metadata()$init, 1)
+  expect_equal(fit(init = 0.5)$metadata()$init, 0.5)
+})
+
 test_that("cstan forwards the other sampler controls", {
   skip_if_no_cmdstan()
   code <- "parameters { real x; } model { x ~ normal(0, 1); }"

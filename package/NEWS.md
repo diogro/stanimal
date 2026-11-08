@@ -1,5 +1,13 @@
 # stanimal (development version)
 
+* Chains start from `init = 1`, a draw on (-1, 1) on the unconstrained scale,
+  instead of the engines' (-2, 2). The chains still start apart, so `Rhat`
+  can detect a mode that only some visit, but a correlation factor over many
+  traits no longer starts nearly singular. With 35 traits the wider start
+  stalled every chain (step size ~1e-21, 27% divergent transitions) in 5 of 5
+  seeds; `init = 1` and `init = 0.5` started all of them cleanly. Pass `init`
+  through `...` to override.
+
 * The unstructured `lm_phen_cov()` model no longer multiplies out its Cholesky
   factor and factorizes the product again for each pattern of observed traits.
   A pattern that observes every trait uses the factor directly; an incomplete

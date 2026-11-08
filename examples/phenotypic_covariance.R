@@ -46,13 +46,8 @@ Y = ratones$Y
 X = ratones$X
 cat(nrow(Y), "individuals,", ncol(Y), "model traits,", ncol(X), "fixed effects\n")
 
-# With 35 traits, Stan's default start (every unconstrained value uniform on
-# (-2, 2)) gives a nearly singular correlation factor: the log density there is
-# about -1e26, warmup shrinks the step size to ~1e-21 and the chains never move.
-# init = 0.5 starts each chain from a draw on (-0.5, 0.5) instead; the chains
-# still start apart, so Rhat keeps its meaning.
 cov_fit = lm_phen_cov(Y, X, lkj_prior = 6, iter = 800,
-                       warmup = 400, cores = 4,  chains = 4, init = 0.5)
+                       warmup = 400, cores = 4,  chains = 4)
 
 # Posterior means and 95% intervals (model scale: size and shape axes)
 cov_fit$summary(c("sigma_P[1]", "P[1,1]", "P[2,2]", "corrP[1,2]"))

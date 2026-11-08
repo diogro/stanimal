@@ -35,7 +35,10 @@ test_that("outputs are internally consistent", {
   sel <- function(x) d[, grep(paste0("^", x, "\\["), vars), drop = FALSE]
   expect_equal(unname(as.matrix(sel("P"))),
                unname(as.matrix(sel("G")) + as.matrix(sel("E"))), tolerance = 1e-6)
-  expect_true(all(sel("h2") > 0 & sel("h2") < 1))
+  # Closed interval: CmdStan writes draws with 6 significant digits, so a draw
+  # with a residual SD near zero (seen on Linux: sigma_E = 7e-5 against
+  # sigma_G = 1.7, h2 = 1 - 2e-9) is read back as exactly 1.
+  expect_true(all(sel("h2") >= 0 & sel("h2") <= 1))
   expect_true(all(abs(sel("corrG")) <= 1 + 1e-8))
   expect_true(all(sel("sigma_G") > 0))
   expect_true(all(sel("sigma_E") > 0))

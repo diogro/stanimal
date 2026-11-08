@@ -18,7 +18,8 @@ check_uni <- function(fit) {
   expect_lt(max(abs(b[2:3] - sim$B[2:3, 1])), 0.5)
   expect_lt(abs(b[1] - sim$B[1, 1]), 3)
   h2 <- fit$draws("h2", format = "draws_matrix")
-  expect_true(all(h2 > 0 & h2 < 1))
+  # Closed interval: draws are read back from CSV with 6 significant digits.
+  expect_true(all(h2 >= 0 & h2 <= 1))
   expect_lt(abs(mean(h2) - 0.5), 0.25)
   expect_true(all(c("beta[Int]", "beta[x]", "beta[z]") %in%
                     posterior::variables(rename_beta(fit, "beta"))))

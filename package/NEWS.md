@@ -1,5 +1,23 @@
 # stanimal (development version)
 
+* The unstructured `lm_phen_cov()` model no longer multiplies out its Cholesky
+  factor and factorizes the product again for each pattern of observed traits.
+  A pattern that observes every trait uses the factor directly; an incomplete
+  one takes it from a QR decomposition of the factor's rows. Refactorizing
+  failed in floating point when the factor had tiny diagonal entries, so a
+  35-trait fit could reject every initial value. This regressed in 0.8.0 with
+  incomplete trait records, and complete-data fits also save one `K x K`
+  Cholesky per gradient.
+
+* The default `adapt_delta` drops from 0.99 to 0.9 for `lm_phen_cov()` and for
+  every `lmm_animal()` structure except `residual_structure = "shared_factor"`,
+  which keeps 0.99. The lower target takes larger steps: in the examples,
+  factor and structure-comparison fits run 2 to 3 times faster with no
+  divergences. The shared-factor fit diverged at 0.9 in 6 of 10 seeds, so it
+  does not. `lmm_animal()`'s `control` now defaults to `NULL`, which picks the
+  target from the structure. Pass `control = list(adapt_delta = 0.99)` to get
+  the old behaviour.
+
 * Laplace fits (`lmm_animal_laplace()`, `lm_phen_cov_laplace()`) label their
   summary and draws with the column names of `Y` and `X` (`G[wing,tail]`,
   `h2[tail]`, `beta[tail,size]`), as `fit_draws()` names sampler fits, and

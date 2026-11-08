@@ -38,6 +38,8 @@ test_that("shared-factor model samples and exposes factor heritabilities", {
   expect_s3_class(fit, "CmdStanMCMC")
   expect_equal(attr(fit, "residual_structure"), "shared_factor")
   expect_equal(attr(fit, "n_factors"), 2)
+  # The shared-factor default keeps adapt_delta 0.99; it diverges at 0.9.
+  expect_equal(fit$metadata()$adapt_delta, 0.99)
   diagnostics <- fit$diagnostic_summary(quiet = TRUE)
   expect_equal(sum(diagnostics$num_divergent), 0)
   summaries <- fit$summary()

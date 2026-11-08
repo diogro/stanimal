@@ -10,6 +10,25 @@
 // parameters, and a complete response is the single-pattern case of the same
 // code. The rows are reordered inside the model so that each pattern is a
 // contiguous block; every returned quantity is mapped back to the caller's order.
+functions {
+  // Cholesky factor of the principal submatrix (L L')[obs, obs], computed from
+  // the rows of L instead of by factorizing the product. Multiplying L out and
+  // factorizing again fails in floating point when L has tiny diagonal entries,
+  // which a random initial correlation factor over many traits often has (the
+  // 35-trait example could not start a chain). With all traits observed the
+  // factor is L itself; otherwise L[obs, ]' = Q R, so (L L')[obs, obs] = R' R
+  // and R', with its rows signed to a positive diagonal, is the factor.
+  matrix sub_cholesky(matrix L, array[] int obs) {
+    int m = size(obs);
+    if (m == rows(L))
+      return L; // obs lists every trait in order
+    matrix[m, m] R = qr_thin_R(L[obs, ]');
+    for (i in 1:m)
+      if (R[i, i] < 0)
+        R[i] = -R[i];
+    return R';
+  }
+}
 data {
   int<lower=1> K; // number of traits
   int<lower=1> J; // number of fixed effects
@@ -114,7 +133,6 @@ transformed parameters {
 model {
   // Cholesky factor of P on the standardized response scale.
   matrix[K, K] L_P = diag_pre_multiply(s_P, L_Omega_P);
-  matrix[K, K] P_std = L_P * L_P';
 
   for (p in 1:n_pattern) {
     // Traits this pattern observes.
@@ -125,14 +143,13 @@ model {
         m += 1;
         obs[m] = k;
       }
-    // Principal submatrix of P over those traits. The diagonal is floored so
-    // that an extreme proposal (a scale underflowing to zero) gives a finite,
-    // hugely negative log density instead of an exception out of the Cholesky.
-    // A floored diagonal keeps the submatrix positive semidefinite.
-    matrix[m, m] P_sub = P_std[obs[1:m], obs[1:m]];
+    // Cholesky factor of P over those traits. The diagonal is floored only for the whitening, so that an extreme
+    // proposal (a scale underflowing to zero) gives a finite, hugely negative
+    // log density instead of NaN/Inf; log det keeps the true diagonal.
+    matrix[m, m] L_sub = sub_cholesky(L_P, obs[1:m]);
+    vector[m] log_diag_sub = log(diagonal(L_sub));
     for (i in 1:m)
-      P_sub[i, i] = fmax(P_sub[i, i], 1e-12);
-    matrix[m, m] L_sub = cholesky_decompose(P_sub);
+      L_sub[i, i] = fmax(L_sub[i, i], 1e-12);
 
     int first = first_row[p];
     int last = first + n_rows[p] - 1;
@@ -142,7 +159,7 @@ model {
                                  - Xs[first:last, ] * beta_scaled[obs[1:m]]';
     matrix[m, n_rows[p]] W = mdivide_left_tri_low(L_sub, resid');
     target += -0.5 * (n_rows[p]
-                      * (m * log(2 * pi()) + 2 * sum(log(diagonal(L_sub))))
+                      * (m * log(2 * pi()) + 2 * sum(log_diag_sub))
                       + sum(square(W)));
   }
 
@@ -162,8 +179,7 @@ generated quantities {
   // passed it: the rotated order is mapped back through row_order.
   vector[N] log_lik;
   {
-    matrix[K, K] P_std = multiply_lower_tri_self_transpose(
-      diag_pre_multiply(s_P, L_Omega_P));
+    matrix[K, K] L_P = diag_pre_multiply(s_P, L_Omega_P);
     for (p in 1:n_pattern) {
       int m = 0;
       array[K] int obs;
@@ -172,17 +188,17 @@ generated quantities {
           m += 1;
           obs[m] = k;
         }
-      matrix[m, m] P_sub = P_std[obs[1:m], obs[1:m]];
+      matrix[m, m] L_sub = sub_cholesky(L_P, obs[1:m]);
+      vector[m] log_diag_sub = log(diagonal(L_sub));
       for (i in 1:m)
-        P_sub[i, i] = fmax(P_sub[i, i], 1e-12);
-      matrix[m, m] L_sub = cholesky_decompose(P_sub);
+        L_sub[i, i] = fmax(L_sub[i, i], 1e-12);
       int first = first_row[p];
       int last = first + n_rows[p] - 1;
       matrix[n_rows[p], m] resid = Ys[first:last, obs[1:m]]
                                    - Xs[first:last, ] * beta_scaled[obs[1:m]]';
       matrix[m, n_rows[p]] W = mdivide_left_tri_low(L_sub, resid');
       real constant = -0.5 * (m * log(2 * pi())
-                              + 2 * sum(log(diagonal(L_sub))));
+                              + 2 * sum(log_diag_sub));
       for (n in 1:n_rows[p])
         log_lik[row_order[first + n - 1]] = constant - 0.5 * sum(square(col(W, n)));
     }

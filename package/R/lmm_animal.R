@@ -44,7 +44,7 @@
 #' @param chains Number of chains to run, a whole number.
 #' @param cores Number of chains to run in parallel (cmdstanr only), a whole number.
 #' @param model_file Optional path to a custom Stan file replacing the default model.
-#' @param control Named list of sampler controls, passed to whichever engine runs: \code{adapt_delta}, \code{adapt_engaged}, \code{max_treedepth}, \code{step_size} (rstan's \code{stepsize} is accepted), \code{init_buffer}, \code{term_buffer}, \code{window} and \code{metric}. Any other name is an error, so a control is never silently ignored.
+#' @param control Named list of sampler controls, passed to whichever engine runs: \code{adapt_delta}, \code{adapt_engaged}, \code{max_treedepth}, \code{step_size} (rstan's \code{stepsize} is accepted), \code{init_buffer}, \code{term_buffer}, \code{window} and \code{metric}. Any other name is an error, so a control is never silently ignored. The default \code{NULL} uses \code{list(adapt_delta = 0.9)}, or \code{list(adapt_delta = 0.99)} with \code{residual_structure = "shared_factor"}, whose posterior diverges at 0.9. A list you supply replaces the default entirely.
 #' @param cmd_stan Logical, use cmdstanr. If FALSE, uses rstan. Both engines are suggested packages: when cmdstanr is not installed the fit falls back to rstan with a warning, and when neither is installed the fit errors.
 #' @param blend_A If TRUE, replace A with 0.99 * A + 0.01 * I before fitting, making singular A positive definite.
 #' @param eigen_A Optional eigendecomposition of \code{A}, a list with elements \code{Q} (the \eqn{N \times N} orthonormal eigenvectors, as columns) and \code{lambda} (the \code{N} matching eigenvalues), for example \code{e <- eigen(A, symmetric = TRUE); list(Q = e$vectors, lambda = e$values)}. The models never decompose \code{A} themselves: without \code{eigen_A} it is decomposed once per fit in R. Supplying it skips that step, so a caller that fits many models on the same relationship matrix (one per trait subset, say) pays the \code{O(N^3)} decomposition once. It must be the decomposition of \code{A} in the row order of \code{A} as passed; rows are reordered along with \code{A} when \code{A} and \code{Y} are matched by name, and \code{blend_A} is applied to the eigenvalues. Eigenvalues and eigenvectors need only be consistently paired, not in any particular order, though the order sets the order of the rotated records that \code{log_lik} refers to. The pair is checked against \code{A} (reconstruction and orthonormality, on two probe vectors) before fitting. Works with every structure and parametrization.
@@ -204,7 +204,7 @@
 lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                       parametrization = c("variance", "h2"),
                       iter = 3000, warmup = floor(iter/2), 
-                      chains = 4, cores = chains, model_file = NULL, control = list(adapt_delta = 0.99), 
+                      chains = 4, cores = chains, model_file = NULL, control = NULL, 
                       cmd_stan = TRUE, blend_A = FALSE,
                       residual_structure = c("unstructured", "diagonal",
                                              "shared_factor"),
@@ -221,6 +221,10 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   residual_structure <- match.arg(residual_structure)
   genetic_structure <- match.arg(genetic_structure)
   parametrization <- match.arg(parametrization)
+  # The shared-factor posterior diverges at adapt_delta = 0.9 (6 of 10 seeds
+  # in the shared-factor test fit), so it keeps the stricter 0.99.
+  if (is.null(control))
+    control <- list(adapt_delta = if (residual_structure == "shared_factor") 0.99 else 0.9)
   lkj_prior <- .check_positive(lkj_prior, "lkj_prior")
   beta_prior <- .check_beta_prior(beta_prior)
   hs_global_scale <- .check_positive(hs_global_scale, "hs_global_scale")

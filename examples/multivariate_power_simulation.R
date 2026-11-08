@@ -15,10 +15,9 @@ if (!requireNamespace("posterior", quietly = TRUE))
 if (.Platform$OS.type == "windows")
   stop("This checker uses parallel::mclapply and currently requires Linux or macOS.")
 
-suppressPackageStartupMessages(library(rstan))
-source("package/R/cmdstan_support.r")
-source("package/R/lmm_animal.R")
-source("package/R/lmm_animal_gibbs.R")
+# Load the installed package, as the other examples do. Sourcing single files
+# from package/R missed helpers that live elsewhere (e.g. .check_positive).
+suppressPackageStartupMessages(library(stanimal))
 
 n_traits <- 4L
 sample_sizes <- c(48L, 96L, 192L)
@@ -30,7 +29,7 @@ if (is.na(default_workers)) default_workers <- 1L
 workers <- as.integer(Sys.getenv(
   "STANIMAL_POWER_WORKERS", as.character(min(32L, default_workers))))
 seed <- as.integer(Sys.getenv("STANIMAL_POWER_SEED", "20261030"))
-adapt_delta <- as.numeric(Sys.getenv("STANIMAL_POWER_ADAPT_DELTA", "0.99"))
+adapt_delta <- as.numeric(Sys.getenv("STANIMAL_POWER_ADAPT_DELTA", "0.9"))
 output_dir <- Sys.getenv("STANIMAL_POWER_OUTPUT",
                          if (method == "gibbs") "results/multivariate_power_gibbs" else "results/multivariate_power")
 chains <- if (method == "stan") 4L else 1L
@@ -178,7 +177,7 @@ simulate_one <- function(n, replicate) {
 # Precompile the exact source once before forking. lmm_animal/cstan writes this
 # same code hash into the configured cache and reuses the executable per fit.
 if (method == "stan") {
-  model_code <- .read_animal_model_code(NULL)
+  model_code <- stanimal:::.read_animal_model_code(NULL)
   stan_file <- cmdstanr::write_stan_file(model_code, dir = stan_cache_dir())
   message("Precompiling marginalized multivariate animal model...")
   invisible(cmdstanr::cmdstan_model(stan_file))

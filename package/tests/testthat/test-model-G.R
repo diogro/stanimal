@@ -10,6 +10,8 @@ test_that("unstructured G/E model recovers G, E and original-scale beta", {
   sim <- simulate_animal(n_fam = 30, size = 8, G = G3, E = E3, seed = 21)
   fit <- fit_G(sim)
   expect_s3_class(fit, "CmdStanMCMC")
+  # control = NULL picks adapt_delta 0.9 for every structure but shared_factor.
+  expect_equal(fit$metadata()$adapt_delta, 0.9)
   expect_clean_fit(fit)
 
   expect_lt(max(abs(post_matrix(fit, "G", 3) - G3)), 0.6)

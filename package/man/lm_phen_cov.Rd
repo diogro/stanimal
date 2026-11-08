@@ -12,7 +12,7 @@ lm_phen_cov(
   warmup = floor(iter/2),
   chains = 4,
   cores = chains,
-  control = list(adapt_delta = 0.99),
+  control = list(adapt_delta = 0.9),
   cmd_stan = TRUE,
   model_file = NULL,
   covariance_structure = c("unstructured", "factor"),

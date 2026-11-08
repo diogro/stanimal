@@ -102,7 +102,7 @@
 #' @author Diogo Melo
 #' @export
 lm_phen_cov <- function(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(iter/2),
-                        chains = 4, cores = chains, control = list(adapt_delta = 0.99),
+                        chains = 4, cores = chains, control = list(adapt_delta = 0.9),
                         cmd_stan = TRUE, model_file = NULL,
                         covariance_structure = c("unstructured", "factor"),
                         n_factors = NULL, hs_global_scale = 1,

@@ -43,7 +43,7 @@ for anyone *using* the package. Worked examples live in `README.md` and
 lmm_animal(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
            parametrization = c("variance", "h2"),
            iter = 3000, warmup = floor(iter/2), chains = 4, cores = chains,
-           model_file = NULL, control = list(adapt_delta = 0.99),
+           model_file = NULL, control = NULL,
            cmd_stan = TRUE, blend_A = FALSE,
            residual_structure = c("unstructured", "diagonal", "shared_factor"),
            genetic_structure = c("unstructured", "factor"), n_factors = NULL,
@@ -51,7 +51,7 @@ lmm_animal(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
            eigen_A = NULL, ...)
 
 lm_phen_cov(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(iter/2),
-            chains = 4, cores = chains, control = list(adapt_delta = 0.99),
+            chains = 4, cores = chains, control = list(adapt_delta = 0.9),
             cmd_stan = TRUE, model_file = NULL,
             covariance_structure = c("unstructured", "factor"), n_factors = NULL,
             hs_global_scale = 1, hs_slab_scale = 1, column_decay = 0.8, ...)
@@ -65,6 +65,11 @@ are matched to `Y` by name when both have names. `A` is decomposed once per fit
 (`eigen(A)`, the `O(N^3)` step); when fitting many models on the same `A`, pass
 `eigen_A = list(Q = e$vectors, lambda = e$values)` with
 `e <- eigen(A, symmetric = TRUE)` to do it once.
+
+`control = NULL` means `adapt_delta = 0.9`, except
+`residual_structure = "shared_factor"`, which uses 0.99 because its posterior
+diverges at 0.9. A `control` list you pass replaces that default entirely, so
+include `adapt_delta` in it if you set any other control.
 
 ### The relationship matrix enters through its eigendecomposition (since 0.8.0)
 

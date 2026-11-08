@@ -22,24 +22,30 @@ suppressPackageStartupMessages(library(stanimal))
 n_traits <- 4L
 sample_sizes <- c(48L, 96L, 192L)
 n_replicates <- as.integer(Sys.getenv("STANIMAL_POWER_REPS", "40"))
-iterations <- as.integer(Sys.getenv("STANIMAL_POWER_ITER", "1200"))
+# The chain length lmm_animal() uses by default.
+iterations <- as.integer(Sys.getenv("STANIMAL_POWER_ITER", "3000"))
 warmup <- as.integer(Sys.getenv("STANIMAL_POWER_WARMUP", as.character(iterations / 2)))
-default_workers <- parallel::detectCores()
-if (is.na(default_workers)) default_workers <- 1L
+chains <- if (method == "stan") 4L else 1L
+# Each fit runs its chains in parallel, so a run uses workers * chain_cores
+# cores: by default up to 32 fits at once, 128 cores for the Stan fits.
+chain_cores <- as.integer(Sys.getenv("STANIMAL_POWER_CHAIN_CORES", as.character(chains)))
+available_cores <- parallel::detectCores()
+if (is.na(available_cores)) available_cores <- 1L
 workers <- as.integer(Sys.getenv(
-  "STANIMAL_POWER_WORKERS", as.character(min(32L, default_workers))))
+  "STANIMAL_POWER_WORKERS",
+  as.character(max(1L, min(32L, available_cores %/% max(1L, chain_cores))))))
 seed <- as.integer(Sys.getenv("STANIMAL_POWER_SEED", "20261030"))
 adapt_delta <- as.numeric(Sys.getenv("STANIMAL_POWER_ADAPT_DELTA", "0.9"))
 output_dir <- Sys.getenv("STANIMAL_POWER_OUTPUT",
                          if (method == "gibbs") "results/multivariate_power_gibbs" else "results/multivariate_power")
-chains <- if (method == "stan") 4L else 1L
 gibbs_thin <- as.integer(Sys.getenv("STANIMAL_POWER_GIBBS_THIN", "1"))
 
-if (anyNA(c(n_replicates, iterations, warmup, workers, seed)) ||
+if (anyNA(c(n_replicates, iterations, warmup, workers, chain_cores, seed)) ||
     n_replicates < 1L || iterations < 2L || warmup < 1L ||
-    warmup >= iterations || workers < 1L || length(adapt_delta) != 1L ||
+    warmup >= iterations || workers < 1L || chain_cores < 1L ||
+    chain_cores > chains || length(adapt_delta) != 1L ||
     !is.finite(adapt_delta) || adapt_delta <= 0.8 || adapt_delta >= 1)
-  stop("Check STANIMAL_POWER_REPS, ITER, WARMUP, WORKERS, and SEED.")
+  stop("Check STANIMAL_POWER_REPS, ITER, WARMUP, WORKERS, CHAIN_CORES, ADAPT_DELTA and SEED.")
 
 # A lower-triangular factor defines an SPD correlation matrix with high,
 # moderate, weak/negative, and near-zero pairwise correlations.
@@ -103,8 +109,8 @@ simulate_one <- function(n, replicate) {
       lkj_prior = 2,
       iter = iterations,
       warmup = warmup,
-      chains = 4,
-      cores = 1,
+      chains = chains,
+      cores = chain_cores,
       control = list(adapt_delta = adapt_delta),
       cmd_stan = TRUE,
       residual_structure = "unstructured"
@@ -191,8 +197,8 @@ tasks <- expand.grid(
 RNGkind("L'Ecuyer-CMRG")
 set.seed(seed)
 workers <- min(workers, nrow(tasks))
-message(sprintf("Running %d %s fits across %d workers (%d chains per fit).",
-                nrow(tasks), method, workers, chains))
+message(sprintf("Running %d %s fits across %d workers (%d chains per fit on %d cores, %d iterations).",
+                nrow(tasks), method, workers, chains, chain_cores, iterations))
 
 fits <- parallel::mclapply(seq_len(nrow(tasks)), function(index) {
   task <- tasks[index, ]
@@ -274,6 +280,7 @@ utils::write.csv(data.frame(
   method = method,
   chains = chains,
   parallel_workers = workers,
+  chain_cores = chain_cores,
   adapt_delta = adapt_delta,
   seed = seed,
   stringsAsFactors = FALSE

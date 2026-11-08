@@ -35,7 +35,7 @@ workers <- as.integer(Sys.getenv(
   "STANIMAL_POWER_WORKERS",
   as.character(max(1L, min(32L, available_cores %/% max(1L, chain_cores))))))
 seed <- as.integer(Sys.getenv("STANIMAL_POWER_SEED", "20261030"))
-adapt_delta <- as.numeric(Sys.getenv("STANIMAL_POWER_ADAPT_DELTA", "0.9"))
+adapt_delta <- as.numeric(Sys.getenv("STANIMAL_POWER_ADAPT_DELTA", "0.99"))
 output_dir <- Sys.getenv("STANIMAL_POWER_OUTPUT",
                          if (method == "gibbs") "results/multivariate_power_gibbs" else "results/multivariate_power")
 gibbs_thin <- as.integer(Sys.getenv("STANIMAL_POWER_GIBBS_THIN", "1"))

@@ -20,6 +20,8 @@ test_that("factor G model samples and exposes factor summaries", {
   colnames(sim$Y) <- c("t1", "t2", "t3")
   fit <- fit_factor(sim)
   expect_s3_class(fit, "CmdStanMCMC")
+  # control = NULL lowers adapt_delta to 0.9 for factor G with unstructured E.
+  expect_equal(fit$metadata()$adapt_delta, 0.9)
   expect_equal(attr(fit, "genetic_structure"), "factor")
   expect_equal(attr(fit, "n_factors"), 2)
 

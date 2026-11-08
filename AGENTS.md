@@ -66,9 +66,9 @@ are matched to `Y` by name when both have names. `A` is decomposed once per fit
 `eigen_A = list(Q = e$vectors, lambda = e$values)` with
 `e <- eigen(A, symmetric = TRUE)` to do it once.
 
-`control = NULL` means `adapt_delta = 0.9`, except
-`residual_structure = "shared_factor"`, which uses 0.99 because its posterior
-diverges at 0.9. A `control` list you pass replaces that default entirely, so
+`control = NULL` means `adapt_delta = 0.9` for `genetic_structure = "factor"`
+with an unstructured or diagonal residual, and 0.99 for everything else
+(univariate, unstructured `G`, shared factor), which diverge at 0.9. A `control` list you pass replaces that default entirely, so
 include `adapt_delta` in it if you set any other control.
 
 ### The relationship matrix enters through its eigendecomposition (since 0.8.0)

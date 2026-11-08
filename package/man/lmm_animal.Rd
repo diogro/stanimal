@@ -52,7 +52,7 @@ lmm_animal(
 
 \item{model_file}{Optional path to a custom Stan file replacing the default model.}
 
-\item{control}{Named list of sampler controls, passed to whichever engine runs: \code{adapt_delta}, \code{adapt_engaged}, \code{max_treedepth}, \code{step_size} (rstan's \code{stepsize} is accepted), \code{init_buffer}, \code{term_buffer}, \code{window} and \code{metric}. Any other name is an error, so a control is never silently ignored. The default \code{NULL} uses \code{list(adapt_delta = 0.9)}, or \code{list(adapt_delta = 0.99)} with \code{residual_structure = "shared_factor"}, whose posterior diverges at 0.9. A list you supply replaces the default entirely.}
+\item{control}{Named list of sampler controls, passed to whichever engine runs: \code{adapt_delta}, \code{adapt_engaged}, \code{max_treedepth}, \code{step_size} (rstan's \code{stepsize} is accepted), \code{init_buffer}, \code{term_buffer}, \code{window} and \code{metric}. Any other name is an error, so a control is never silently ignored. The default \code{NULL} uses \code{list(adapt_delta = 0.9)} for \code{genetic_structure = "factor"} with an unstructured or diagonal residual, and \code{list(adapt_delta = 0.99)} otherwise: unstructured \code{G} on small samples and shared-factor fits diverge at 0.9. A list you supply replaces the default entirely.}
 
 \item{cmd_stan}{Logical, use cmdstanr. If FALSE, uses rstan. Both engines are suggested packages: when cmdstanr is not installed the fit falls back to rstan with a warning, and when neither is installed the fit errors.}
 

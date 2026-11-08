@@ -18,13 +18,14 @@
   Cholesky per gradient.
 
 * The default `adapt_delta` drops from 0.99 to 0.9 for `lm_phen_cov()` and for
-  every `lmm_animal()` structure except `residual_structure = "shared_factor"`,
-  which keeps 0.99. The lower target takes larger steps: in the examples,
-  factor and structure-comparison fits run 2 to 3 times faster with no
-  divergences. The shared-factor fit diverged at 0.9 in 6 of 10 seeds, so it
-  does not. `lmm_animal()`'s `control` now defaults to `NULL`, which picks the
-  target from the structure. Pass `control = list(adapt_delta = 0.99)` to get
-  the old behaviour.
+  `lmm_animal(genetic_structure = "factor")` with an unstructured or diagonal
+  residual. Those fits run 2 to 3 times faster in the examples with no
+  divergences. Univariate, unstructured-`G` and shared-factor fits keep 0.99:
+  at 0.9 the unstructured model diverged in about half of the power-simulation
+  fits at 48 or 96 animals, and the shared-factor test fit in 6 of 10 seeds.
+  `lmm_animal()`'s `control` now defaults to `NULL`, which picks the target
+  from the structure. Pass `control = list(adapt_delta = 0.99)` for the old
+  behaviour everywhere.
 
 * Laplace fits (`lmm_animal_laplace()`, `lm_phen_cov_laplace()`) label their
   summary and draws with the column names of `Y` and `X` (`G[wing,tail]`,

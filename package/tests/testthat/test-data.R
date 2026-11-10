@@ -53,8 +53,11 @@ test_that("opossum_grm matches the animals and the complete subset is usable", {
   expect_true(isSymmetric(opossum_grm))
   expect_identical(rownames(opossum_grm), as.character(opossum$id))
   expect_identical(colnames(opossum_grm), rownames(opossum_grm))
-  expect_equal(range(diag(opossum_grm)), c(0.2228368, 0.5942065),
+  # VanRaden scaling: the relationship-matrix scale, not Z Z' / m
+  expect_equal(range(diag(opossum_grm)), c(0.6375442, 1.7000464),
                tolerance = 1e-4)
+  expect_equal(mean(diag(opossum_grm)), 1.052, tolerance = 1e-3)
+  expect_lt(abs(mean(opossum_grm[lower.tri(opossum_grm)])), 0.01)
   # the full matrix is only positive semidefinite; the analysed subset is not
   ok <- stats::complete.cases(opossum)
   A <- opossum_grm[ok, ok]

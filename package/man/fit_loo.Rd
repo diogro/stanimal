@@ -6,7 +6,14 @@
 \alias{loo.stanfit}
 \title{Leave-one-out cross-validation for a fit}
 \usage{
-fit_loo(x, criterion = c("loo", "waic"), r_eff = NULL, ...)
+fit_loo(
+  x,
+  criterion = c("loo", "waic"),
+  r_eff = NULL,
+  unit = c("individual", "record"),
+  eigen_A = NULL,
+  ...
+)
 
 \method{loo}{CmdStanMCMC}(x, ...)
 
@@ -22,6 +29,21 @@ fit_loo(x, criterion = c("loo", "waic"), r_eff = NULL, ...)
 from the within-chain correlation of the pointwise likelihoods when left
 \code{NULL}, which is what \code{\link[loo]{relative_eff}} recommends.}
 
+\item{unit}{For animal fits, what one pointwise term is.
+\code{"individual"} (default) leaves out one individual: the term is the
+density of its observed traits given every other individual, computed after
+the fit from the draws of \code{G}, \code{E}, \code{beta} and, with gaps,
+\code{Y_mis}. \code{"record"} uses the model's own \code{log_lik}, one term
+per record rotated by the eigenvectors of \code{A}, which needs a complete
+response. Ignored for phenotypic fits and draws matrices, whose terms are
+already one per individual or are taken as given.}
+
+\item{eigen_A}{Optional eigendecomposition of the relationship matrix the fit
+used (\code{attr(fit, "stanimal_data")$A}, after any reordering and
+\code{blend_A}), as a list with \code{Q} and \code{lambda}, to skip the
+\eqn{O(N^3)} decomposition for \code{unit = "individual"}. It is checked
+against that matrix.}
+
 \item{...}{Further arguments passed to \code{\link[loo]{loo}} or
 \code{\link[loo]{waic}}, such as \code{k_threshold} or \code{cores}.}
 }
@@ -29,39 +51,47 @@ from the within-chain correlation of the pointwise likelihoods when left
 An object from the \code{loo} package: a \code{psis_loo} or
   \code{waic} object. \code{loo_compare()} accepts several of them, which is
   how fits are compared; the differences in ELPD are what matters, not the
-  absolute value.
+  absolute value. For \code{unit = "individual"}, the attribute
+  \code{"units"} names the individual of each pointwise term, so a high
+  Pareto \eqn{k} can be traced to an animal.
 }
 \description{
 Computes the expected log pointwise predictive density with Pareto-smoothed
-importance sampling, by handing the model's `log_lik` draws to
-\code{\link[loo]{loo}}. Built-in models report that quantity, but incomplete
-animal fits cannot be compared this way (see Details).
+importance sampling (or WAIC), leaving out one individual at a time. Animal
+fits with missing trait records are supported.
 }
 \details{
-Phenotypic models use one term per individual, integrating missing
-  traits out. Animal models use one term per rotated response record. For
-  complete animal responses the terms sum to the joint log likelihood, but
-  the rotation can mix individuals, so a term is not one animal left out.
-  Read the result as a comparison between
-  model structures or fixed effects on the same response, observations and
-  missingness pattern, with corresponding predictive units. Animal fits
-  must also have the same relationship matrix and eigenbasis. Different
-  response traits or values are not directly comparable. This is not an
-  individual-level predictive check.
+Relatives share breeding values, so an animal model does not
+  factorize over individuals and the density of one animal depends on all the
+  others. The default terms are those of leave-one-out for a non-factorized
+  normal model (Bürkner, Gabry and Vehtari 2021): for each draw, the
+  conditional density of an individual's observed traits given every other
+  individual, with that individual's own gaps integrated out. When other
+  individuals have gaps, the draw conditions on their sampled values
+  (\code{Y_mis}), which keeps the importance sampling exact. Individuals with
+  no observed trait carry no term. The cost per draw is two
+  \eqn{N \times N} by \eqn{N \times K} matrix products, batched over draws,
+  plus one decomposition of \code{A}.
 
-  The terms are the density of the standardized response, so the absolute
-  ELPD carries a constant that depends on the data's scale; it cancels in
-  comparisons between fits to the same response.
-  Animal fits with missing responses are refused, including custom-model
-  fits: the built-in terms use imputed values, not the marginalized
-  observed-data likelihood. \code{\link{posterior_predictive}} remains
-  available for model checking. If response or model metadata are unavailable
-  (including for a bare draws matrix or older fit), a warning is issued:
-  the caller must verify that the terms are suitable predictive units.
-  Custom models may define different likelihoods, so their suitability
-  cannot be verified from metadata alone. Extracting raw draws and passing
-  them directly to \code{loo::loo()} or \code{loo::waic()} bypasses these
-  checks.
+  Phenotypic models use one term per individual, integrating missing traits
+  out, from their own \code{log_lik}.
+
+  With \code{unit = "record"}, the terms are the animal model's
+  \code{log_lik}: for complete responses they sum to the joint log
+  likelihood, but the rotation mixes individuals, so a term is not one animal
+  left out. That criterion is refused for responses with gaps, whose
+  \code{log_lik} terms use imputed values.
+
+  Compare fits to the same response values, observations and missingness
+  pattern, with the same unit. The terms are densities of the standardized
+  response, so the absolute ELPD carries a constant that depends on the
+  data's scale; it cancels in comparisons between fits to the same response.
+  Individual-level terms assume the built-in likelihood and are refused for a
+  custom \code{model_file}. If response or model metadata are unavailable
+  (a bare draws matrix or an older fit), the model's \code{log_lik} is used
+  with a warning: the caller must verify that its terms are suitable
+  predictive units. Extracting raw draws and passing them directly to
+  \code{loo::loo()} or \code{loo::waic()} bypasses these checks.
 }
 \examples{
 \dontrun{
@@ -69,6 +99,12 @@ fit1 <- lmm_animal(Y, X, A)
 fit2 <- lmm_animal(Y, X, A, genetic_structure = "factor", n_factors = 2)
 loo::loo_compare(fit_loo(fit1), fit_loo(fit2))
 }
+}
+\references{
+Bürkner, P.-C., Gabry, J. and Vehtari, A. (2021). Efficient
+  leave-one-out cross-validation for Bayesian non-factorized normal and
+  Student-t models. \emph{Computational Statistics} 36, 1243--1261.
+  \doi{10.1007/s00180-020-01045-4}
 }
 \seealso{
 \code{\link{posterior_predictive}}

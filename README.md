@@ -233,7 +233,7 @@ It also warns when supplied with `prior`, or for a univariate fit.
 
 ## Comparing models, and checking that one fits
 
-Every model reports a pointwise `log_lik`; suitable fits can be compared with the [`loo`](https://mc-stan.org/loo/) package, subject to the restrictions below:
+Fits can be compared by leave-one-out cross-validation with the [`loo`](https://mc-stan.org/loo/) package:
 
 ```r
 fit_loo(fit)                                   # PSIS-LOO
@@ -243,7 +243,9 @@ fit_loo(fit)                                   # PSIS-LOO
 
 `fit_loo()` also takes `criterion = "waic"`, and `loo(fit)` works if `stanimal` and `loo` are both loaded.
 
-For complete animal responses, **the terms are not generally per individual.** They describe records in the eigen-rotation of `A`, so leave-one-out does not mean "predict this individual". Compare model structures or fixed effects only for the same response values, missingness and corresponding predictive units; animal fits also need the same relationship matrix and eigenbasis. Different trait sets or measured values are not directly comparable. The standardization constant cancels only for the same response. `fit_loo()` refuses animal fits with missing responses, including custom models: the built-in `log_lik` uses completed data, not the marginalized observed-data likelihood. Phenotypic fits with gaps remain supported. Bare draw matrices and older fits without response metadata issue a warning because their suitability cannot be verified; custom likelihoods are the caller's responsibility. Passing extracted draws directly to `loo::loo()` or `loo::waic()` bypasses these checks. Check `fit_loo(fit)$diagnostics$pareto_k` before trusting a comparison.
+Each pointwise term leaves out one individual. Relatives share breeding values, so an animal model does not factorize over individuals; for each posterior draw, `fit_loo()` computes the density of an animal's observed traits given every other animal, from the draws of `G`, `E` and `beta` (the leave-one-out of a non-factorized normal model, [Bürkner, Gabry & Vehtari 2021](https://doi.org/10.1007/s00180-020-01045-4)). Missing traits are fine: an animal's own gaps are integrated out, and the gaps of the others are conditioned on at their sampled values (`Y_mis`), which keeps the importance sampling exact. The cost is one decomposition of `A` (pass `eigen_A` to reuse one) and two `N x N` by `N x K` products per draw. `unit = "record"` gives the older criterion, one term per record rotated by the eigenvectors of `A`, for complete responses only. Phenotypic fits use their own per-individual terms, with gaps integrated out.
+
+Compare fits to the same response values and missingness. The terms are densities of the standardized response, so the absolute ELPD carries a data-dependent constant that cancels between fits to the same response. A custom `model_file` is refused for individual-level terms, since its likelihood may differ; bare draw matrices and older fits without response metadata fall back to their `log_lik` with a warning. Check `fit_loo(fit)$diagnostics$pareto_k` before trusting a comparison; `attr(fit_loo(fit), "units")` names the animal behind each term.
 
 For the individual-level question — would the data look like this if the model were true — replicate the response from the posterior:
 

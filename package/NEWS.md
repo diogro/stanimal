@@ -1,4 +1,28 @@
-# stanimal (development version)
+# stanimal 0.8.2
+
+* `fit_loo()` now leaves out one individual at a time for animal fits, and
+  works with missing trait records. Relatives share breeding values, so the
+  animal model does not factorize over individuals; each term is the
+  conditional density of an animal's observed traits given every other animal,
+  computed after the fit from the draws of `G`, `E`, `beta` and `Y_mis` (the
+  non-factorized LOO of Bürkner, Gabry & Vehtari 2021). An animal's own gaps
+  are integrated out and the others' are conditioned on at their sampled values,
+  which keeps the importance sampling exact. Before, the terms were records
+  rotated by the eigenvectors of `A`, which are not animals, and fits with gaps
+  were refused. That criterion remains as `unit = "record"` (complete
+  responses only). ELPD values from earlier versions are not comparable with
+  the new default. `eigen_A` skips the decomposition of `A`, and
+  `attr(, "units")` names the animal of each term. Custom `model_file` fits
+  need `unit = "record"`.
+
+* `opossum_grm` is now VanRaden's genomic relationship matrix,
+  `Z Z' / (2 sum p (1 - p))`, the same matrix `genomic_relationship()` returns
+  for these markers. It was `Z Z' / m`, 2.86 times smaller, with a diagonal
+  near 0.37 instead of about 1, so a `G` fitted on it was the covariance for a
+  relationship no animal had: `G` and the heritabilities came out inflated.
+  Fits on the old matrix are not comparable with fits on the new one;
+  genetic correlations depend on the scale only through the prior, so
+  they change little.
 
 * Chains start from `init = 1`, a draw on (-1, 1) on the unconstrained scale,
   instead of the engines' (-2, 2). The chains still start apart, so `Rhat`

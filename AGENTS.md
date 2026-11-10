@@ -91,8 +91,9 @@ The animal models never decompose `A` in Stan any more: `lmm_animal()` computes
   draw-for-draw identical fits to 0.7.x. With repeated eigenvalues in `A`
   (common for pedigrees) the basis within an eigenspace may differ from
   0.7.x's, so a fixed seed can give a different trajectory to the same
-  posterior. `log_lik` terms still refer to records in the (ascending)
-  eigenbasis of `A`.
+  posterior. The model's `log_lik` terms still refer to records in the
+  (ascending) eigenbasis of `A`; `fit_loo()` no longer uses them by default
+  (see Model comparison).
 - A custom `model_file` written for 0.7.x that declares `A` keeps working: it
   receives `A` as well as `Q` and `lambda`. `...` is forwarded to the
 sampler, so `seed`, `refresh`, `init` and `show_messages` work there.
@@ -122,8 +123,9 @@ functions record different things:
 `h2` exists only for animal fits. Every model reports `log_lik`, one term per
 record. For complete animal responses the terms sum to the joint log density,
 but refer to records in the eigenbasis of `A`, not generally to individuals.
-Incomplete animal fits instead use completed-data densities, not the marginal
-observed-data likelihood. See the model-comparison caveats below.
+Incomplete animal fits instead use completed-data densities. `fit_loo()` does
+not use these animal terms by default; it computes one term per individual
+after the fit (see Model comparison).
 
 ### Reading the draws
 
@@ -216,7 +218,8 @@ take gaps too:
 
 ## Model comparison and predictive checks
 
-Built-in models report `log_lik`, but not every fit can be compared with it.
+`fit_loo()` leaves out one individual at a time, for every built-in model and
+with or without missing traits.
 
 ```r
 fit_loo(fit)                                   # PSIS-LOO
@@ -225,19 +228,32 @@ loo::loo_compare(fit_loo(a), fit_loo(b))       # differences in ELPD
 posterior_predictive(fit)                      # replicates of the response
 ```
 
-- `fit_loo()` wraps `loo::loo` on the `log_lik` draws, with the chain structure
+- `fit_loo()` hands pointwise terms to `loo::loo`, with the chain structure
   kept so the effective-sample-size correction works. `criterion = "waic"` gives
   WAIC instead. It needs the `loo` package (a Suggests).
-- **What LOO means here is not leave-one-individual-out.** For complete animal
-  responses, terms refer to rotated records, not generally individual animals.
-  Compare the same response values, observations, missingness and predictive
-  units; animal fits also need the same relationship matrix and eigenbasis.
-  `fit_loo()` refuses incomplete animal fits (including custom models) because
-  their built-in completed-data densities are not the marginalized observed-data
-  likelihood. Incomplete phenotypic fits remain supported. Bare matrices and
-  older fits without response metadata warn because their suitability cannot be
-  verified; custom likelihoods are the caller's responsibility. Passing
-  extracted draws directly to `loo::loo()` or `loo::waic()` bypasses the checks.
+- **Animal fits: one term per individual (`unit = "individual"`, the default).**
+  Relatives share breeding values, so the model does not factorize over
+  animals. The term for animal `i` is the density of its observed traits given
+  every other animal, computed after the fit from the draws of `G`, `E`,
+  `beta` and, with gaps, `Y_mis` (non-factorized LOO, Bürkner, Gabry & Vehtari
+  2021). The animal's own gaps are integrated out; the other animals' gaps are
+  conditioned on at their sampled values, which keeps the importance sampling
+  exact. An animal with nothing observed has no term. `attr(result, "units")`
+  names the animal of each term, so a high Pareto k can be traced.
+- Cost: one `eigen(A)` (pass `eigen_A` to skip it) plus two `N x N` by
+  `N x K` products per draw. About 45 s for 505 animals, 12 traits and 8,000
+  draws; gaps add a little.
+- `unit = "record"` uses the model's own `log_lik` instead: one term per record
+  rotated by the eigenvectors of `A`, which is not one animal. It is refused
+  for responses with gaps, whose `log_lik` uses imputed values.
+- Phenotypic fits already have one term per individual, with gaps integrated
+  out, and use them directly.
+- Compare fits to the same response values, observations and missingness, with
+  the same `unit`. Individual-level terms assume the built-in likelihood and
+  are refused for a custom `model_file`. Bare matrices and older fits without
+  response metadata fall back to their `log_lik` with a warning. Passing
+  extracted draws directly to `loo::loo()` or `loo::waic()` bypasses the
+  checks.
 - The terms are the density of the *standardized* response, so the absolute ELPD
   carries a constant that depends on the data. It cancels between fits to the
   same response, which is what `loo_compare()` uses.

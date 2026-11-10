@@ -17,15 +17,21 @@ Two objects.
       \code{\link{lm_phen_cov}}. 505 individuals have no missing value in
       any trait or covariate.}
     \item{\code{opossum_grm}}{a 553 by 553 genomic relationship matrix
-      computed as \eqn{ZZ^\top/m} from 3,696 markers, \eqn{Z} being the
-      marker matrix centred by twice the allele frequency and \eqn{m} the
-      number of markers. Rows and columns are named with the individual IDs
+      computed from 3,696 markers as \eqn{ZZ^\top / (2\sum_j p_j(1-p_j))}
+      (VanRaden 2008), \eqn{Z} being the allele-count matrix centred by
+      twice the sample allele frequencies \eqn{p_j}. It equals
+      \code{genomic_relationship()} applied to the markers, and it is on
+      the scale of a pedigree relationship matrix, so \code{G} fitted on it
+      is the additive genetic covariance of the population. Rows and columns are named with the individual IDs
       of \code{opossum}, so the rows of the subset being analysed can be
       passed as the \code{A} argument of \code{\link{lmm_animal}} directly,
       as in the example. The full matrix is only positive semidefinite, so
-      pass \code{blend_A = TRUE} if it is given whole. The diagonal runs from
-      0.22 to 0.59, as expected for a centred marker matrix rather than a
-      pedigree.}
+      pass \code{blend_A = TRUE} if it is given whole. The diagonal runs
+      from 0.64 to 1.70 with a mean of 1.05, and the off-diagonal entries
+      average zero, since the allele frequencies come from the same
+      animals. Versions up to 0.8.1 shipped the same matrix divided by the
+      number of markers instead, 2.86 times smaller, which inflated
+      \code{G} and the heritabilities fitted on it.}
   }
 }
 \source{

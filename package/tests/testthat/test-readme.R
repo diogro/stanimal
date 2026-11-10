@@ -109,7 +109,10 @@ test_that("every example in the README runs", {
           # `loo` warns when the Pareto k diagnostics are poor. The README runs
           # on a small example, where that is expected and already documented,
           # so it is not a test warning. Anything else still is.
-          if (grepl("Pareto k diagnostic", conditionMessage(w)))
+          # The relative efficiency of individual-level terms can exceed 1,
+          # which loo caps with a warning; that is not a test failure either.
+          if (grepl("Pareto k diagnostic|ESS has been capped",
+                    conditionMessage(w)))
             invokeRestart("muffleWarning")
         })
       NULL

@@ -84,9 +84,20 @@ markers <- do.call(cbind, lapply(marker_files, function(f)
   as.matrix(read.csv(f, header = FALSE))))
 stopifnot(nrow(markers) == nrow(opossum), all(markers %in% c(-1, 0, 1)))
 
+# The coding is additive, -1/0/1, so markers + 1 counts copies of one allele.
+# The matrix is VanRaden's (2008) first estimator, Z Z' / (2 sum p (1 - p)) with
+# Z centred by twice the sample allele frequency, which puts it on the scale of
+# a pedigree relationship matrix (mean diagonal about 1) and is what
+# genomic_relationship(markers + 1) returns: every marker passes its default
+# filters (minor allele frequency at least 0.044, no missing calls). In
+# stanimal 0.8.1 and earlier the denominator was the number of markers, which
+# shrank the matrix by a factor of 2.86 (diagonal near 0.37), so the G fitted on
+# it was inflated by about that factor and the heritabilities with it.
 freq <- (colMeans(markers) + 1) / 2
+stopifnot(!anyNA(markers), min(pmin(freq, 1 - freq)) > 0.01)
 Z <- sweep(markers, 2, 2 * freq - 1, "-")
-opossum_grm <- tcrossprod(Z) / ncol(markers)
+opossum_grm <- tcrossprod(Z) / (2 * sum(freq * (1 - freq)))
+opossum_grm <- (opossum_grm + t(opossum_grm)) / 2
 # The animal IDs are the link between the matrix and the phenotype frame; nothing
 # in the marker files supplies them.
 dimnames(opossum_grm) <- list(opossum$id, opossum$id)
@@ -96,6 +107,7 @@ cat("opossum:", nrow(opossum), "individuals,", length(traits), "traits,",
 cat("opossum_grm:", nrow(opossum_grm), "x", ncol(opossum_grm), "from",
     ncol(markers), "markers\n")
 cat("GRM diagonal range:", round(range(diag(opossum_grm)), 3),
+    " mean:", round(mean(diag(opossum_grm)), 3),
     " off-diagonal sd:", round(stats::sd(opossum_grm[lower.tri(opossum_grm)]), 4), "\n")
 
 save(opossum, opossum_grm, file = "data/opossum.rda", compress = "xz", version = 2)

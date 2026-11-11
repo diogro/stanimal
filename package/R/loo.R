@@ -256,6 +256,47 @@
        units = (rownames(Y) %||% as.character(seq_len(n)))[observed])
 }
 
+# The constant that turns a term of a fit to size_shape() scores into the term
+# of the raw traits. The scores are s = M y + c for every individual, with M the
+# inverse of the loadings B, so a density of s becomes a density of y by the
+# Jacobian |det M| = 1 / |det B|, the same for every individual and draw.
+# Both terms are densities of a standardized response, each with its own
+# standard deviations, which adds sum(log sd(scores)) on one side and
+# sum(log sd(y)) on the other.
+.size_shape_loo_shift <- function(fit, transform) {
+  if (!inherits(transform, "size_shape"))
+    stop("`transform` must be a `size_shape` object from `size_shape()`.",
+         call. = FALSE)
+  if (!isTRUE(transform$gaps == 0))
+    stop("`transform` completed ", transform$gaps, " missing entries before ",
+         "rotating, so the scores are not a transformation of the observed ",
+         "data and their density cannot be moved to the trait scale. Compare ",
+         "fits in the two bases only for a complete response.", call. = FALSE)
+  B <- transform$loadings
+  if (ncol(B) != nrow(B))
+    stop("`transform` keeps ", ncol(B) - 1L, " of the ", nrow(B) - 1L,
+         " shape axes, so the scores do not determine the traits and have no ",
+         "density on the trait scale. Use all axes (the default `n_shape`).",
+         call. = FALSE)
+  scores <- transform$scores
+  data <- attr(fit, "stanimal_data")
+  if (is.list(data) && !is.null(data$Y)) {
+    Y <- as.matrix(data$Y)
+    if (!identical(dim(Y), dim(scores)) || anyNA(Y) ||
+        !isTRUE(all.equal(unname(Y), unname(scores),
+                          check.attributes = FALSE)))
+      stop("the fit was not given `transform$scores` as its response, so ",
+           "`transform` does not describe it.", call. = FALSE)
+  } else {
+    warning("the fit carries no response, so it cannot be checked that it was ",
+            "fitted to `transform$scores`.", call. = FALSE)
+  }
+  traits <- scores %*% t(B)  # the traits up to a constant, which sd ignores
+  log_det_B <- as.numeric(determinant(B, logarithm = TRUE)$modulus)
+  sum(log(apply(traits, 2L, stats::sd))) -
+    sum(log(apply(scores, 2L, stats::sd))) - log_det_B
+}
+
 #' Leave-one-out cross-validation for a fit
 #'
 #' Computes the expected log pointwise predictive density with Pareto-smoothed
@@ -282,6 +323,9 @@
 #'   \code{blend_A}), as a list with \code{Q} and \code{lambda}, to skip the
 #'   \eqn{O(N^3)} decomposition for \code{unit = "individual"}. It is checked
 #'   against that matrix.
+#' @param transform Optional \code{size_shape} object, when \code{x} was fitted
+#'   to its \code{scores}. The terms are then moved to the original traits, so
+#'   the result can be compared with a fit to those traits (see Details).
 #' @param ... Further arguments passed to \code{\link[loo]{loo}} or
 #'   \code{\link[loo]{waic}}, such as \code{k_threshold} or \code{cores}.
 #' @return An object from the \code{loo} package: a \code{psis_loo} or
@@ -321,6 +365,23 @@
 #'   with a warning: the caller must verify that its terms are suitable
 #'   predictive units. Extracting raw draws and passing them directly to
 #'   \code{loo::loo()} or \code{loo::waic()} bypasses these checks.
+#'
+#'   \strong{Fits to size and shape scores.} The scores of
+#'   \code{\link{size_shape}} are the same linear map of every individual's
+#'   traits, \eqn{s = M y + c}. Conditioning on the other individuals' scores
+#'   is conditioning on their traits, so a term of the score fit becomes the
+#'   term of the traits by the Jacobian \eqn{|\det M|}, a constant, together
+#'   with the change from the scores' standard deviations to the traits'.
+#'   \code{transform} adds that constant to every term, and
+#'   \code{loo_compare()} can then set a fit to the scores against a fit to the
+#'   traits. The constant leaves the Pareto \eqn{k} values and the standard
+#'   error of a difference unchanged. It needs a complete response (gaps are
+#'   filled before the rotation, so the scores are not a function of the
+#'   observed data) and every shape axis (with fewer, \eqn{M} is not
+#'   invertible). The shape axes are principal components of the data,
+#'   including the individual left out; that touches the prior and not the
+#'   likelihood, and with more than a few dozen individuals it is negligible.
+#'   The result carries \code{attr(, "scale") = "traits"}.
 #' @references Bürkner, P.-C., Gabry, J. and Vehtari, A. (2021). Efficient
 #'   leave-one-out cross-validation for Bayesian non-factorized normal and
 #'   Student-t models. \emph{Computational Statistics} 36, 1243--1261.
@@ -331,15 +392,23 @@
 #' fit1 <- lmm_animal(Y, X, A)
 #' fit2 <- lmm_animal(Y, X, A, genetic_structure = "factor", n_factors = 2)
 #' loo::loo_compare(fit_loo(fit1), fit_loo(fit2))
+#'
+#' # raw traits against size and shape scores
+#' ss <- size_shape(Y)
+#' fit3 <- lmm_animal(ss$scores, X, A)
+#' loo::loo_compare(fit_loo(fit1), fit_loo(fit3, transform = ss))
 #' }
 #' @export
 fit_loo <- function(x, criterion = c("loo", "waic"), r_eff = NULL,
-                    unit = c("individual", "record"), eigen_A = NULL, ...) {
+                    unit = c("individual", "record"), eigen_A = NULL,
+                    transform = NULL, ...) {
   criterion <- match.arg(criterion)
   unit <- match.arg(unit)
   if (!requireNamespace("loo", quietly = TRUE))
     stop("`fit_loo()` needs the `loo` package: install.packages(\"loo\").",
          call. = FALSE)
+  # checked before the terms, which can take a while to compute
+  shift <- if (is.null(transform)) 0 else .size_shape_loo_shift(x, transform)
   data <- attr(x, "stanimal_data")
   individual <- unit == "individual" && is.list(data) &&
     identical(data$family, "animal")
@@ -351,7 +420,7 @@ fit_loo <- function(x, criterion = c("loo", "waic"), r_eff = NULL,
   } else {
     draws <- .log_lik_draws(x)
   }
-  log_lik <- draws$log_lik
+  log_lik <- draws$log_lik + shift
   result <- if (criterion == "waic") {
     loo::waic(log_lik, ...)
   } else {
@@ -360,6 +429,7 @@ fit_loo <- function(x, criterion = c("loo", "waic"), r_eff = NULL,
     loo::loo(log_lik, r_eff = r_eff, ...)
   }
   if (individual) attr(result, "units") <- draws$units
+  if (!is.null(transform)) attr(result, "scale") <- "traits"
   result
 }
 

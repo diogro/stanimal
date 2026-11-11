@@ -29,7 +29,7 @@ for anyone *using* the package. Worked examples live in `README.md` and
 | Pedigree with related founders/metafounders | `makeA(pedigree, Gamma = , groups = )` |
 | Markers instead of a pedigree | `genomic_relationship(M)` → pass as `A` |
 | How many factors? | `suggest_n_factors(Y, X)` + `scree_eigenvalues(Y, X)` |
-| Which of two models fits better? | `loo::loo_compare(fit_loo(a), fit_loo(b))` |
+| Which of two models fits better? | `loo::loo_compare(fit_loo(a), fit_loo(b))` (a size-shape fit takes `fit_loo(b, transform = ss)`) |
 | Quick approximate fit (no draws-based tools) | `lmm_animal_laplace(Y, X, A)` / `lm_phen_cov_laplace(Y)` |
 | Does the model reproduce the data? | `posterior_predictive(fit)` |
 | Each individual's breeding value | `breeding_values(fit)` |
@@ -257,6 +257,13 @@ posterior_predictive(fit)                      # replicates of the response
 - The terms are the density of the *standardized* response, so the absolute ELPD
   carries a constant that depends on the data. It cancels between fits to the
   same response, which is what `loo_compare()` uses.
+- **Raw traits against size and shape scores.** A fit to `size_shape()` scores
+  is a fit to a linear map of the traits, so its terms can be moved to the
+  trait scale: `loo_compare(fit_loo(raw), fit_loo(ss_fit, transform = ss))`.
+  The shift is one constant (the Jacobian of the map and the change of
+  standardization), exact for a complete response with every shape axis kept,
+  and refused otherwise. Without `transform` the two are densities of
+  different responses and must not be compared.
 - Check `fit_loo(fit)$diagnostics$pareto_k` before trusting a comparison. With a
   few dozen individuals, k above 0.7 is common and `loo` says so itself; the fix
   is a longer run or reading the comparison as indicative.

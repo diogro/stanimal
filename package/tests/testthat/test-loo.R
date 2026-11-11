@@ -316,3 +316,100 @@ test_that("posterior_predictive refuses fits it cannot replicate", {
   gibbs <- lmm_animal_gibbs(sim$Y, sim$X, sim$A, iter = 40, warmup = 20)
   expect_error(posterior_predictive(gibbs), "does not carry the data")
 })
+
+# A fit to size_shape() scores, its transform and the raw traits.
+size_shape_fit <- function(fitter = "animal") {
+  sim <- simulate_animal(n_fam = 8, size = 5, G = G3, E = E3, seed = 73)
+  ss <- size_shape(sim$Y)
+  fit <- suppressWarnings(if (fitter == "animal") {
+    lmm_animal(ss$scores, sim$X, sim$A, iter = 400, chains = 2, cores = 2,
+               seed = 1, refresh = 0, show_messages = FALSE)
+  } else {
+    lm_phen_cov(ss$scores, sim$X, iter = 400, chains = 2, cores = 2, seed = 1,
+                refresh = 0, show_messages = FALSE)
+  })
+  list(fit = fit, ss = ss, sim = sim)
+}
+
+# G, E (or P) and beta of one draw, as K x K matrices and a K x J matrix.
+one_draw <- function(fit, s, k, name) {
+  draws <- posterior::subset_draws(fit$draws(format = "draws_matrix"), draw = s)
+  M <- function(v) matrix(as.numeric(draws[, sprintf("%s[%d,%d]", v,
+                                                     rep(1:k, k),
+                                                     rep(1:k, each = k))]), k)
+  beta <- stanimal:::.beta_draws(as.matrix(draws), k, paste0("t", 1:k), NULL,
+                                 attr(fit, "x_names"))
+  c(lapply(stats::setNames(name, name), M),
+    list(beta = matrix(beta[, , 1], nrow = k)))
+}
+
+test_that("size-shape terms move to the trait scale exactly", {
+  skip_if_no_cmdstan()
+  skip_if_no_loo()
+  f <- size_shape_fit("animal")
+  B <- f$ss$loadings
+  Y <- f$sim$Y
+  terms <- stanimal:::.individual_log_lik(f$fit)
+  shift <- stanimal:::.size_shape_loo_shift(f$fit, f$ss)
+  log_sd <- sum(log(apply(Y, 2, stats::sd)))
+  # the trait-scale density built from the back-transformed draws, with no
+  # reference to the scores' own density
+  for (s in c(1L, 200L, 400L)) {
+    d <- one_draw(f$fit, s, 3L, c("G", "E"))
+    R_scores <- f$ss$scores - f$sim$X %*% t(d$beta)
+    dense <- dense_individual_log_lik(R_scores %*% t(B), B %*% d$G %*% t(B),
+                                      B %*% d$E %*% t(B),
+                                      attr(f$fit, "stanimal_data")$A,
+                                      matrix(FALSE, nrow(Y), 3))
+    expect_equal(terms$log_lik[s, ] + shift, dense + log_sd, tolerance = 1e-8)
+  }
+
+  plain <- suppressWarnings(fit_loo(f$fit))
+  moved <- suppressWarnings(fit_loo(f$fit, transform = f$ss))
+  expect_equal(moved$estimates["elpd_loo", "Estimate"],
+               plain$estimates["elpd_loo", "Estimate"] + nrow(Y) * shift)
+  expect_equal(moved$diagnostics$pareto_k, plain$diagnostics$pareto_k)
+  expect_identical(attr(moved, "scale"), "traits")
+  expect_null(attr(plain, "scale"))
+})
+
+test_that("size-shape terms move to the trait scale for phenotypic fits", {
+  skip_if_no_cmdstan()
+  skip_if_no_loo()
+  f <- size_shape_fit("phenotypic")
+  B <- f$ss$loadings
+  Y <- f$sim$Y
+  terms <- stanimal:::.log_lik_draws(f$fit)$log_lik
+  shift <- stanimal:::.size_shape_loo_shift(f$fit, f$ss)
+  log_sd <- sum(log(apply(Y, 2, stats::sd)))
+  for (s in c(1L, 400L)) {
+    d <- one_draw(f$fit, s, 3L, "P")
+    R <- (f$ss$scores - f$sim$X %*% t(d$beta)) %*% t(B)
+    P <- B %*% d$P %*% t(B)
+    dense <- -0.5 * (3 * log(2 * pi) + determinant(P)$modulus +
+                       rowSums((R %*% solve(P)) * R))
+    # these terms are Stan's own log_lik, read back from CSV, so they carry
+    # its rounding (about 1e-7 here), unlike the animal terms computed in R
+    expect_equal(terms[s, ] + shift, as.numeric(dense) + log_sd,
+                 tolerance = 1e-6)
+  }
+})
+
+test_that("fit_loo refuses a transform that does not describe the fit", {
+  skip_if_no_cmdstan()
+  skip_if_no_loo()
+  f <- size_shape_fit("animal")
+  expect_error(fit_loo(f$fit, transform = list()), "size_shape")
+  expect_error(fit_loo(f$fit, transform = size_shape(f$sim$Y, n_shape = 1)),
+               "shape axes")
+  gappy <- f$sim$Y
+  gappy[2, 1] <- NA
+  expect_error(fit_loo(f$fit, transform = size_shape(gappy)), "missing")
+  other <- f$sim$Y
+  other[, 1] <- other[, 1] * 2
+  expect_error(fit_loo(f$fit, transform = size_shape(other)),
+               "transform\\$scores")
+  raw <- small_animal_fit()
+  expect_error(fit_loo(raw$fit, transform = size_shape(raw$sim$Y)),
+               "transform\\$scores")
+})

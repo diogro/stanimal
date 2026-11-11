@@ -1,3 +1,14 @@
+# stanimal (development version)
+
+* `fit_loo()` gains `transform`, which moves the terms of a fit to
+  `size_shape()` scores onto the original traits, so `loo_compare()` can set a
+  size-shape fit against a fit to the raw traits. The scores are one linear map
+  of every individual's traits, so the change is a single constant per term
+  (the Jacobian of the map and the change of standardization), exact for a
+  complete response with every shape axis kept. Responses completed before the
+  rotation, fewer shape axes, and a `transform` whose scores are not the fit's
+  response are refused. The result carries `attr(, "scale") = "traits"`.
+
 # stanimal 0.8.2
 
 * `fit_loo()` now leaves out one individual at a time for animal fits, and

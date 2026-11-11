@@ -12,6 +12,7 @@ fit_loo(
   r_eff = NULL,
   unit = c("individual", "record"),
   eigen_A = NULL,
+  transform = NULL,
   ...
 )
 
@@ -43,6 +44,10 @@ used (\code{attr(fit, "stanimal_data")$A}, after any reordering and
 \code{blend_A}), as a list with \code{Q} and \code{lambda}, to skip the
 \eqn{O(N^3)} decomposition for \code{unit = "individual"}. It is checked
 against that matrix.}
+
+\item{transform}{Optional \code{size_shape} object, when \code{x} was fitted
+to its \code{scores}. The terms are then moved to the original traits, so
+the result can be compared with a fit to those traits (see Details).}
 
 \item{...}{Further arguments passed to \code{\link[loo]{loo}} or
 \code{\link[loo]{waic}}, such as \code{k_threshold} or \code{cores}.}
@@ -92,12 +97,34 @@ Relatives share breeding values, so an animal model does not
   with a warning: the caller must verify that its terms are suitable
   predictive units. Extracting raw draws and passing them directly to
   \code{loo::loo()} or \code{loo::waic()} bypasses these checks.
+
+  \strong{Fits to size and shape scores.} The scores of
+  \code{\link{size_shape}} are the same linear map of every individual's
+  traits, \eqn{s = M y + c}. Conditioning on the other individuals' scores
+  is conditioning on their traits, so a term of the score fit becomes the
+  term of the traits by the Jacobian \eqn{|\det M|}, a constant, together
+  with the change from the scores' standard deviations to the traits'.
+  \code{transform} adds that constant to every term, and
+  \code{loo_compare()} can then set a fit to the scores against a fit to the
+  traits. The constant leaves the Pareto \eqn{k} values and the standard
+  error of a difference unchanged. It needs a complete response (gaps are
+  filled before the rotation, so the scores are not a function of the
+  observed data) and every shape axis (with fewer, \eqn{M} is not
+  invertible). The shape axes are principal components of the data,
+  including the individual left out; that touches the prior and not the
+  likelihood, and with more than a few dozen individuals it is negligible.
+  The result carries \code{attr(, "scale") = "traits"}.
 }
 \examples{
 \dontrun{
 fit1 <- lmm_animal(Y, X, A)
 fit2 <- lmm_animal(Y, X, A, genetic_structure = "factor", n_factors = 2)
 loo::loo_compare(fit_loo(fit1), fit_loo(fit2))
+
+# raw traits against size and shape scores
+ss <- size_shape(Y)
+fit3 <- lmm_animal(ss$scores, X, A)
+loo::loo_compare(fit_loo(fit1), fit_loo(fit3, transform = ss))
 }
 }
 \references{

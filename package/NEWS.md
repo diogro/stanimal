@@ -1,4 +1,4 @@
-# stanimal (development version)
+# stanimal 0.8.3
 
 * `fit_loo()` gains `transform`, which moves the terms of a fit to
   `size_shape()` scores onto the original traits, so `loo_compare()` can set a

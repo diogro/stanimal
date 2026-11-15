@@ -1,4 +1,4 @@
-# stanimal (development version)
+# stanimal 0.9.0
 
 * `lmm_animal()` and `lmm_animal_laplace()` gain `correlation_prior`. The
   default `"lkj"` is the existing prior. `"size"` writes each correlation

@@ -15,6 +15,17 @@
 #'   trait. When given, the heritabilities come from that beta instead of the
 #'   scaled half-normal ratio, because that is the prior the fit uses. The
 #'   genetic correlations are drawn from the LKJ in either case.
+#' @param correlation_prior Prior on the genetic correlations, as in
+#'   \code{\link{lmm_animal}}: \code{"lkj"} (default), or \code{"size"} and
+#'   \code{"shared_size"}, which draw each correlation matrix as
+#'   \eqn{D(ll^T + R)D} with \eqn{R \sim} LKJ(\code{lkj_prior}), size loadings
+#'   \eqn{l_k = \mu + \sigma z_k}, \eqn{\mu^2/(1+\mu^2) \sim} Beta(1, 1),
+#'   \eqn{\sigma \sim} half-normal(0, 1) and \eqn{z_k \sim N(0, 1)}. The two
+#'   size priors differ only in how \code{E} shares the loading pattern, so
+#'   they give the same draws here. Both are fitted only with
+#'   \code{parametrization = "h2"}, so the heritabilities come from
+#'   \code{beta_prior}, with \code{c(1, 1)} when it is \code{NULL}. They need
+#'   at least two traits.
 #' @return A long data frame with columns \code{type} (\code{"Heritability"} or
 #'   \code{"Genetic correlation"}), \code{parameter} and \code{value}.
 #' @details Standard deviations are half-normal(0, 1) and correlation matrices
@@ -30,11 +41,22 @@
 #'   argument for it.
 #' @export
 animal_prior_draws <- function(n_traits, n = 4000, lkj_prior = 2,
-                               trait_names = NULL, beta_prior = NULL) {
+                               trait_names = NULL, beta_prior = NULL,
+                               correlation_prior = c("lkj", "size",
+                                                     "shared_size")) {
   n_traits <- .check_count(n_traits, "n_traits")
   n <- .check_count(n, "n")
   lkj_prior <- .check_positive(lkj_prior, "lkj_prior")
+  correlation_prior <- match.arg(correlation_prior)
   trait_names <- .trait_names(trait_names, n_traits)
+  size_prior <- correlation_prior != "lkj"
+  if (size_prior) {
+    if (n_traits < 2L)
+      stop("`correlation_prior = \"", correlation_prior, "\"` needs at least ",
+           "two traits: it is a prior on correlations.", call. = FALSE)
+    # the size priors are fitted with parametrization = "h2" only
+    beta_prior <- beta_prior %||% c(1, 1)
+  }
   if (!is.null(beta_prior)) {
     beta_prior <- .check_beta_prior(beta_prior)
     # One beta per trait, and the correlations still come from the LKJ: that is
@@ -46,7 +68,8 @@ animal_prior_draws <- function(n_traits, n = 4000, lkj_prior = 2,
     cors <- matrix(NA_real_, n, nrow(pairs),
                    dimnames = list(NULL, pairs$parameter))
     for (i in seq_len(n)) {
-      Og <- .rlkj(n_traits, lkj_prior)
+      Og <- if (size_prior) .size_prior_correlation(n_traits, lkj_prior) else
+        .rlkj(n_traits, lkj_prior)
       cors[i, ] <- Og[cbind(pairs$i, pairs$j)]
     }
     return(.long_draws(h2, cors, "prior"))
@@ -135,7 +158,10 @@ animal_parameter_draws <- function(fit, trait_names = NULL) {
 #'   The prior is drawn from the model configuration recorded by
 #'   \code{\link{lmm_animal}}, so an \code{"h2"} fit is compared with its beta
 #'   prior on the heritability and an unstructured fit with the LKJ shape it was
-#'   given. For ordinary factor \code{G}, it simulates the regularized horseshoe
+#'   given. A fit with \code{correlation_prior = "size"} or
+#'   \code{"shared_size"} is compared with the size-factor prior on its genetic
+#'   correlations (see \code{\link{animal_prior_draws}}); fits made before that
+#'   argument existed are read as LKJ fits. For ordinary factor \code{G}, it simulates the regularized horseshoe
 #'   loadings using the recorded factor count, global scale, slab and column
 #'   decay, then constructs the genetic correlations. The current model uses
 #'   the recorded beta prior on trait heritability; older factor fits recorded as
@@ -248,7 +274,8 @@ plot_forest <- function(fit, trait_names = NULL, lkj_prior = NULL,
     } else {
       prior <- animal_prior_draws(length(parameters), n_prior,
                                   lkj_prior %||% config$lkj_prior %||% 2,
-                                  parameters, beta_prior = config$h2_prior)
+                                  parameters, beta_prior = config$h2_prior,
+                                  correlation_prior = config$correlation_prior)
     }
   } else {
     if (!is.null(lkj_prior))
@@ -275,6 +302,8 @@ plot_forest <- function(fit, trait_names = NULL, lkj_prior = NULL,
        known = (identical(genetic, "unstructured") || identical(genetic, "factor")) &&
          (identical(residual, "unstructured") || identical(residual, "diagonal")) &&
          (identical(parametrization, "variance") || identical(parametrization, "h2")) &&
+         (attr(fit, "correlation_prior") %||% "lkj") %in%
+           c("lkj", "size", "shared_size") &&
          identical(custom, FALSE),
        parametrization = parametrization,
        n_factors = attr(fit, "n_factors"),
@@ -282,7 +311,18 @@ plot_forest <- function(fit, trait_names = NULL, lkj_prior = NULL,
        hs_slab_scale = attr(fit, "hs_slab_scale"),
        column_decay = attr(fit, "column_decay"),
        lkj_prior = attr(fit, "lkj_prior"),
+       # fits from before the argument existed all used the LKJ prior
+       correlation_prior = attr(fit, "correlation_prior") %||% "lkj",
        h2_prior = if (identical(parametrization, "h2")) attr(fit, "beta_prior"))
+}
+
+# One draw of the size-factor prior on a correlation matrix, as in
+# animalModelGH2Size.stan: D (l l' + R) D with R ~ LKJ(eta) and pooled loadings.
+.size_prior_correlation <- function(k, eta) {
+  rho <- stats::rbeta(1, 1, 1)
+  l <- sqrt(rho / (1 - rho)) + abs(stats::rnorm(1)) * stats::rnorm(k)
+  d <- 1 / sqrt(1 + l^2)
+  (tcrossprod(l) + .rlkj(k, eta)) * tcrossprod(d)
 }
 
 .factor_g_prior_draws <- function(k, n, traits, n_factors, hs_global_scale,

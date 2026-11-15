@@ -30,6 +30,36 @@
     (genetic_structure == "unstructured" || residual_structure == "unstructured")
 }
 
+# The size priors replace the LKJ prior on the correlations of an unstructured
+# G (and E). They were developed and validated on top of the h2
+# parametrization only, which is also the one with a sensible prior on h2, so
+# there is a single Stan file for them. An unsupplied parametrization becomes
+# "h2" and an explicit "variance" is refused rather than silently changed.
+.check_correlation_prior <- function(correlation_prior, k, genetic_structure,
+                                     residual_structure, parametrization,
+                                     parametrization_supplied, model_file) {
+  if (correlation_prior == "lkj")
+    return(list(size = FALSE, shared = FALSE, parametrization = parametrization))
+  what <- paste0("`correlation_prior = \"", correlation_prior, "\"`")
+  if (k < 2L)
+    stop(what, " needs at least two traits: it is a prior on correlations.",
+         call. = FALSE)
+  if (genetic_structure != "unstructured")
+    stop(what, " needs `genetic_structure = \"unstructured\"`. The factor ",
+         "models have their own prior on the correlations.", call. = FALSE)
+  if (correlation_prior == "shared_size" && residual_structure != "unstructured")
+    stop(what, " needs `residual_structure = \"unstructured\"`: a diagonal ",
+         "residual has no size axis to share a loading pattern with. Use ",
+         "`correlation_prior = \"size\"`.", call. = FALSE)
+  if (!is.null(model_file))
+    stop(what, " cannot be combined with `model_file`.", call. = FALSE)
+  if (parametrization_supplied && parametrization != "h2")
+    stop(what, " is only available with `parametrization = \"h2\"`, which ",
+         "it uses when `parametrization` is not supplied.", call. = FALSE)
+  list(size = TRUE, shared = correlation_prior == "shared_size",
+       parametrization = "h2")
+}
+
 #' Fit linear mixed animal model
 #' 
 #' Fits a univariate or multivariate linear mixed animal model using a known relatedness matrix
@@ -53,6 +83,7 @@
 #' @param n_factors Number of factors when \code{genetic_structure = "factor"}; for \code{residual_structure = "shared_factor"} these are shared by \code{G} and \code{E}. It is a whole number between 1 and the number of traits minus one. If \code{NULL}, the factor model falls back to \code{min(K - 1, max(2, floor(sqrt(K))), 20)} and warns with the value; that fallback depends only on the number of traits, so use \code{\link{suggest_n_factors}} to choose it from the data when the factors themselves are meant to be interpreted. Ignored otherwise.
 #' @param hs_global_scale,hs_slab_scale Positive scales of the regularized-horseshoe prior on factor loadings: the global half-Cauchy scale and the slab scale, which limits the loading's prior standard deviation rather than bounding its realized value. For ordinary factor G, communality is \eqn{q/(1+q)}, where \eqn{q} is the random sum of squared unnormalized loadings. Its prior distribution depends on both scales, the local scales, the number of factors and column decay; it is not determined by the slab alone. The shared-factor model does not row-normalize its loadings, so its communality is a sum of squares on the standardized response scale, not a correlation-scale proportion. Report the settings, especially where data are weak. These arguments are only used by \code{genetic_structure = "factor"}; explicitly supplying them elsewhere warns. See Piironen and Vehtari (2017) on choosing the global scale.
 #' @param column_decay Standard-deviation multiplier for successive factor columns, between 0 and 1. Column \code{m} is multiplied by \code{column_decay^(m - 1)}, so values below 1 favour decreasing factor magnitudes and make the factor labels interpretable. The default 0.8 orders the columns without forcing a strict hierarchy; with \code{column_decay = 1} the columns are exchangeable a priori and their labels are free to swap between chains. How strong the decay needs to be depends on how many columns have to be told apart: with two columns of comparable size 0.8 is often too mild and 0.5 is what separates them, while a strong decay works against a model with many columns, because \code{0.5^(m - 1)} cuts the prior of the fifth column to a sixteenth of the first. This is a deterministic prior on the column order, not a learned decay parameter; it is used by both factor structures, including the shared-factor model. Explicitly supplying it outside \code{genetic_structure = "factor"} warns that it is ignored.
+#' @param correlation_prior Prior on the genetic and residual correlation matrices of the unstructured multivariate model. \code{"lkj"} (default) is LKJ(\code{lkj_prior}), which shrinks every correlation toward zero. \code{"size"} writes each correlation matrix as one dense size factor plus an LKJ remainder, \eqn{\Omega = D(ll^T + R)D} with \eqn{R \sim} LKJ(\code{lkj_prior}) and \eqn{D} the row normalisation, and estimates where the correlations are shrunk to: the size loadings \eqn{l_k = \mu + \sigma z_k} are pooled around a mean loading with \eqn{\rho = \mu^2/(1+\mu^2) \sim} Beta(1, 1), \eqn{\sigma \sim} half-normal(0, 1) and \eqn{z_k \sim N(0, 1)}. \code{G} and \code{E} each get their own. \code{"shared_size"} is the same with one standardized pattern \eqn{z} shared by \code{G} and \code{E}, so the genetic and residual size axes deviate from equal loadings in the same direction, each with its own mean loading and spread; it needs \code{residual_structure = "unstructured"}. Neither lowers the rank: the factor moves the point the prior shrinks toward, and with \eqn{\rho = \sigma = 0} the prior is the LKJ one. Use them for traits that share a size axis (many measurements of one structure), where LKJ pulls large correlations, and with them the heritabilities, toward zero. Both need \code{genetic_structure = "unstructured"}, cannot be combined with \code{model_file}, and use \code{parametrization = "h2"}: leaving \code{parametrization} unset selects it, and asking for \code{"variance"} is an error. The fits add \code{rho_G}, \code{rho_E}, \code{sigma_size_G}, \code{sigma_size_E}, the size loadings on the correlation scale \code{size_loadings_G} and \code{size_loadings_E}, and \code{integration_G} and \code{integration_E}, the relative eigenvalue variance of each correlation matrix (0 for no correlation, 1 for a single axis). Sampling is slower than with \code{"lkj"}, about three times in the tests.
 #' @param ... additional parameters for stan sampling
 #' @return With \code{cmd_stan = TRUE}, a \code{CmdStanMCMC} object from cmdstanr: use \code{fit$draws()} (a \code{posterior} draws array) and \code{fit$summary()}, and pass these, or the fit itself, to bayesplot (e.g. \code{bayesplot::mcmc_trace(fit$draws("h2"))}, \code{bayesplot::nuts_params(fit)}). Fixed effects are \code{beta[j]} (univariate) or \code{beta[trait,j]} for column \code{j} of \code{X}; use \code{\link{rename_beta}} to get draws named after the columns of \code{X}. Use \code{\link{fit_draws}} to reshape the draws into trait by trait by draw arrays, and \code{\link{draws_mean}} or \code{\link{draws_quantile}} for posterior summaries that are already matrices. Factor fits also expose \code{loadings}, \code{factor_magnitude}, \code{uniqueness} and \code{communality}; shared-factor fits add \code{factor_heritability}, \code{genetic_uniqueness} and \code{residual_uniqueness}. With \code{cmd_stan = FALSE}, a \code{stanfit} object whose \code{beta} draws are named after the columns of \code{X}.
 #' Multivariate fits report \code{G}, \code{E}, \code{P = G + E}, \code{corrG},
@@ -211,7 +242,9 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
                       genetic_structure = c("unstructured", "factor"),
                       n_factors = NULL, hs_global_scale = 1,
                       hs_slab_scale = 1, column_decay = 0.8,
-                      eigen_A = NULL, ...){
+                      eigen_A = NULL,
+                      correlation_prior = c("lkj", "size", "shared_size"),
+                      ...){
   beta_prior_supplied <- !missing(beta_prior)
   lkj_prior_supplied <- !missing(lkj_prior)
   hs_global_scale_supplied <- !missing(hs_global_scale)
@@ -221,6 +254,7 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   residual_structure <- match.arg(residual_structure)
   genetic_structure <- match.arg(genetic_structure)
   parametrization <- match.arg(parametrization)
+  correlation_prior <- match.arg(correlation_prior)
   # adapt_delta 0.9 only where it was clean: factor G fits ran 2-3x faster
   # with no divergences. Unstructured G diverged at 0.9 in about half of the
   # power-simulation fits at 48 or 96 animals, and the shared-factor test fit
@@ -249,6 +283,11 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
     stop("`residual_structure = \"shared_factor\"` requires `genetic_structure = \"factor\"`.",
          call. = FALSE)
   shared_factor_model <- factor_model && residual_structure == "shared_factor"
+  size_prior <- .check_correlation_prior(correlation_prior, ncol(Y),
+                                        genetic_structure, residual_structure,
+                                        parametrization, parametrization_supplied,
+                                        model_file)
+  parametrization <- size_prior$parametrization
   # The ordinary factor model has no choice about its parameters, so this only
   # distinguishes the two parameterisations of the unstructured multivariate
   # model. Trait h2 is what the beta prior is about either way.
@@ -357,6 +396,7 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
       stan_data$lkj_prior <- lkj_prior
       stan_data$unstructured_E <- as.integer(residual_structure == "unstructured")
       if (h2_param) stan_data$beta_prior <- beta_prior
+      if (size_prior$size) stan_data$shared_pattern <- as.integer(size_prior$shared)
       if (factor_model) {
         stan_data$M <- n_factors
         stan_data$hs_global_scale <- hs_global_scale
@@ -372,6 +412,8 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
       "animalModelGSharedFactor.stan"
     } else if (factor_model) {
       "animalModelGFactor.stan"
+    } else if (size_prior$size) {
+      "animalModelGH2Size.stan"
     } else if (h2_param) {
       "animalModelGH2.stan"
     } else {
@@ -390,6 +432,8 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
         "animalModelGSharedFactor"
       } else if (factor_model) {
         "animalModelGFactor"
+      } else if (size_prior$size) {
+        "animalModelGH2Size"
       } else if (h2_param) {
         "animalModelGH2"
       } else {
@@ -431,6 +475,7 @@ lmm_animal = function(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
   }
   attr(fit, "lkj_prior") <- lkj_prior
   attr(fit, "beta_prior") <- beta_prior
+  attr(fit, "correlation_prior") <- correlation_prior
   # a custom Stan file can use any prior it likes, so nothing below can be
   # recovered from the recorded arguments alone
   attr(fit, "custom_model") <- !is.null(model_file)

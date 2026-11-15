@@ -113,7 +113,8 @@ test_that("custom model files are read and missing defaults error", {
 })
 
 test_that("all shipped Stan files are discoverable", {
-  for (f in c("animalModelG.stan", "animalModelGFactor.stan",
+  for (f in c("animalModelG.stan", "animalModelGH2.stan",
+              "animalModelGH2Size.stan", "animalModelGFactor.stan",
               "animalModelGSharedFactor.stan", "animalModelUni.stan",
               "animalModelUniH2.stan", "phenotypicModel.stan",
               "phenotypicModelFactor.stan"))

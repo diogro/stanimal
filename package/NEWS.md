@@ -1,3 +1,22 @@
+# stanimal (development version)
+
+* `lmm_animal()` and `lmm_animal_laplace()` gain `correlation_prior`. The
+  default `"lkj"` is the existing prior. `"size"` writes each correlation
+  matrix of an unstructured `G` and `E` as one dense size factor plus an LKJ
+  remainder, `D (l l' + R) D`, with loadings pooled around a mean loading the
+  data estimate, so that traits sharing a size axis are no longer all shrunk
+  toward zero correlation. In simulations of size-dominated traits the LKJ fits
+  recovered about half the true genetic correlations and heritabilities, and
+  the size prior recovered them with nominal coverage, matching or beating fits
+  to `size_shape()` scores. `"shared_size"` also gives `G` and `E` one
+  standardized loading pattern. Both use `parametrization = "h2"` and report
+  `rho_G`, `rho_E`, `sigma_size_G`, `sigma_size_E`, `size_loadings_G`,
+  `size_loadings_E`, `integration_G` and `integration_E`. Fits record
+  `correlation_prior`.
+* `animal_prior_draws()` gains `correlation_prior`, and `plot_prior_posterior()`
+  and `plot_forest()` rebuild the size prior from the recorded configuration.
+  Older fits without the attribute are read as LKJ fits.
+
 # stanimal 0.8.3
 
 * `fit_loo()` gains `transform`, which moves the terms of a fit to

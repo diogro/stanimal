@@ -73,7 +73,9 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
                                genetic_structure = c("unstructured", "factor"),
                                n_factors = NULL, hs_global_scale = 1,
                                hs_slab_scale = 1, column_decay = 0.8,
-                               draws = 2000, seed = NULL, ...) {
+                               draws = 2000, seed = NULL,
+                               correlation_prior = c("lkj", "size",
+                                                     "shared_size"), ...) {
   call <- match.call()
   .warn_dots(...)
   beta_prior_supplied <- !missing(beta_prior)
@@ -85,6 +87,7 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
   parametrization <- match.arg(parametrization)
   residual_structure <- match.arg(residual_structure)
   genetic_structure <- match.arg(genetic_structure)
+  correlation_prior <- match.arg(correlation_prior)
   for (arg in names(hs_supplied))
     .warn_ignored(hs_supplied[[arg]], genetic_structure == "factor", arg)
   lkj_prior <- .check_positive(lkj_prior, "lkj_prior")
@@ -107,6 +110,11 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
          "`genetic_structure = \"factor\"`.", call. = FALSE)
   shared_factor_model <- factor_model &&
     residual_structure == "shared_factor"
+  size_prior <- .check_correlation_prior(correlation_prior, ncol(Y),
+                                        genetic_structure, residual_structure,
+                                        parametrization, parametrization_supplied,
+                                        model_file)
+  parametrization <- size_prior$parametrization
   h2_param <- ncol(Y) > 1L && !factor_model && parametrization == "h2"
 
   if (factor_model) {
@@ -176,6 +184,8 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
       stan_data$unstructured_E <-
         as.integer(residual_structure == "unstructured")
       if (h2_param) stan_data$beta_prior <- beta_prior
+      if (size_prior$size)
+        stan_data$shared_pattern <- as.integer(size_prior$shared)
       if (factor_model) {
         stan_data$M <- n_factors
         stan_data$hs_global_scale <- hs_global_scale
@@ -188,6 +198,8 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
       "animalModelGSharedFactor.stan"
     } else if (factor_model) {
       "animalModelGFactor.stan"
+    } else if (size_prior$size) {
+      "animalModelGH2Size.stan"
     } else if (h2_param) {
       "animalModelGH2.stan"
     } else {
@@ -204,6 +216,11 @@ lmm_animal_laplace <- function(Y, X = NULL, A,
     } else if (factor_model) {
       quantities <- c(quantities, "loadings", "uniqueness", "communality",
                       "factor_magnitude")
+    } else if (size_prior$size) {
+      quantities <- c(quantities, "rho_G", "sigma_size_G", "size_loadings_G",
+                      "integration_G", "integration_E")
+      if (residual_structure == "unstructured")
+        quantities <- c(quantities, "rho_E", "sigma_size_E", "size_loadings_E")
     }
   }
 
@@ -384,7 +401,8 @@ print.stanimal_laplace <- function(x, digits = 3, ...) {
   if (is.null(y_names)) return(vars)
   by_trait_2 <- c("G", "E", "P", "corrG", "corrE", "corrP")
   by_trait_1 <- c("h2", "sigma_G", "sigma_E", "sigma_P", "s_G", "uniqueness",
-                  "communality", "genetic_uniqueness", "residual_uniqueness")
+                  "communality", "genetic_uniqueness", "residual_uniqueness",
+                  "size_loadings_G", "size_loadings_E")
   m <- regmatches(vars, regexec("^([A-Za-z_][A-Za-z0-9_]*)\\[([0-9]+)(,([0-9]+))?\\]$",
                                 vars))
   out <- vars

@@ -9,7 +9,8 @@ animal_prior_draws(
   n = 4000,
   lkj_prior = 2,
   trait_names = NULL,
-  beta_prior = NULL
+  beta_prior = NULL,
+  correlation_prior = c("lkj", "size", "shared_size")
 )
 }
 \arguments{
@@ -28,6 +29,18 @@ a distribution.}
 trait. When given, the heritabilities come from that beta instead of the
 scaled half-normal ratio, because that is the prior the fit uses. The
 genetic correlations are drawn from the LKJ in either case.}
+
+\item{correlation_prior}{Prior on the genetic correlations, as in
+\code{\link{lmm_animal}}: \code{"lkj"} (default), or \code{"size"} and
+\code{"shared_size"}, which draw each correlation matrix as
+\eqn{D(ll^T + R)D} with \eqn{R \sim} LKJ(\code{lkj_prior}), size loadings
+\eqn{l_k = \mu + \sigma z_k}, \eqn{\mu^2/(1+\mu^2) \sim} Beta(1, 1),
+\eqn{\sigma \sim} half-normal(0, 1) and \eqn{z_k \sim N(0, 1)}. The two
+size priors differ only in how \code{E} shares the loading pattern, so
+they give the same draws here. Both are fitted only with
+\code{parametrization = "h2"}, so the heritabilities come from
+\code{beta_prior}, with \code{c(1, 1)} when it is \code{NULL}. They need
+at least two traits.}
 }
 \value{
 A long data frame with columns \code{type} (\code{"Heritability"} or

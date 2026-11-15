@@ -1,23 +1,42 @@
-// Multivariate animal model with an integration prior on the correlations.
+// Multivariate animal model with a size-factor prior on the correlations
+// (lmm_animal(correlation_prior = "size" or "shared_size")).
 //
-// PROTOTYPE (branch integration-prior). This is animalModelGH2.stan with one
-// change: the genetic and residual correlation matrices are not LKJ
-// themselves but a mixture of a size axis and an LKJ matrix,
-//   Omega = rho 1 1' + (1 - rho) R,   R ~ LKJ(lkj_prior),   rho ~ beta(1, 1),
-// the construction of random_covariance(method = "factor") without its fixed
-// damping of R. A convex combination of correlation matrices is a correlation
-// matrix, so Omega is valid for any rho in [0, 1]. LKJ alone has no location:
-// it shrinks every correlation toward zero, which on size-dominated traits
-// pulls against all of them at once. rho gives the prior a location that is
-// learned from all the correlations together, and rho = 0 is the LKJ model.
-// The integration of each matrix (relative eigenvalue variance) is reported in
-// generated quantities.
+// This is animalModelGH2.stan with one change: each correlation matrix is one
+// dense factor plus an LKJ remainder, normalised by row,
+//   Omega = D (l l' + R) D,   D = diag(1 / sqrt(1 + l_k^2)),   R ~ LKJ(lkj_prior),
+//   l_k = mu + sigma z_k,   z_k ~ N(0, 1),   sigma ~ half-normal(0, 1),
+// with the mean loading written through rho = mu^2 / (1 + mu^2) ~ beta(1, 1),
+// the weight of the size axis when every loading equals mu. rho = 0 with
+// sigma = 0 is the LKJ model of animalModelGH2.stan. Unlike the horseshoe of
+// the factor model, the loadings are pooled around a common mean, because a
+// size factor is expected to load on every trait. R is a full correlation
+// matrix, so Omega can be any correlation matrix: the factor moves where the
+// prior shrinks to, it does not lower the rank.
+//
+// Why: LKJ shrinks every correlation toward zero, and for traits that share a
+// size axis the truth is far from zero. In simulations of size-dominated
+// traits the LKJ fits halved the genetic correlations and the heritabilities;
+// this prior lets the data set where the correlations are pulled to.
+//
+// G and E get their own rho, sigma and LKJ remainder. With shared_pattern = 1
+// they also share z, so the genetic and residual size axes deviate from equal
+// loadings in the same direction, with their own strength: a weak
+// shared-development assumption about the direction of size only. On the
+// opossum skull data it improved leave-one-out prediction over independent
+// patterns. It needs an unstructured E; with a diagonal E there is no residual
+// size axis and the flag is refused in R.
+//
+// Anything that is not the correlation prior is shared with animalModelGH2.stan
+// (and animalModelG.stan), so a change to the likelihood, the missing-data
+// handling or the log_lik block has to be made in all of them.
 //
 functions {
-  // Cholesky factor of rho 1 1' + (1 - rho) L L', from a thin QR of B'.
-  matrix mixed_cholesky(real rho, matrix L) {
+  // Cholesky factor of D (l l' + L L') D, D = diag(1 / sqrt(1 + l^2)), from a
+  // thin QR of B' with B = D [l, L]: Omega = B B' = R' R.
+  matrix mixed_cholesky(vector l, matrix L) {
     int K = rows(L);
-    matrix[K, K + 1] B = append_col(rep_vector(sqrt(rho), K), sqrt(1 - rho) * L);
+    matrix[K, K + 1] B = diag_pre_multiply(inv_sqrt(1 + square(l)),
+                                           append_col(l, L));
     matrix[K, K] R = qr_thin_R(B');
     for (k in 1:K)
       if (R[k, k] < 0)
@@ -58,9 +77,11 @@ data {
   vector[J] x_mean_weight; // X * x_mean_weight is a column of ones
   int<lower=0, upper=1> unstructured_E; // 1: full residual covariance, 0: diagonal
   vector<lower=0>[2] beta_prior; // beta prior on the trait heritabilities
+  int<lower=0, upper=1> shared_pattern; // 1: G and E share the size pattern z
 }
 transformed data {
   int E_dim = unstructured_E ? K : 0;
+  int z_E_dim = shared_pattern ? 0 : E_dim; // E's own pattern, if not shared
   vector[K] y_sd;
   vector[K] y_mean;
   vector[J] x_center;
@@ -129,8 +150,12 @@ parameters {
   vector[n_missing] Y_mis; // the gaps, on the standardized response scale
   cholesky_factor_corr[K] L_R_G; // LKJ part of the genetic correlations
   cholesky_factor_corr[E_dim] L_R_E; // LKJ part of the residual correlations
-  real<lower=0, upper=1> rho_G; // weight of the size axis in Omega_G
+  real<lower=0, upper=1> rho_G; // mean loading of the size axis, as a weight
   array[unstructured_E] real<lower=0, upper=1> rho_E; // same for Omega_E
+  real<lower=0> sigma_size_G; // spread of the size loadings around their mean
+  array[unstructured_E] real<lower=0> sigma_size_E;
+  vector[K] z_size_G; // standardised size loadings (also E's when shared)
+  vector[z_E_dim] z_size_E;
 }
 transformed parameters {
   // The two scale vectors, rebuilt from the parameters so that every later
@@ -154,15 +179,20 @@ transformed parameters {
       beta[k, j] += mean_shift * x_mean_weight[j];
   }
   // Cholesky factors of the mixed correlation matrices, without forming them.
-  // Omega = B B' with B = [sqrt(rho) 1, sqrt(1 - rho) L_R], a K x (K + 1)
-  // matrix, so with B' = Q R (thin QR) Omega = R' R and R' is a Cholesky
-  // factor once its rows are signed to give a positive diagonal. Factorising
-  // the formed matrix instead fails on rounding whenever Omega is close to
-  // singular, and every failure is a rejected proposal.
-  matrix[K, K] L_Omega_G = mixed_cholesky(rho_G, L_R_G);
+  // Omega = B B' with B = D [l, L_R], a K x (K + 1) matrix, so with B' = Q R
+  // (thin QR) Omega = R' R and R' is a Cholesky factor once its rows are
+  // signed to give a positive diagonal. Factorising the formed matrix instead
+  // fails on rounding whenever Omega is close to singular, and every failure is
+  // a rejected proposal.
+  vector[K] l_G = sqrt(rho_G / (1 - rho_G)) + sigma_size_G * z_size_G;
+  vector[E_dim] l_E;
+  matrix[K, K] L_Omega_G = mixed_cholesky(l_G, L_R_G);
   matrix[E_dim, E_dim] L_Omega_E;
-  if (unstructured_E)
-    L_Omega_E = mixed_cholesky(rho_E[1], L_R_E);
+  if (unstructured_E) {
+    l_E = sqrt(rho_E[1] / (1 - rho_E[1]))
+          + sigma_size_E[1] * (shared_pattern ? z_size_G : z_size_E);
+    L_Omega_E = mixed_cholesky(l_E, L_R_E);
+  }
 }
 model {
   matrix[N, K] Ys = rotated_response(Ys_observed, Q, Y_mis, mis_row, mis_col);
@@ -233,9 +263,13 @@ model {
   h2 ~ beta(beta_prior[1], beta_prior[2]);
   L_R_G ~ lkj_corr_cholesky(lkj_prior);
   rho_G ~ beta(1, 1);
+  sigma_size_G ~ normal(0, 1);
+  z_size_G ~ std_normal();
   if (unstructured_E) {
     L_R_E ~ lkj_corr_cholesky(lkj_prior);
     rho_E ~ beta(1, 1);
+    sigma_size_E ~ normal(0, 1);
+    z_size_E ~ std_normal();
   }
 }
 generated quantities {
@@ -246,6 +280,8 @@ generated quantities {
   vector[K] sigma_G = y_sd .* s_G;
   vector[K] sigma_E = y_sd .* s_E;
   vector[N] log_lik;
+  vector[K] size_loadings_G = l_G ./ sqrt(1 + square(l_G)); // correlation scale
+  vector[E_dim] size_loadings_E = l_E ./ sqrt(1 + square(l_E));
   real integration_G; // relative eigenvalue variance of corrG
   real integration_E; // the same for the residual correlations
   matrix[K, K] G_std = multiply_lower_tri_self_transpose(diag_pre_multiply(s_G, L_Omega_G));

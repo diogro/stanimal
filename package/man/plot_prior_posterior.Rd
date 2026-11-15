@@ -62,7 +62,10 @@ Where prior and posterior overlap, the data add little information.
   The prior is drawn from the model configuration recorded by
   \code{\link{lmm_animal}}, so an \code{"h2"} fit is compared with its beta
   prior on the heritability and an unstructured fit with the LKJ shape it was
-  given. For ordinary factor \code{G}, it simulates the regularized horseshoe
+  given. A fit with \code{correlation_prior = "size"} or
+  \code{"shared_size"} is compared with the size-factor prior on its genetic
+  correlations (see \code{\link{animal_prior_draws}}); fits made before that
+  argument existed are read as LKJ fits. For ordinary factor \code{G}, it simulates the regularized horseshoe
   loadings using the recorded factor count, global scale, slab and column
   decay, then constructs the genetic correlations. The current model uses
   the recorded beta prior on trait heritability; older factor fits recorded as

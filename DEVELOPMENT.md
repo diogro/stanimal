@@ -22,6 +22,8 @@ rather than changing it, read `AGENTS.md` instead.
 | `animalModelUni.stan` | univariate, `parametrization = "variance"` |
 | `animalModelUniH2.stan` | univariate, beta prior on h2 |
 | `animalModelG.stan` | multivariate unstructured `G` and `E` |
+| `animalModelGH2.stan` | the same with the beta prior on the trait h2 (`parametrization = "h2"`) |
+| `animalModelGH2Size.stan` | `animalModelGH2.stan` with the size-factor correlation prior (`correlation_prior = "size"`, and `"shared_size"` through the `shared_pattern` flag) |
 | `animalModelGFactor.stan` | sparse factor `G` |
 | `animalModelGSharedFactor.stan` | shared factors for `G` and `E` |
 | `phenotypicModel.stan` | unstructured `P` |

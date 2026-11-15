@@ -33,7 +33,7 @@ for anyone *using* the package. Worked examples live in `README.md` and
 | Quick approximate fit (no draws-based tools) | `lmm_animal_laplace(Y, X, A)` / `lm_phen_cov_laplace(Y)` |
 | Does the model reproduce the data? | `posterior_predictive(fit)` |
 | Each individual's breeding value | `breeding_values(fit)` |
-| Many correlated traits on one size gradient | `size_shape()` then `back_transform()` — but only around an **unstructured** model, see the anti-patterns |
+| Many correlated traits on one size gradient | `lmm_animal(Y, X, A, correlation_prior = "shared_size")`, or `size_shape()` then `back_transform()` — but only around an **unstructured** model, see the anti-patterns |
 
 `A` is the third positional argument of `lmm_animal()`, so `lmm_animal(Y, X, A)`.
 
@@ -48,7 +48,8 @@ lmm_animal(Y, X = NULL, A, lkj_prior = 2, beta_prior = c(1, 1),
            residual_structure = c("unstructured", "diagonal", "shared_factor"),
            genetic_structure = c("unstructured", "factor"), n_factors = NULL,
            hs_global_scale = 1, hs_slab_scale = 1, column_decay = 0.8,
-           eigen_A = NULL, ...)
+           eigen_A = NULL,
+           correlation_prior = c("lkj", "size", "shared_size"), ...)
 
 lm_phen_cov(Y, X = NULL, lkj_prior = 2, iter = 3000, warmup = floor(iter/2),
             chains = 4, cores = chains, control = list(adapt_delta = 0.9),
@@ -103,7 +104,7 @@ Both model functions return a `CmdStanMCMC` (or an `stanfit` with
 functions record different things:
 
 - `lmm_animal()`: `genetic_structure`, `residual_structure`, `parametrization`,
-  `n_factors` (factor fits), `lkj_prior`, `beta_prior`.
+  `n_factors` (factor fits), `lkj_prior`, `beta_prior`, `correlation_prior`.
 - `lm_phen_cov()`: `covariance_structure`, `n_factors` (factor fits),
   `lkj_prior`, `column_decay`.
 - Both: `x_names`, `y_names`, and `custom_model` (TRUE when `model_file` was
@@ -116,6 +117,7 @@ functions record different things:
 |---|---|
 | univariate | `sigma_G`, `sigma_E`, `h2`, `beta`, `log_lik` |
 | multivariate, unstructured | `G`, `E`, `P`, `corrG`, `sigma_G`, `sigma_E`, `h2`, `beta`, `log_lik` |
+| `correlation_prior = "size"` / `"shared_size"` | unstructured + `rho_G`, `rho_E`, `sigma_size_G`, `sigma_size_E`, `size_loadings_G`, `size_loadings_E`, `integration_G`, `integration_E` |
 | factor `G` | + `loadings`, `uniqueness`, `communality`, `factor_magnitude`, `s_G` |
 | shared factor | + `loadings`, `uniqueness`, `communality`, `factor_magnitude`, `factor_heritability`, `genetic_uniqueness`, `residual_uniqueness` |
 | `lm_phen_cov()` | `P`, `corrP`, `sigma_P`, `beta`, `log_lik` (+ `loadings`, `uniqueness`, `communality`, `factor_magnitude` for `"factor"`) |
@@ -326,6 +328,27 @@ design really has independent errors. `"shared_factor"` is a different model, no
 a relaxation: the same latent factors drive `G` and `E`, and each factor gets a
 heritability.
 
+**Correlation prior.** With many traits of one structure, the true
+correlations are large and share a size axis, and the default LKJ prior pulls
+all of them toward zero: in simulations of size-dominated traits the LKJ fits
+reported about half the true genetic correlations and heritabilities, with
+`parametrization = "h2"` as well. `correlation_prior = "size"` writes each
+correlation matrix as one dense size factor plus an LKJ remainder,
+`D (l l' + R) D`, with loadings `l_k = mu + sigma z_k` pooled around a mean
+loading that the data estimate (`rho = mu^2 / (1 + mu^2) ~ Beta(1, 1)`,
+`sigma ~ half-normal(0, 1)`). It is a prior on where the correlations shrink
+to, not a rank reduction. Without a size axis it estimates a small `rho` and
+loses no accuracy against LKJ in the simulations, only speed. `"shared_size"` also makes `G` and `E` share the
+standardized pattern `z`, a weak shared-development assumption on the
+direction of the size axis; it needs an unstructured `E`. Both run with
+`parametrization = "h2"` (selected when not supplied; `"variance"` is an
+error) and unstructured `G`. Sampling is about three times slower than LKJ.
+Read `integration_G` (relative eigenvalue variance of `corrG`, 0 to 1) and
+`size_loadings_G` like any other parameter: neither depends on an
+orientation. Against `size_shape()`: both remove the LKJ bias; the size prior
+keeps the raw traits, so `fit_loo()` compares it with any other raw-trait fit
+directly.
+
 **`lm_phen_cov()`** is the same machinery without genetics: use it for the
 phenotypic covariance, for fixed-effect-adjusted trait covariance, or as a fast
 sanity check before an animal model. Its `P` is the **residual** covariance, not
@@ -459,7 +482,10 @@ animal_prior_draws(3)       # standalone prior simulator for the unstructured mo
 ```
 
 Both `plot_prior_posterior()` and `plot_forest()` reconstruct the prior for
-unstructured and ordinary factor-G animal fits with complete recorded metadata.
+unstructured (including `correlation_prior = "size"` and `"shared_size"`) and
+ordinary factor-G animal fits with complete recorded metadata;
+`animal_prior_draws(k, correlation_prior = "size")` simulates the size prior
+on its own.
 For factor G, they simulate the fitted horseshoe and column decay; `lkj_prior`
 does not set genetic correlations. Shared-factor or custom fits, bare draws
 and older fits missing metadata need explicit `prior` draws in the

@@ -11,13 +11,15 @@
                        "h2", "sigma_G", "sigma_E", "sigma_P", "beta",
                        "loadings", "uniqueness", "communality", "s_G",
                        "genetic_uniqueness", "residual_uniqueness",
-                       "factor_heritability", "factor_magnitude")
+                       "factor_heritability", "factor_magnitude",
+                       "size_loadings_G", "size_loadings_E")
 
 .matrix_components <- c("G", "E", "P", "corrG", "corrE", "corrP")
 
 .vector_components <- c("h2", "sigma_G", "sigma_E", "sigma_P",
                         "uniqueness", "communality", "s_G",
-                        "genetic_uniqueness", "residual_uniqueness")
+                        "genetic_uniqueness", "residual_uniqueness",
+                        "size_loadings_G", "size_loadings_E")
 
 #' Posterior draws of a fit, shaped by trait
 #'
@@ -41,8 +43,10 @@
 #'   the fit holds: \code{G}, \code{E}, \code{P}, \code{corrG}, \code{corrE},
 #'   \code{corrP} as trait by trait by draw arrays, \code{h2}, \code{sigma_G},
 #'   \code{sigma_E}, \code{sigma_P}, \code{uniqueness}, \code{communality},
-#'   \code{genetic_uniqueness}, \code{residual_uniqueness} and \code{s_G} as
-#'   trait by draw matrices, \code{loadings} as a trait by factor by draw array
+#'   \code{genetic_uniqueness}, \code{residual_uniqueness}, \code{s_G} and,
+#'   for \code{correlation_prior = "size"} or \code{"shared_size"} fits,
+#'   \code{size_loadings_G} and \code{size_loadings_E} as trait by draw
+#'   matrices, \code{loadings} as a trait by factor by draw array
 #'   for factor fits, \code{factor_heritability} and \code{factor_magnitude}
 #'   as factor by draw matrices, and \code{beta} as a trait by term by draw
 #'   array. Every dimension
@@ -117,6 +121,8 @@ fit_draws <- function(fit, traits = NULL, terms = NULL) {
     s_G = .vector_draws(m, "s_G", k, traits),
     genetic_uniqueness = .vector_draws(m, "genetic_uniqueness", k, traits),
     residual_uniqueness = .vector_draws(m, "residual_uniqueness", k, traits),
+    size_loadings_G = .vector_draws(m, "size_loadings_G", k, traits),
+    size_loadings_E = .vector_draws(m, "size_loadings_E", k, traits),
     factor_heritability = .indexed_vector_draws(m, "factor_heritability"),
     factor_magnitude = .indexed_vector_draws(m, "factor_magnitude"),
     beta = .beta_draws(m, k, traits, terms, attr(fit, "x_names"))

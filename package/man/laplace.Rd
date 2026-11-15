@@ -23,6 +23,7 @@ lmm_animal_laplace(
   column_decay = 0.8,
   draws = 2000,
   seed = NULL,
+  correlation_prior = c("lkj", "size", "shared_size"),
   ...
 )
 
@@ -71,6 +72,8 @@ means, standard deviations and median absolute deviations. A whole number.}
 
 \item{seed}{Optional seed for optimization and approximation draws. If omitted,
 a seed is drawn from R's random-number generator and recorded in the result.}
+
+\item{correlation_prior}{Prior on the genetic and residual correlation matrices of the unstructured multivariate model. \code{"lkj"} (default) is LKJ(\code{lkj_prior}), which shrinks every correlation toward zero. \code{"size"} writes each correlation matrix as one dense size factor plus an LKJ remainder, \eqn{\Omega = D(ll^T + R)D} with \eqn{R \sim} LKJ(\code{lkj_prior}) and \eqn{D} the row normalisation, and estimates where the correlations are shrunk to: the size loadings \eqn{l_k = \mu + \sigma z_k} are pooled around a mean loading with \eqn{\rho = \mu^2/(1+\mu^2) \sim} Beta(1, 1), \eqn{\sigma \sim} half-normal(0, 1) and \eqn{z_k \sim N(0, 1)}. \code{G} and \code{E} each get their own. \code{"shared_size"} is the same with one standardized pattern \eqn{z} shared by \code{G} and \code{E}, so the genetic and residual size axes deviate from equal loadings in the same direction, each with its own mean loading and spread; it needs \code{residual_structure = "unstructured"}. Neither lowers the rank: the factor moves the point the prior shrinks toward, and with \eqn{\rho = \sigma = 0} the prior is the LKJ one. Use them for traits that share a size axis (many measurements of one structure), where LKJ pulls large correlations, and with them the heritabilities, toward zero. Both need \code{genetic_structure = "unstructured"}, cannot be combined with \code{model_file}, and use \code{parametrization = "h2"}: leaving \code{parametrization} unset selects it, and asking for \code{"variance"} is an error. The fits add \code{rho_G}, \code{rho_E}, \code{sigma_size_G}, \code{sigma_size_E}, the size loadings on the correlation scale \code{size_loadings_G} and \code{size_loadings_E}, and \code{integration_G} and \code{integration_E}, the relative eigenvalue variance of each correlation matrix (0 for no correlation, 1 for a single axis). Sampling is slower than with \code{"lkj"}, about three times in the tests.}
 
 \item{...}{additional parameters for stan sampling}
 

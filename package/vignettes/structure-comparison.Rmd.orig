@@ -1,0 +1,171 @@
+---
+title: "Comparing covariance structures"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Comparing covariance structures}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+`lmm_animal()` offers five multivariate covariance structures:
+
+1. unstructured `G`, unstructured `E` (the default);
+2. unstructured `G`, diagonal `E`;
+3. factor `G`, unstructured `E`;
+4. factor `G`, diagonal `E`;
+5. factor `G`, shared-factor `E`: the same latent factors drive `G` and `E`.
+
+This vignette simulates five traits from a two-factor `G` and a diagonal `E`
+(so model 4 is the true one) and fits all five. It scores each fit twice: by
+its error against the simulated truth, which only a simulation can give, and by
+held-out predictive density with `fit_loo()`, which is the question a user can
+ask of real data.
+
+```{r packages, message = FALSE}
+library(stanimal)
+```
+
+## Simulation
+
+The first factor loads on traits 1 to 3, the second on traits 3 to 5.
+
+```{r simulate}
+set.seed(1234)
+n_traits <- 5L
+n_factors <- 2L
+traits <- paste0("t", seq_len(n_traits))
+
+Lambda <- matrix(c(0.90,  0.00,
+                   0.85,  0.00,
+                   0.70,  0.30,
+                   0.00,  0.80,
+                   0.00, -0.70), n_traits, n_factors, byrow = TRUE)
+Psi <- c(0.35, 0.40, 0.30, 0.45, 0.50)
+G <- Lambda %*% t(Lambda) + diag(Psi)
+E <- diag(c(0.80, 0.90, 0.75, 0.85, 0.95))
+dimnames(G) <- dimnames(E) <- list(traits, traits)
+
+n_gen <- 5; n_breed <- 100
+ped <- data.frame(id = seq_len(n_gen * n_breed),
+                  sire = NA_integer_, dam = NA_integer_,
+                  sex = NA_character_)
+ped$sex[seq_len(n_breed)] <- sample(rep(c("M", "F"), each = n_breed / 2))
+for (g in 2:n_gen) {
+  kids <- ((g - 1) * n_breed + 1):(g * n_breed)
+  pool <- ped[ped$id < min(kids), ]
+  ped$sire[kids] <- sample(pool$id[pool$sex == "M"], n_breed, TRUE)
+  ped$dam[kids]  <- sample(pool$id[pool$sex == "F"], n_breed, TRUE)
+  ped$sex[kids]  <- sample(c("M", "F"), n_breed, TRUE)
+}
+A <- makeA(ped)
+
+n <- nrow(A)
+X <- cbind(Intercept = 1, sex = rbinom(n, 1, 0.5),
+           age = round(rnorm(n, 3, 0.5), 2))
+B <- rbind(rep(10, n_traits), rep(1.5, n_traits), rep(0.4, n_traits))
+Y <- X %*% B +
+  t(chol(A)) %*% matrix(rnorm(n * n_traits), n) %*% chol(G) +
+  matrix(rnorm(n * n_traits), n) %*% chol(E)
+colnames(Y) <- traits
+```
+
+## Fitting the five structures
+
+Every fit uses the same chain settings, the unstructured parts the same LKJ
+prior and the factor parts the same horseshoe, so differences reflect the
+structure. `A` is decomposed once and passed to every fit as `eigen_A`.
+
+```{r fits, message = FALSE, warning = FALSE}
+e <- eigen(A, symmetric = TRUE)
+eigen_A <- list(Q = e$vectors, lambda = e$values)
+
+fit_one <- function(...) {
+  elapsed <- system.time(
+    fit <- lmm_animal(Y, X, A, eigen_A = eigen_A,
+                      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+                      refresh = 0, seed = 1, ...))[["elapsed"]]
+  attr(fit, "elapsed") <- elapsed
+  fit
+}
+factor_args <- list(genetic_structure = "factor", n_factors = n_factors,
+                    hs_global_scale = 2, hs_slab_scale = 2)
+
+fits <- list(
+  "G us, E us"         = fit_one(),
+  "G us, E diag"       = fit_one(residual_structure = "diagonal"),
+  "G factor, E us"     = do.call(fit_one, factor_args),
+  "G factor, E diag"   = do.call(fit_one, c(factor_args,
+                                            residual_structure = "diagonal")),
+  "G factor, E shared" = do.call(fit_one, c(factor_args,
+                                            residual_structure = "shared_factor"))
+)
+```
+
+## Against the truth
+
+Relative MSE divides each elementwise mean squared error by the mean squared
+truth, so errors on quantities with different scales can be compared. The
+correlation comparison uses the upper triangle, since the diagonal is always 1.
+`min_ess` is the smallest bulk effective sample size across the unique elements
+of `G`.
+
+```{r truth}
+relative_mse <- function(estimate, truth)
+  mean((estimate - truth)^2) / mean(truth^2)
+upper <- function(S) cov2cor(S)[upper.tri(S)]
+
+score <- function(fit) {
+  G_hat <- draws_mean(fit, "G")
+  E_hat <- draws_mean(fit, "E")
+  G_draws <- fit_draws(fit)$G
+  keep <- which(lower.tri(G), arr.ind = TRUE)
+  keep <- rbind(keep, cbind(seq_len(n_traits), seq_len(n_traits)))
+  ess <- apply(keep, 1, function(ij)
+    posterior::ess_bulk(G_draws[ij[1], ij[2], ]))
+  c(G = relative_mse(G_hat, G),
+    E = relative_mse(E_hat, E),
+    h2 = relative_mse(diag(G_hat) / diag(G_hat + E_hat),
+                      diag(G) / diag(G + E)),
+    corrG = relative_mse(upper(G_hat), upper(G)),
+    min_ess = min(ess),
+    divergences = sum(fit$diagnostic_summary(quiet = TRUE)$num_divergent),
+    time_s = attr(fit, "elapsed"))
+}
+round(t(sapply(fits, score)), 3)
+```
+
+## Held-out predictive density
+
+`fit_loo()` leaves out one individual at a time. Relatives share breeding values,
+so the term for an animal is the density of its traits given every other animal,
+computed after the fit from the draws (non-factorized LOO). Every fit is to the
+same response, so the constant the standardization contributes cancels in the
+comparison.
+
+```{r loo, warning = FALSE}
+loos <- lapply(fits, fit_loo, eigen_A = eigen_A)
+sapply(loos, function(l) sum(l$diagnostics$pareto_k > 0.7))
+loo::loo_compare(loos)
+```
+
+Every model is compared with the best one: `elpd_diff` is its loss relative to
+that model and `se_diff` the standard error of the difference. A difference
+smaller than about twice its standard error is not an ordering.
+
+Here the ranking separates the residual structure clearly. Both
+unstructured-`E` models lose more than three standard errors against the best
+fit, so the data prefer a diagonal `E`, which is what generated them. The
+shared-factor model sits between the two: it forces the factors that drive `G`
+to drive `E` too, which a diagonal `E` does not have. The genetic structure is
+not separated: with a diagonal `E`, the factor and unstructured `G` are about one
+standard error apart. That matches the table against the truth, where those two
+fits have nearly the same error. With five traits a factor `G` saves few
+parameters; its advantage, in accuracy and in sampling time, grows with the
+number of traits, where an unstructured `G` becomes expensive.
+
+Timings are single runs of the `lmm_animal()` call. The shared-factor model is
+the slowest to sample.

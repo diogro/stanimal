@@ -1,0 +1,106 @@
+---
+title: "Laplace approximation"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Laplace approximation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+
+`lmm_animal_laplace()` and `lm_phen_cov_laplace()` fit the same models as the
+samplers by a Laplace approximation: a Gaussian at the mode on the unconstrained
+scale, with draws from it transformed to the reported quantities. It is not a
+posterior sample. There are no MCMC diagnostics, and the draw-based tools
+(`fit_draws()`, `fit_loo()`, `breeding_values()`, `posterior_predictive()`,
+`imputed_data()`) refuse the result. Use it to explore, then confirm with the
+sampler.
+
+This vignette compares the two on the same simulated phenotypic data.
+
+
+``` r
+library(stanimal)
+```
+
+
+``` r
+set.seed(2026)
+n <- 200
+X <- cbind(intercept = 1, predictor = rnorm(n))
+P <- matrix(c(1, 0.4, 0.4, 1.5), 2)
+Y <- X %*% rbind(c(0.5, -0.5), c(0.3, -0.2)) +
+  matrix(rnorm(n * 2), n) %*% chol(P)
+colnames(Y) <- c("trait1", "trait2")
+```
+
+
+``` r
+approx <- lm_phen_cov_laplace(Y, X, draws = 2000, seed = 41)
+#> Initial log joint probability = -14269.4 
+#> Exception: lkj_corr_cholesky_lpdf: Random variable[2] is 0, but must be positive! (in '/var/folders/ph/fmqmjzln2h15bm5bstsgpng80000gn/T/RtmpBcvxLq/model-61e243024a41.stan', line 170, column 2 to column 43) 
+#> Optimization terminated normally:  
+#>   Convergence detected: relative gradient magnitude is below tolerance 
+#> Finished in  0.1 seconds.
+sampled <- lm_phen_cov(Y, X, iter = 1000, warmup = 500, chains = 2,
+                       cores = 2, seed = 41, refresh = 0)
+#> Running MCMC with 2 parallel chains...
+#> Chain 1 finished in 0.1 seconds.
+#> Chain 2 finished in 0.1 seconds.
+#> 
+#> Both chains finished successfully.
+#> Mean chain execution time: 0.1 seconds.
+#> Total execution time: 0.3 seconds.
+```
+
+
+``` r
+approx
+#> Laplace approximation, not a posterior sample
+#>   model : lm_phen_cov_laplace 
+#>   draws :2000 (seed 41)
+#>   time  : 0.8 s
+#> 
+#> No MCMC convergence diagnostics exist for this object, and the draw-based
+#> functions refuse it. Standard deviations for variances and
+#> heritabilities are the least reliable entries.
+#> 
+#>              quantity  mean       sd
+#>      P[trait1,trait1] 0.946 9.59e-02
+#>      P[trait2,trait1] 0.348 8.94e-02
+#>      P[trait1,trait2] 0.348 8.94e-02
+#>      P[trait2,trait2] 1.619 1.56e-01
+#>  corrP[trait1,trait1] 1.000 0.00e+00
+#>  corrP[trait2,trait1] 0.280 6.44e-02
+#>  corrP[trait1,trait2] 0.280 6.44e-02
+#>  corrP[trait2,trait2] 1.000 8.91e-17
+#>       sigma_P[trait1] 0.971 4.91e-02
+#>       sigma_P[trait2] 1.271 6.13e-02
+sampled$summary(c("P", "corrP"))[, c("variable", "mean", "sd", "rhat")]
+#> # A tibble: 8 × 4
+#>   variable    mean     sd  rhat
+#>   <chr>      <dbl>  <dbl> <dbl>
+#> 1 P[1,1]     0.964 0.0947  1.00
+#> 2 P[2,1]     0.362 0.0954  1.00
+#> 3 P[1,2]     0.362 0.0954  1.00
+#> 4 P[2,2]     1.66  0.174   1.00
+#> 5 corrP[1,1] 1     0      NA   
+#> 6 corrP[2,1] 0.286 0.0665  1.00
+#> 7 corrP[1,2] 0.286 0.0665  1.00
+#> 8 corrP[2,2] 1     0      NA
+sampled$diagnostic_summary()
+#> $num_divergent
+#> [1] 0 0
+#> 
+#> $num_max_treedepth
+#> [1] 0 0
+#> 
+#> $ebfmi
+#> [1] 1.027234 1.100035
+```
+
+Agreement here does not guarantee agreement in other models. Skewed or
+multimodal posteriors are approximated poorly, particularly for variances and
+heritabilities, whose standard deviations are the least reliable entries of the
+approximation.

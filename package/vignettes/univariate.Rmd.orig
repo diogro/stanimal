@@ -1,0 +1,166 @@
+---
+title: "Univariate animal model"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Univariate animal model}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "figures/univariate-",
+                      fig.width = 8, fig.height = 5, dpi = 80,
+                      out.width = "100%")
+```
+
+`lmm_animal()` fits a single trait under two parametrisations:
+
+- `"variance"` (the default) puts half-normal priors on the genetic and
+  residual standard deviations, and derives
+  h2 = s_G^2 / (s_G^2 + s_E^2);
+- `"h2"` puts a half-normal prior on the total standard deviation and a beta
+  prior on h2 itself (`beta_prior`; `c(1, 1)` is flat).
+
+This vignette simulates one trait on a random pedigree, fits it both ways and
+compares the two posteriors with the simulated truth.
+
+```{r packages, message = FALSE}
+library(stanimal)
+library(pedtools)   # randomPed(); install with pak::pkg_install("cran/pedtools")
+library(ggplot2)
+```
+
+## Simulation
+
+A random pedigree of 1,500 individuals, a heritability of 0.6 and a sex effect.
+
+```{r simulate}
+ped <- randomPed(1500, 50, seed = 2)
+ped <- data.frame(id = ped$ID, sire = ped$FIDX, dam = ped$MIDX)
+A <- makeA(ped)
+L_A <- chol(A)
+n <- nrow(A)
+
+set.seed(41)
+h2_true <- 0.6
+G <- h2_true          # additive genetic variance (P = 1)
+E <- 1 - h2_true      # residual variance
+
+a <- sqrt(G) * (t(L_A) %*% rnorm(n))   # Var(a) = G A
+
+beta <- matrix(c(1, 0.3), 2, 1,
+               dimnames = list(c("Intercept", "sex"), "trait"))
+X <- cbind(Intercept = 1, sex = sample(c(0, 1), n, replace = TRUE))
+e <- rnorm(n, sd = sqrt(E))
+
+Y <- X %*% beta + a + e
+colnames(Y) <- "trait"
+
+truth <- c(h2 = h2_true, sigma_G = sqrt(G), sigma_E = sqrt(E))
+round(truth, 3)
+```
+
+## Fitting both parametrisations
+
+```{r fit, message = FALSE}
+fit_var <- lmm_animal(Y, X, A, parametrization = "variance",
+                      iter = 3000, warmup = 2000, chains = 4, cores = 4,
+                      refresh = 0, seed = 1)
+fit_h2 <- lmm_animal(Y, X, A, parametrization = "h2", beta_prior = c(1, 1),
+                     iter = 3000, warmup = 2000, chains = 4, cores = 4,
+                     refresh = 0, seed = 1)
+```
+
+Both report the same quantities on the original scale: `h2`, `sigma_G` and
+`sigma_E`, plus the fixed effects.
+
+```{r summaries}
+fit_var$summary(c("h2", "sigma_G", "sigma_E", "beta"))
+fit_h2$summary(c("h2", "sigma_G", "sigma_E", "beta"))
+```
+
+The fixed effects are named after the columns of `X`:
+
+```{r beta}
+beta_draws_var <- rename_beta(fit_var, "beta")
+posterior::summarise_draws(beta_draws_var)
+```
+
+Posterior means against the simulated truth:
+
+```{r compare}
+rbind(variance = c(h2 = unname(draws_mean(fit_var, "h2")),
+                   sigma_G = unname(draws_mean(fit_var, "sigma_G")),
+                   sigma_E = unname(draws_mean(fit_var, "sigma_E"))),
+      h2 = c(h2 = unname(draws_mean(fit_h2, "h2")),
+             sigma_G = unname(draws_mean(fit_h2, "sigma_G")),
+             sigma_E = unname(draws_mean(fit_h2, "sigma_E"))),
+      truth = truth)
+round(drop(draws_mean(fit_var, "beta")), 3)
+t(beta)
+```
+
+## Diagnostics
+
+E-BFMI is where the two parametrisations can differ. When the genetic variance
+is weakly identified, the variance version mixes poorly in the neck between the
+two variance components; `lmm_animal()` then warns and suggests
+`parametrization = "h2"`. Here the pedigree is large and both are fine.
+
+```{r diagnostics}
+rbind(variance = fit_var$diagnostic_summary(quiet = TRUE)$ebfmi,
+      h2 = fit_h2$diagnostic_summary(quiet = TRUE)$ebfmi)
+fit_var$summary(c("h2", "sigma_G", "sigma_E"),
+                posterior::default_convergence_measures())
+fit_h2$summary(c("h2", "sigma_G", "sigma_E"),
+               posterior::default_convergence_measures())
+```
+
+```{r trace, fig.height = 3.5}
+bayesplot::color_scheme_set("blue")
+bayesplot::mcmc_trace(fit_var$draws(c("sigma_G", "sigma_E", "h2")))
+```
+
+## Intervals against the truth
+
+In `bayesplot::mcmc_recover_intervals()` the filled circle is the posterior
+mean, the thick and thin segments are the 80% and 99% intervals, and the
+simulated value is the hollow triangle.
+
+```{r intervals, fig.height = 3.5}
+interval_plot <- function(fit, pars, truth) {
+  bayesplot::mcmc_recover_intervals(
+    fit$draws(pars), true = stats::setNames(truth, pars),
+    prob = 0.8, prob_outer = 0.99, point_est = "mean")
+}
+interval_plot(fit_var, c("h2", "sigma_G", "sigma_E"), truth)
+interval_plot(fit_h2, c("h2", "sigma_G", "sigma_E"), truth)
+```
+
+## Prior against posterior
+
+`plot_prior_posterior()` and `plot_forest()` rebuild the prior the fit recorded,
+so the comparison is always against the prior that was actually used.
+
+```{r prior-posterior, fig.height = 3.5}
+plot_prior_posterior(fit_var, trait_names = "trait", ncol = 3)
+plot_forest(fit_var, trait_names = "trait")
+```
+
+Under `"variance"`, h2 is derived from two half-normal standard deviations, so
+its prior is not flat; under `"h2"` it is Beta(1, 1). With 1,500 individuals the
+data dominate and the two posteriors agree:
+
+```{r h2-densities, fig.height = 4}
+draws_of <- function(fit, label)
+  data.frame(h2 = as.vector(posterior::as_draws_matrix(fit$draws("h2"))),
+             parametrization = label)
+h2_draws <- rbind(draws_of(fit_var, "variance"), draws_of(fit_h2, "h2"))
+ggplot(h2_draws, aes(h2, colour = parametrization, fill = parametrization)) +
+  geom_density(alpha = 0.2) +
+  geom_vline(xintercept = h2_true, linetype = "dashed") +
+  labs(x = "h2", y = "Density",
+       title = "Posterior h2 under both parametrisations (dashed = truth)") +
+  theme_minimal()
+```

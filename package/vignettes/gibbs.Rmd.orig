@@ -1,0 +1,101 @@
+---
+title: "Gibbs sampler"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Gibbs sampler}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "figures/gibbs-",
+                      fig.width = 8, fig.height = 5, dpi = 80,
+                      out.width = "100%")
+```
+
+`lmm_animal_gibbs()` is a quick single-chain Gibbs sampler, meant for
+simulations, teaching and sanity checks rather than for inference. Its priors
+are inverse-Wishart on `G` and the residual covariance, which differ from those
+of `lmm_animal()`, so the two posteriors are close but not interchangeable. It
+does not need CmdStan.
+
+```{r packages, message = FALSE}
+library(stanimal)
+```
+
+## Simulation
+
+Half-sib families give a block relationship matrix without any pedigree code.
+
+```{r simulate}
+set.seed(1)
+n_fam <- 40; fam_size <- 8
+n <- n_fam * fam_size
+family <- rep(seq_len(n_fam), each = fam_size)
+A <- outer(family, family, "==") * 0.5
+diag(A) <- 1
+
+G <- matrix(c(0.60, 0.30,
+              0.30, 0.50), 2, byrow = TRUE)
+E <- matrix(c(0.80, 0.20,
+              0.20, 0.70), 2, byrow = TRUE)
+X <- cbind(Intercept = 1, sex = rbinom(n, 1, 0.5))
+B <- cbind(c(1.0, 0.5), c(-1.0, -0.2))
+Y <- X %*% B +
+  t(chol(A)) %*% matrix(rnorm(n * 2), n) %*% chol(G) +
+  matrix(rnorm(n * 2), n) %*% chol(E)
+colnames(Y) <- c("t1", "t2")
+h2_true <- diag(G) / diag(G + E)
+```
+
+## Fit
+
+`iter`, `warmup` and `thin` count Gibbs iterations, not Hamiltonian
+trajectories. Successive draws are autocorrelated, so the effective sample size
+is much smaller than the number of draws; this run keeps 5,000 of 20,000
+iterations and takes a few seconds.
+
+```{r fit}
+gibbs <- lmm_animal_gibbs(Y, X, A, iter = 20000, warmup = 5000, thin = 3)
+str(gibbs, max.level = 1)
+```
+
+The draws are plain arrays: `G` and `R` are k by k by draws, `beta` is traits by
+fixed effects by draws, `h2` is traits by draws. `fit_draws()` gives the same
+named arrays as for the Stan models, with the residual covariance named `E`.
+
+```{r draws}
+gibbs_post <- fit_draws(gibbs)
+round(draws_mean(gibbs_post, "G"), 2); round(G, 2)
+round(draws_mean(gibbs_post, "E"), 2); round(E, 2)
+round(draws_mean(gibbs_post, "beta"), 2); t(B)
+round(rbind(estimate = draws_mean(gibbs_post, "h2"), truth = h2_true), 2)
+```
+
+## Summaries as posterior draws
+
+Flattening the arrays into a draws matrix makes `posterior` and `bayesplot`
+apply.
+
+```{r posterior}
+gibbs_draws <- posterior::as_draws_matrix(cbind(
+  G11 = gibbs$G[1, 1, ], G12 = gibbs$G[1, 2, ], G22 = gibbs$G[2, 2, ],
+  R11 = gibbs$R[1, 1, ], R12 = gibbs$R[1, 2, ], R22 = gibbs$R[2, 2, ],
+  `h2[t1]` = gibbs$h2[1, ], `h2[t2]` = gibbs$h2[2, ]))
+posterior::summarise_draws(gibbs_draws)
+```
+
+```{r trace, fig.height = 4}
+bayesplot::color_scheme_set("blue")
+bayesplot::mcmc_trace(gibbs_draws, pars = c("G11", "G12", "G22", "R11", "R22"))
+```
+
+```{r intervals, fig.height = 4}
+truth <- c(G11 = G[1, 1], G12 = G[1, 2], G22 = G[2, 2],
+           R11 = E[1, 1], R12 = E[1, 2], R22 = E[2, 2],
+           `h2[t1]` = h2_true[[1]], `h2[t2]` = h2_true[[2]])
+bayesplot::mcmc_recover_intervals(gibbs_draws, true = truth,
+                                  prob = 0.8, prob_outer = 0.99,
+                                  point_est = "mean")
+```

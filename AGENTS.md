@@ -10,8 +10,9 @@ standardized response scale.
 
 This file is the interface guide: what to call, what comes back, and how to make
 the prior choices that the function signatures do not make for you. It is written
-for anyone *using* the package. Worked examples live in `README.md` and
-`examples/`; if you are changing the package itself, read `DEVELOPMENT.md`.
+for anyone *using* the package. Worked examples live in `README.md` and in the
+vignettes (`package/vignettes/`, rendered at https://diogro.github.io/stanimal/);
+if you are changing the package itself, read `DEVELOPMENT.md`.
 
 ## Quick decision table
 
@@ -363,7 +364,7 @@ scale, transformed to reported quantities, not a posterior sample. The result ha
 are the least reliable entries; use it to explore, then confirm with the sampler.
 Arguments in `...` are ignored (with a warning). CmdStan warnings and failures
 are surfaced without automatic retries; the seed is recorded in the result.
-See `examples/laplace.R` for a sampler comparison.
+See `vignette("laplace", package = "stanimal")` for a sampler comparison.
 
 **`lmm_animal_gibbs()`** is a convenience single-chain sampler with
 inverse-Wishart priors. It does **not** reproduce `lmm_animal()`; use it for
@@ -518,7 +519,11 @@ covariance, and recovery of `G`/`P` can be scored directly.
 
 - `README.md` — the full narrative, worked examples, and the mathematics of each
   model.
-- `examples/` — runnable scripts; `examples/README.md` says what each covers.
+- The vignettes — worked analyses of every model, comparing the posterior with
+  a simulated truth or the data: `browseVignettes("stanimal")`, or the
+  articles at https://diogro.github.io/stanimal/. The sources are
+  `package/vignettes/*.Rmd.orig`.
+- `examples/` — the long simulation studies and cross-package comparisons.
 - `?lmm_animal`, `?lm_phen_cov`, `?size_shape`, `?makeA` — argument-level detail.
 - `DEVELOPMENT.md` — **only if you are changing stanimal itself**: repository
   layout, build and test commands, and the packaging conventions.

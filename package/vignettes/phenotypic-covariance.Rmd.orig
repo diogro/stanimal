@@ -1,0 +1,96 @@
+---
+title: "Phenotypic covariance with size and shape"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Phenotypic covariance with size and shape}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "figures/phenotypic-covariance-",
+                      fig.width = 8, fig.height = 5, dpi = 80,
+                      out.width = "100%")
+```
+
+`lm_phen_cov()` estimates the phenotypic covariance matrix `P` after the fixed
+effects. There is no relatedness, so no `G` and no breeding values. This
+vignette fits all 35 log-transformed cranial distances of the mouse data. The
+distances are strongly integrated (they share one size gradient), so the traits
+are first reparametrised with `size_shape()`, and every draw is mapped back to
+the log-trait scale with `back_transform()`.
+
+```{r packages, message = FALSE}
+library(stanimal)
+library(patchwork)
+```
+
+## Size and shape scores
+
+Keeping all `k - 1` shape axes makes the reparametrisation exact; a smaller
+`n_shape` gives a lower-rank, and much cheaper, model.
+
+```{r size-shape}
+ratonesdf <- ratones_morpho
+traits <- names(ratonesdf)[12:46]
+log_traits <- log(as.matrix(ratonesdf[, traits]))
+ss <- size_shape(log_traits)
+ratonesdf <- cbind(ratonesdf, ss$scores)
+c(measured_traits = length(traits), model_traits = ncol(ss$scores))
+```
+
+`animal_design()` builds `Y` and `X` from a formula. With many traits, the
+`cbind()` response is assembled from the column names.
+
+```{r design}
+ratones_formula <- stats::reformulate(
+  c("SEX", "AGE", "LIN"),
+  response = sprintf("cbind(%s)", paste(ss$traits, collapse = ", ")))
+ratones <- animal_design(ratones_formula, data = ratonesdf)
+Y <- ratones$Y
+X <- ratones$X
+dim(Y)
+```
+
+## Fit
+
+The LKJ prior acts on correlations between size and the shape axes, which are
+principal components and so expected to be nearly uncorrelated; a firmer
+`lkj_prior = 6` says so.
+
+```{r fit, message = FALSE}
+cov_fit <- lm_phen_cov(Y, X, lkj_prior = 6, iter = 800, warmup = 400,
+                       chains = 4, cores = 4, refresh = 0, seed = 1)
+cov_fit$summary(c("sigma_P[1]", "P[1,1]", "P[2,2]", "corrP[1,2]"))
+cov_fit$diagnostic_summary()
+```
+
+## Back to the trait scale
+
+`back_transform()` returns a list of arrays indexed by trait first and draw last:
+`P` and `corrP` are traits by traits by draws and `sigma_P` is traits by draws,
+all named after the measured traits.
+
+```{r back-transform}
+post <- back_transform(cov_fit, ss)
+post
+round(draws_mean(post, "sigma_P")[1:5], 3)
+round(draws_mean(post, "corrP")[1:3, 1:3], 3)
+```
+
+The posterior mean `P` on the log-trait scale is close to the covariance of the
+least-squares residuals, the unpenalised estimate of the same quantity:
+
+```{r compare}
+P_hat <- draws_mean(post, "P")
+P_ols <- cov(residuals(lm(log_traits ~ X - 1)))
+round(P_hat[1:4, 1:4], 4)
+round(P_ols[1:4, 1:4], 4)
+evolqg::MatrixCompare(P_hat, P_ols)
+```
+
+```{r corr, fig.width = 10, fig.height = 5}
+plot_corr(cov2cor(P_hat), "Posterior mean phenotypic correlations") +
+  plot_corr(cov2cor(P_ols), "Residual correlations")
+```

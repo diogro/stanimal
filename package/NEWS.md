@@ -1,3 +1,12 @@
+# stanimal (development version)
+
+* The worked examples are now vignettes (`browseVignettes("stanimal")`), and the
+  package has a website with the reference and the vignettes as articles,
+  https://diogro.github.io/stanimal/. The vignettes are precomputed, so
+  building or checking the package does not fit any model. The scripts they
+  replace are gone from `examples/`, which keeps the long simulation studies
+  and cross-package comparisons.
+
 # stanimal 0.9.0
 
 * `lmm_animal()` and `lmm_animal_laplace()` gain `correlation_prior`. The

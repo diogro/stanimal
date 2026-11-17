@@ -1,0 +1,161 @@
+---
+title: "Sparse factor model for G"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Sparse factor model for G}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "figures/factor-model-",
+                      fig.width = 8, fig.height = 5, dpi = 80,
+                      out.width = "100%")
+```
+
+With many traits an unstructured `G` has many parameters, and most of them are
+weakly identified. `genetic_structure = "factor"` writes `G` as a few sparse
+latent factors plus trait-specific variances, with regularized-horseshoe
+loadings. This vignette simulates twelve traits from a nine-factor hierarchy (a
+general size factor, two broad blocks, four unequal sub-blocks and two nested
+sub-sub-blocks), fits the factor model, and compares the posterior `G`, genetic
+correlations, heritabilities, uniqueness and factor magnitudes with the
+simulation.
+
+```{r packages, message = FALSE}
+library(stanimal)
+library(patchwork)   # to place plots side by side
+```
+
+## Simulation
+
+```{r loadings}
+set.seed(1)
+n_traits <- 12L
+n_factors <- 9L
+traits <- sprintf("trait%d", seq_len(n_traits))
+
+Lambda <- matrix(0, n_traits, n_factors)
+colnames(Lambda) <- c("size", "block1", "block2",
+                      "sub1a", "sub1b", "sub2a", "sub2b",
+                      "subsub1", "subsub2")
+Lambda[, 1] <- c(0.62, 0.58, 0.55, 0.50, 0.48, 0.52,
+                 0.60, 0.56, 0.53, 0.49, 0.57, 0.51)
+Lambda[1:6, 2] <- c(0.55, 0.50, 0.45, 0.48, 0.52, 0.40)
+Lambda[7:12, 3] <- c(0.50, 0.58, 0.45, 0.55, 0.48, 0.52)
+Lambda[1:2, 4] <- c(0.55, 0.50)               # sub-block 1a: traits 1-2
+Lambda[3:6, 5] <- c(0.50, 0.45, 0.55, 0.40)   # sub-block 1b: traits 3-6
+Lambda[7:9, 6] <- c(0.45, 0.50, 0.40)         # sub-block 2a: traits 7-9
+Lambda[10:12, 7] <- c(0.55, 0.50, 0.45)       # sub-block 2b: traits 10-12
+Lambda[3:4, 8] <- c(0.45, 0.40)               # nested in sub-block 1b
+Lambda[10:11, 9] <- c(0.45, 0.40)             # nested in sub-block 2b
+
+Psi <- c(0.35, 0.40, 0.30, 0.45, 0.50, 0.35,
+         0.40, 0.30, 0.45, 0.35, 0.40, 0.45)
+G <- Lambda %*% t(Lambda) + diag(Psi)
+E <- diag(c(0.80, 0.90, 0.75, 0.85, 0.95, 0.80,
+            0.90, 0.75, 0.85, 0.80, 0.90, 0.75))
+dimnames(G) <- dimnames(E) <- list(traits, traits)
+```
+
+Five generations of 120 individuals, with sex-consistent parents:
+
+```{r pedigree}
+n_gen <- 5L; n_breed <- 120L
+ped <- data.frame(id = seq_len(n_gen * n_breed),
+                  sire = NA_integer_, dam = NA_integer_,
+                  sex = NA_character_)
+ped$sex[seq_len(n_breed)] <- sample(rep(c("M", "F"), each = n_breed / 2))
+for (g in 2:n_gen) {
+  kids <- ((g - 1) * n_breed + 1):(g * n_breed)
+  pool <- ped[ped$id < min(kids), ]
+  ped$sire[kids] <- sample(pool$id[pool$sex == "M"], n_breed, TRUE)
+  ped$dam[kids]  <- sample(pool$id[pool$sex == "F"], n_breed, TRUE)
+  ped$sex[kids]  <- sample(c("M", "F"), n_breed, TRUE)
+}
+A <- makeA(ped)
+
+n <- nrow(A)
+X <- cbind(Intercept = 1, sex = rbinom(n, 1, 0.5),
+           age = round(rnorm(n, 3, 0.5), 2))
+B <- rbind(rep(10, n_traits),
+           seq(-1, 1.5, length.out = n_traits),
+           seq(-0.4, 0.7, length.out = n_traits))
+u <- t(chol(A)) %*% matrix(rnorm(n * n_traits), n) %*% chol(G)
+e <- matrix(rnorm(n * n_traits), n) %*% chol(E)
+Y <- X %*% B + u + e
+colnames(Y) <- traits
+```
+
+## Fit
+
+The hierarchy is ordered from broad to narrow, so a mild `column_decay` favours
+that order without forcing it. See the prior section of `AGENTS.md` (or
+`?lmm_animal`) for how `n_factors`, `column_decay` and the horseshoe scales
+interact.
+
+```{r fit, message = FALSE}
+fit <- lmm_animal(
+  Y, X, A,
+  genetic_structure = "factor", n_factors = n_factors,
+  hs_global_scale = 2, hs_slab_scale = 2,
+  column_decay = 0.9,
+  iter = 2500, warmup = 1250, chains = 4, cores = 4,
+  refresh = 0, show_messages = FALSE, seed = 1
+)
+fit$diagnostic_summary()
+```
+
+## Recovery of G
+
+The error is reported relative to the size of `G`, so it reads as a share of
+the target whatever scale the simulation uses. An absolute error on a covariance
+matrix means nothing without the variances it should be compared with.
+
+```{r G}
+relative_mse <- function(estimate, truth)
+  mean((estimate - truth)^2) / mean(truth^2)
+G_hat <- draws_mean(fit, "G")
+round(sqrt(relative_mse(G_hat, G)), 3)
+round(G_hat[1:6, 1:6], 2)
+round(G[1:6, 1:6], 2)
+```
+
+The genetic correlations recover the overlapping module structure:
+
+```{r corr, fig.height = 4.5}
+plot_corr(draws_mean(fit, "corrG"), "Posterior mean genetic correlation") +
+  plot_corr(cov2cor(G), "Simulated genetic correlation")
+```
+
+## Heritability, communality and uniqueness
+
+These are the easiest summaries to compare with the simulation, because they do
+not depend on the orientation of the factors. Loadings are only identified up
+to rotation and sign, so their posterior means can be near zero even when `G`
+is recovered.
+
+```{r h2}
+h2_hat <- draws_mean(fit, "h2")
+h2_true <- diag(G) / diag(G + E)
+round(rbind(estimate = h2_hat, truth = h2_true), 2)
+
+round(rbind(estimate = draws_mean(fit, "communality"),
+            truth = rowSums(Lambda^2) / diag(G)), 2)
+round(rbind(estimate = draws_mean(fit, "uniqueness"),
+            truth = Psi / diag(G)), 2)
+```
+
+The fit overstates the communalities, and so understates the uniqueness, of
+every trait here, and puts `h2` a little too high for several of them.
+Before reading the uniqueness of real traits, check how large this bias is in a simulation like
+this one.
+
+`factor_magnitude` is the squared norm of each loading column on the correlation
+scale. It depends on the orientation, which only the prior pins down, so read it
+with that in mind.
+
+```{r magnitude}
+fit$summary("factor_magnitude")[, c("variable", "mean", "sd", "rhat", "ess_bulk")]
+```

@@ -1,40 +1,24 @@
 # Examples
 
-Runnable scripts for the models in `stanimal`. Run them from the project root,
-because the figures are written to `examples/figures/`:
+The worked examples of each model are vignettes: see the articles on the
+[package website](https://diogro.github.io/stanimal/), or
+`browseVignettes("stanimal")` after installing. Their sources are in
+`package/vignettes/`.
+
+This directory keeps the longer studies, which fit many models or install other
+packages and are not suited to a vignette. Run them from the project root:
 
 ```sh
-Rscript examples/univariate.R
+Rscript examples/package_comparison.R
 ```
 
 | Script | Shows |
 |---|---|
-| `univariate.R` | `lmm_animal()` with a single trait, both parametrisations (`"variance"` and `"h2"`), compared with a simulated truth |
-| `multivariate.R` | `lmm_animal()` with five correlated traits: `G`, `E`, `P`, `corrG`, `h2` and the fixed effects |
-| `factor_model.R` | `lmm_animal(genetic_structure = "factor")`: a sparse nine-factor `G` for twelve traits with a hierarchical size/block/sub-block structure, regularized-horseshoe loadings, column decay, and posterior summaries |
-| `ratones.R` | `lmm_animal()` on real data: four log cranial distances of 329 mice, with `A` built from the dam and sire recorded on each mouse |
-| `imputation.R` | Incomplete opossum records fitted with their existing gaps in place, followed by multiple imputations with `imputed_data()` |
-| `breeding_values.R` | `breeding_values()` on the opossum data: predicted additive values, their standard errors and reliability, the ranking of candidates by breeding value against the ranking by measurement, and the shrinkage that separates the two |
-| `phenotypic_covariance.R` | `lm_phen_cov()` with no pedigree, plus `size_shape()` and `back_transform()`, on the same mouse data |
-| `factor_phenotypic_covariance.R` | `lm_phen_cov(covariance_structure = "factor")` on the full 35-trait mouse covariance matrix, on the log-trait scale: a scree plot and parallel analysis to choose `n_factors`, sparse loadings, factor magnitudes, communality and uniqueness, an OLS residual-covariance check and correlation heatmaps |
-| `gibbs.R` | `lmm_animal_gibbs()`, the single-chain Gibbs sampler; its inverse-Wishart priors differ from `lmm_animal()` |
-| `laplace.R` | Compare the phenotypic Laplace approximation and sampler on the same simulated data, with diagnostics and limitations |
 | `multivariate_power_simulation.R` | Parallel simulation study of genetic-correlation recovery across sample sizes, writing summaries to `results/` |
 | `package_comparison.R` | The same bivariate animal model fitted with `stanimal`, `MCMCglmm`, `BGLR`, `sommer`, `lme4breeding` and ASReml-R, with estimates compared with the simulated truth, minimum ESS of `G` and timings |
 | `trait_comparison.R` | The same comparison for a user-chosen number of traits (first argument, default 5), reporting relative MSE of `G`, `E`, `h2` and `corrG`, minimum ESS of `G` and timings |
-| `structure_comparison.R` | The five `lmm_animal()` covariance structures (`G` unstructured/factor by `E` unstructured/diagonal/shared-factor) fitted to the same simulated factor-structured data, reporting relative MSE, minimum ESS, divergences and timings, then ranking the same fits by held-out predictive density with `loo_compare()` — the comparison that does not need a simulated truth |
 
-In the interval plots (`bayesplot::mcmc_recover_intervals()`), the filled circle
-is the posterior mean, the thick and thin segments are the 80% and 99% credible
-intervals, and the simulated value is the hollow triangle. The true values are
-matched to the draws by name, not by position.
-
-All scripts need `stanimal` installed. They also need CmdStan available
-(`cmdstanr::install_cmdstan()`), except `gibbs.R`, which does not use CmdStan.
-`structure_comparison.R` also needs the `loo` package for the predictive
-comparison. The mouse data used by `ratones.R`, `phenotypic_covariance.R` and
-`factor_phenotypic_covariance.R`, and the opossum data used by `imputation.R`
-and `breeding_values.R`, ship with the package, so nothing is downloaded.
-The two comparison scripts install `MCMCglmm`, `BGLR`, `sommer` and
-`lme4breeding` if they are missing, and check for a licensed ASReml-R without
-trying to install it.
+All scripts need `stanimal` installed and CmdStan available
+(`cmdstanr::install_cmdstan()`). The two comparison scripts install `MCMCglmm`,
+`BGLR`, `sommer` and `lme4breeding` if they are missing, and check for a
+licensed ASReml-R without trying to install it.

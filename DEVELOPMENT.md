@@ -6,8 +6,8 @@ rather than changing it, read `AGENTS.md` instead.
 
 ## Layout
 
-- `package/` is the R package. `README.md` and `examples/` sit outside it, so they
-  are not in the built tarball.
+- `package/` is the R package. `README.md`, `examples/` and `docs/` sit outside
+  it, so they are not in the built tarball.
 - `package/R/` — one file per concern: `lmm_animal.R` (animal models and the
   `Y`/`X`/`A` validation), `lm_phen_cov.R`, `lmm_animal_gibbs.R`,
   `animal_design.R`, `makeA.R`, `genomic_relationship.R`, `size_shape.R`
@@ -38,8 +38,23 @@ that decomposed `A` in Stan, which `test-eigen-A.R` checks against a model
 written the old way. A custom `model_file` also receives `A`, since older
 custom models declare it.
 
-- `examples/*.R` are runnable scripts that write figures to `examples/figures/`
-  (gitignored). `examples/README.md` indexes them.
+- `package/vignettes/` holds the worked examples. They are **precomputed**:
+  each `*.Rmd.orig` is the source, and `precompute.R` knits it into the `*.Rmd`
+  that ships, with its output and figures (`vignettes/figures/`) already in
+  place, because the vignettes fit Stan models and `R CMD check` must not. Edit
+  the `.Rmd.orig`, never the `.Rmd`, then rerun
+  `(cd package/vignettes && Rscript precompute.R <name>)` with the current
+  package installed, and commit the `.Rmd` and figures with it. The `.Rmd.orig`
+  files and `precompute.R` are in `.Rbuildignore`.
+- `docs/` is the pkgdown site served by GitHub Pages (from `master`, `/docs`).
+  It is generated: configure it in `package/_pkgdown.yml`, write the landing
+  page in `package/pkgdown/index.md`, and rebuild with
+  `Rscript -e 'pkgdown::build_site("package", install = FALSE)'` after the
+  package is installed. Rebuild it when the vignettes, the Rd files or the
+  NEWS change, and commit the result.
+- `examples/*.R` are the long simulation studies and cross-package
+  comparisons, which write to `results/` and `examples/figures/` (both
+  gitignored). `examples/README.md` indexes them.
 
 `plan.md` is the working roadmap: incomplete trait records, breeding values and
 LOO first, then evolutionary analysis of `G`, then the locus-effect models. It
@@ -139,7 +154,7 @@ directory, not the repository; the check output identifies their location.
   U(-1, 1) (`init = 1` in `cstan()`, `init_r = 1` for rstan). Don't widen it
   back to the engines' U(-2, 2): with 35 traits the correlation factor starts
   nearly singular, the step size collapses to ~1e-21 in warmup and the chains
-  never move (seen in `examples/phenotypic_covariance.R`).
+  never move (seen in the phenotypic covariance vignette).
 - **Factor summaries are rotation-dependent.** `loadings` and `factor_magnitude`
   are only pinned by the prior, so a poor `Rhat` there is not a failure. The
   exception is a bimodal `communality`, which is real.

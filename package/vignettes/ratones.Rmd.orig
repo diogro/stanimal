@@ -1,0 +1,168 @@
+---
+title: "Real data: mice from a selection experiment"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Real data: mice from a selection experiment}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "figures/ratones-",
+                      fig.width = 8, fig.height = 5, dpi = 80,
+                      out.width = "100%")
+```
+
+`ratones_morpho` ships with the package (Penna et al. 2017): 35 cranial
+distances for 329 mice from five artificial selection lines, with sex, age,
+generation and line. This vignette fits four of the distances, with the
+relationship matrix built by `animal_design()` from the dam and sire recorded on
+each mouse, and then fits the same model in size and shape coordinates.
+
+```{r packages, message = FALSE}
+library(stanimal)
+library(patchwork)
+```
+
+## Data
+
+```{r data}
+dat <- ratones_morpho
+table(dat$selection)
+```
+
+Four distances spanning the skull, on the log scale as usual for morphometrics.
+The 35 distances are moderately integrated (one principal component explains
+about 40% of the variance), so a handful of them already carry a correlated
+genetic signal.
+
+```{r traits}
+traits <- c("IS_PM", "NSL_NA", "PT_BA", "BA_OPI")
+dat[traits] <- log(dat[traits])
+round(cor(dat[traits]), 2)
+```
+
+`animal_design()` builds `Y`, `X` and `A` in one call. The formula gives the
+fixed effects: sex, age at death and selection line (the lines differ in body
+weight by construction, so their means must be modelled). `pedigree = ped` adds
+the relationship matrix. The rows of `ratones_morpho` are named with the
+individual IDs, so the pedigree is matched to the rows of `Y` automatically, and
+parents without records are added as founders.
+
+```{r design}
+ped <- ratones_pedigree
+design <- suppressWarnings(
+  animal_design(cbind(IS_PM, NSL_NA, PT_BA, BA_OPI) ~ SEX + AGE + LIN,
+                dat, pedigree = ped))
+dim(design$Y)
+colnames(design$X)
+dim(design$A)
+```
+
+## Fit
+
+```{r fit, message = FALSE}
+fit <- lmm_animal(design$Y, design$X, design$A, lkj_prior = 2,
+                  iter = 3000, warmup = 1500, chains = 4, cores = 4,
+                  refresh = 0, seed = 1)
+fit$summary(c("h2", "sigma_G", "sigma_E", "corrG"))
+fit$diagnostic_summary()
+```
+
+The fixed effects, named after the columns of `X`:
+
+```{r beta}
+beta_draws <- rename_beta(fit, "beta")
+posterior::summarise_draws(beta_draws)
+```
+
+The traits are log distances, so variances are small numbers; heritabilities and
+correlations are scale free and easier to read.
+
+```{r matrices}
+signif(draws_mean(fit, "G"), 2)
+round(draws_mean(fit, "corrG"), 2)
+```
+
+`P = G + E` is estimated after the fixed effects, so it is smaller than the raw
+covariance of the traits, which also contains the sex, age and line effects. It
+is close to the covariance of the least-squares residuals:
+
+```{r P}
+signif(draws_mean(fit, "P"), 2)
+signif(cov(residuals(lm(cbind(IS_PM, NSL_NA, PT_BA, BA_OPI) ~ SEX + AGE + LIN,
+                        dat))), 2)
+```
+
+## Plots
+
+Where the prior and the posterior overlap for h2 and `corrG`, the data add
+little information.
+
+```{r prior-posterior, fig.height = 6}
+plot_prior_posterior(fit, trait_names = traits, ncol = 4)
+```
+
+```{r forest, fig.height = 5}
+plot_forest(fit, trait_names = traits)
+```
+
+The residuals after the fixed effects, with posterior draws of the `G` ellipses
+and the genetic correlations. `X = design$X` removes the sex, age and line
+effects, so the cloud and the dashed ellipse have roughly the covariance
+`P = G + E`.
+
+```{r ellipses, fig.height = 7}
+plot_G_ellipses(fit, design$Y, trait_names = traits, n_show = 100,
+                X = design$X)
+```
+
+```{r corr, fig.height = 4}
+plot_corr(draws_mean(fit, "corrG"), "Posterior mean corrG") +
+  plot_corr(cor(dat[traits]), "Observed P correlations")
+```
+
+## The same model in size and shape coordinates
+
+Size plus the three shape axes span the same space as the four traits, so this
+is the same model in another parametrisation: same number of traits, same `X`
+and `A`. The prior is not invariant, though: the LKJ prior now acts on
+correlations between size and shape rather than between the raw traits, and the
+shape axes are principal components, so their correlations are expected to be
+small. `lkj_prior` stays at 2 to keep the two fits comparable.
+
+```{r size-shape, message = FALSE}
+ss <- size_shape(dat[traits], n_shape = length(traits) - 1L)
+dat_ss <- cbind(dat, ss$scores)
+design_ss <- suppressWarnings(
+  animal_design(cbind(size, shape1, shape2, shape3) ~ SEX + AGE + LIN,
+                dat_ss, pedigree = ped))
+fit_ss <- lmm_animal(design_ss$Y, design_ss$X, design_ss$A, lkj_prior = 2,
+                     iter = 3000, warmup = 1500, chains = 4, cores = 4,
+                     refresh = 0, seed = 1)
+```
+
+`back_transform()` maps every draw back to the measured traits, returning `G` as
+a traits by traits by draws array named after the traits.
+
+```{r back-transform}
+post_ss <- back_transform(fit_ss, ss)
+G_traits <- draws_mean(fit, "G")
+G_size_shape <- draws_mean(post_ss, "G")
+round(G_traits, 4)
+round(G_size_shape, 4)
+# largest difference, relative to the largest element of G
+round(max(abs(G_traits - G_size_shape)) / max(abs(G_traits)), 3)
+```
+
+The two fits are to linear maps of the same data, so `fit_loo()` can compare them
+on the trait scale once it is told the transformation:
+
+```{r loo, warning = FALSE}
+loo::loo_compare(list(raw = fit_loo(fit),
+                      size_shape = fit_loo(fit_ss, transform = ss)))
+```
+
+The difference is well inside two standard errors, so the data do not prefer
+one parametrisation: they are the same model under slightly different priors.

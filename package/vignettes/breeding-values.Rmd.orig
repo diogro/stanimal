@@ -1,0 +1,119 @@
+---
+title: "Breeding values"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Breeding values}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "figures/breeding-values-",
+                      fig.width = 8, fig.height = 5, dpi = 80,
+                      out.width = "100%")
+```
+
+An animal model answers "how much of the variation in this trait is additive"
+and gives the covariance `G`. It does not answer "what is the additive value of
+*this* opossum", because the breeding values are integrated out of the
+likelihood: that is what makes the model scale to many individuals and many
+traits. `breeding_values()` puts them back afterwards, from the `G`, `E` and
+`beta` the fit already estimated. What comes out is what a breeding program
+would act on: a predicted additive value per individual, with the reliability of
+that prediction.
+
+```{r packages, message = FALSE}
+library(stanimal)
+library(ggplot2)
+```
+
+## Fit
+
+Three distances that span the skull and are not dominated by a single axis.
+
+```{r fit, message = FALSE}
+traits <- c("IS_NSL", "NA_BR", "ZI_ZYGO")
+dat <- opossum[complete.cases(opossum[, c("id", "sex", "age", traits)]), ]
+dat[traits] <- log(dat[traits])
+
+design <- suppressWarnings(
+  animal_design(cbind(IS_NSL, NA_BR, ZI_ZYGO) ~ sex + age, dat))
+A <- opossum_grm[rownames(design$Y), rownames(design$Y)]
+fit <- lmm_animal(design$Y, design$X, A, lkj_prior = 2,
+                  iter = 800, warmup = 400, chains = 2,
+                  refresh = 0, seed = 1)
+```
+
+## The breeding values
+
+The prediction is the conditional mean of the additive values given the data,
+evaluated at the posterior means of `G`, `E` and `beta`. That is empirical
+Bayes: the standard errors are conditional on those values and do not carry the
+uncertainty in the covariance parameters.
+
+```{r ebv}
+ebv <- breeding_values(fit)
+ebv
+```
+
+The reliability is the share of a trait's additive variance the prediction pins
+down. An animal with many measured relatives scores higher than a lone one.
+
+```{r reliability}
+round(apply(ebv$reliability, 2, stats::quantile, c(0.05, 0.5, 0.95)), 2)
+```
+
+The values are on the trait's scale, as deviations from the fixed effects, so
+they can be compared with each animal's own deviation:
+
+```{r rank-correlation}
+residual <- design$Y - design$X %*% t(draws_mean(fit, "beta"))
+round(diag(stats::cor(ebv$values, residual, method = "spearman")), 2)
+```
+
+## Ranking candidates
+
+Ranking by breeding value and ranking by measurement do not give the same list.
+
+```{r ranking}
+first <- traits[1]
+by_value <- rownames(ebv$values)[order(ebv$values[, first], decreasing = TRUE)]
+by_phenotype <- rownames(residual)[order(residual[, first], decreasing = TRUE)]
+data.frame(id = by_value[1:10],
+           value = round(ebv$values[by_value[1:10], first], 3),
+           se = round(ebv$se[by_value[1:10], first], 3),
+           reliability = round(ebv$reliability[by_value[1:10], first], 3))
+length(intersect(by_value[1:10], by_phenotype[1:10]))
+```
+
+Here `r length(intersect(by_value[1:10], by_phenotype[1:10]))` of the top ten by breeding value
+are also in the top ten by their own measurement. With reliabilities around one
+half, an animal's relatives and its other traits weigh as much in the
+prediction as its own record.
+
+## Shrinkage
+
+Every prediction sits closer to the mean than the animal's own deviation, and
+the points furthest inside the line are the ones with the lowest reliability.
+Both axes are in phenotypic standard deviations, since each log distance has its
+own scale.
+
+```{r shrinkage, fig.height = 4}
+sd_P <- sqrt(diag(draws_mean(fit, "P")))
+plot_dat <- data.frame(
+  trait = factor(rep(traits, each = nrow(residual)), levels = traits),
+  measured = as.numeric(sweep(residual, 2, sd_P, "/")),
+  predicted = as.numeric(sweep(ebv$values, 2, sd_P, "/")),
+  reliability = as.numeric(ebv$reliability))
+
+ggplot(plot_dat, aes(x = measured, y = predicted, colour = reliability)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_point(size = 1.2, alpha = 0.8) +
+  scale_colour_viridis_c(option = "magma", direction = -1) +
+  facet_wrap(~trait, scales = "free") +
+  labs(x = "measured deviation from the fixed effects (phenotypic sds)",
+       y = "predicted breeding value (phenotypic sds)",
+       title = "Breeding values shrink the measurements toward the mean") +
+  theme_minimal()
+```

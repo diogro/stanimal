@@ -1,0 +1,162 @@
+---
+title: "Multivariate animal model"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Multivariate animal model}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "figures/multivariate-",
+                      fig.width = 8, fig.height = 5, dpi = 80,
+                      out.width = "100%")
+```
+
+This vignette simulates five correlated traits on a random pedigree with a known
+genetic covariance matrix `G`, fits the multivariate model with `lmm_animal()`,
+and compares the posterior `G`, `E`, `P`, genetic correlations, heritabilities
+and fixed effects with the simulated truth.
+
+```{r packages, message = FALSE}
+library(stanimal)
+library(pedtools)   # randomPed(); install with pak::pkg_install("cran/pedtools")
+library(patchwork)
+library(ggplot2)
+```
+
+## Simulation
+
+`random_covariance(method = "partial")` draws a random covariance matrix (the
+package port of `evolqg::RandomMatrix(LKJ = FALSE)`). The residual covariance is
+the identity.
+
+```{r simulate}
+ped <- randomPed(1500, 50, seed = 2)
+ped <- data.frame(id = ped$ID, sire = ped$FIDX, dam = ped$MIDX)
+A <- makeA(ped)
+L_A <- chol(A)
+
+n_traits <- 5
+traits <- paste0("trait", seq_len(n_traits))
+
+set.seed(41)
+(G <- random_covariance(n_traits, method = "partial", trait_names = traits))
+E <- diag(n_traits)
+
+n <- nrow(A)
+a <- t(L_A) %*% matrix(rnorm(n * n_traits), n, n_traits) %*% chol(G)
+
+beta <- matrix(c(rep(1, n_traits),
+                 rnorm(n_traits, 0, 1),
+                 rnorm(n_traits, 1, 1)), 3, n_traits, byrow = TRUE,
+               dimnames = list(c("Intercept", "sex", "Z"), traits))
+X <- cbind(Intercept = 1, sex = sample(c(0, 1), n, replace = TRUE),
+           Z = rnorm(n))
+e <- matrix(rnorm(n * n_traits), n, n_traits) %*% chol(E)
+
+Y <- X %*% beta + a + e
+colnames(Y) <- traits
+```
+
+## Fit
+
+```{r fit, message = FALSE}
+fit <- lmm_animal(Y, X, A, lkj_prior = 2,
+                  iter = 3000, warmup = 2000, chains = 4, cores = 4,
+                  refresh = 0, seed = 1)
+```
+
+The fit is a `CmdStanMCMC` object: summaries and diagnostics use its methods, and
+the draws work with `posterior` and `bayesplot`.
+
+```{r summary}
+fit$summary(c("h2", "corrG"))
+fit$diagnostic_summary()
+```
+
+`fit_draws()` returns every quantity as an array with the traits first and the
+draws last, with named dimensions.
+
+```{r draws}
+draws <- fit_draws(fit)
+draws
+```
+
+## Posterior means against the truth
+
+`draws_mean()` and `draws_quantile()` give matrices back. Residual correlations
+are not a model output; `fit_draws()` derives them from the `E` draws.
+
+```{r means}
+round(draws_mean(fit, "G"), 2); round(G, 2)
+round(draws_mean(fit, "E"), 2)
+round(draws_mean(fit, "corrP"), 2); round(cov2cor(G + E), 2)
+round(draws_quantile(fit, "corrE", probs = c(0.05, 0.95)), 2)
+```
+
+The fixed effects, with rows as traits:
+
+```{r beta}
+round(draws_mean(fit, "beta"), 2)
+t(beta)
+```
+
+## Intervals against the truth
+
+In these plots the filled circle is the posterior mean, the thick and thin
+segments are the 80% and 99% intervals, and the simulated value is the hollow
+triangle.
+
+```{r intervals, fig.height = 4}
+bayesplot::color_scheme_set("blue")
+interval_plot <- function(pars, truth) {
+  bayesplot::mcmc_recover_intervals(
+    fit$draws(pars), true = stats::setNames(truth, pars),
+    prob = 0.8, prob_outer = 0.99, point_est = "mean")
+}
+pairs <- which(lower.tri(diag(n_traits)), arr.ind = TRUE)
+interval_plot(sprintf("h2[%d]", seq_len(n_traits)),
+              diag(G) / (diag(G) + diag(E)))
+interval_plot(sprintf("corrG[%d,%d]", pairs[, 1], pairs[, 2]),
+              cov2cor(G)[pairs])
+```
+
+## Prior against posterior
+
+Where the prior and the posterior overlap, the data add little information.
+
+```{r prior-posterior, fig.height = 6}
+plot_prior_posterior(fit, trait_names = traits, ncol = 3)
+```
+
+## Genetic ellipses and correlations
+
+`plot_G_ellipses()` shows the residuals after the fixed effects with posterior
+draws of the `G` ellipses, and the genetic correlations.
+
+```{r ellipses, fig.height = 8}
+plot_G_ellipses(fit, Y, n_show = 100, X = X)
+```
+
+```{r corr, fig.height = 4}
+plot_corr(draws_mean(fit, "corrG"), "Estimated") +
+  plot_corr(cov2cor(G), "True")
+```
+
+## A derived quantity: eigenvalue variance
+
+Any function of `G` has a posterior: apply it to every draw. Here, the relative
+variance of the eigenvalues of `G`, a common measure of integration.
+
+```{r eigenvar, fig.height = 3.5}
+eig_var <- apply(draws$G, 3, evolqg::CalcEigenVar)
+ggplot(data.frame(value = eig_var), aes(value)) +
+  geom_density(fill = "grey70", colour = NA) +
+  geom_vline(xintercept = evolqg::CalcEigenVar(G),
+             colour = "red", linetype = "dashed") +
+  labs(x = "Eigenvalue variance of G", y = "Density",
+       title = "Posterior eigenvalue variance of G (dashed = true value)") +
+  theme_minimal()
+```

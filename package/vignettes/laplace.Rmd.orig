@@ -1,0 +1,53 @@
+---
+title: "Laplace approximation"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Laplace approximation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+`lmm_animal_laplace()` and `lm_phen_cov_laplace()` fit the same models as the
+samplers by a Laplace approximation: a Gaussian at the mode on the unconstrained
+scale, with draws from it transformed to the reported quantities. It is not a
+posterior sample. There are no MCMC diagnostics, and the draw-based tools
+(`fit_draws()`, `fit_loo()`, `breeding_values()`, `posterior_predictive()`,
+`imputed_data()`) refuse the result. Use it to explore, then confirm with the
+sampler.
+
+This vignette compares the two on the same simulated phenotypic data.
+
+```{r packages, message = FALSE}
+library(stanimal)
+```
+
+```{r simulate}
+set.seed(2026)
+n <- 200
+X <- cbind(intercept = 1, predictor = rnorm(n))
+P <- matrix(c(1, 0.4, 0.4, 1.5), 2)
+Y <- X %*% rbind(c(0.5, -0.5), c(0.3, -0.2)) +
+  matrix(rnorm(n * 2), n) %*% chol(P)
+colnames(Y) <- c("trait1", "trait2")
+```
+
+```{r fit, message = FALSE}
+approx <- lm_phen_cov_laplace(Y, X, draws = 2000, seed = 41)
+sampled <- lm_phen_cov(Y, X, iter = 1000, warmup = 500, chains = 2,
+                       cores = 2, seed = 41, refresh = 0)
+```
+
+```{r compare}
+approx
+sampled$summary(c("P", "corrP"))[, c("variable", "mean", "sd", "rhat")]
+sampled$diagnostic_summary()
+```
+
+Agreement here does not guarantee agreement in other models. Skewed or
+multimodal posteriors are approximated poorly, particularly for variances and
+heritabilities, whose standard deviations are the least reliable entries of the
+approximation.

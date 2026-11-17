@@ -1,0 +1,19 @@
+pandoc: '3.10'
+pkgdown: 2.2.0
+pkgdown_sha: ~
+articles:
+  breeding-values: breeding-values.html
+  factor-model: factor-model.html
+  factor-phenotypic-covariance: factor-phenotypic-covariance.html
+  gibbs: gibbs.html
+  imputation: imputation.html
+  laplace: laplace.html
+  multivariate: multivariate.html
+  phenotypic-covariance: phenotypic-covariance.html
+  ratones: ratones.html
+  structure-comparison: structure-comparison.html
+  univariate: univariate.html
+last_built: 2026-11-17T18:46Z
+urls:
+  reference: https://diogro.github.io/stanimal/reference
+  article: https://diogro.github.io/stanimal/articles

@@ -1,0 +1,142 @@
+---
+title: "Sparse factor model for P"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Sparse factor model for P}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "figures/factor-phenotypic-covariance-",
+                      fig.width = 8, fig.height = 5, dpi = 80,
+                      out.width = "100%")
+```
+
+The 35 log-transformed mouse traits are dominated by a single size gradient:
+the first principal component takes about 40% of the variance and the
+eigenvalues then fall away quickly. That is the low-rank structure a factor
+model describes, so `lm_phen_cov(covariance_structure = "factor")` estimates `P`
+as a few sparse factors plus trait-specific variances instead of a full 35 by 35
+correlation matrix.
+
+The factors stay on the observed log-trait scale on purpose. Rotating the traits
+first (size plus shape scores, see `size_shape()`) spreads every loading over
+all 35 traits, which destroys the sparsity the prior is there to find and moves
+the low-rank structure out of `P` and into the rotation itself.
+
+```{r packages, message = FALSE}
+library(stanimal)
+```
+
+```{r data}
+traits <- names(ratones_morpho)[12:46]
+Y <- log(as.matrix(ratones_morpho[, traits]))
+X <- stats::model.matrix(~ SEX + AGE + LIN, data = ratones_morpho)
+dim(Y)
+round(pc1_variance_share(Y), 3)
+```
+
+## How many factors?
+
+The scree says where the low-rank structure is, and parallel analysis says how
+many dimensions clear the noise floor. That count is an upper bound, not a
+target.
+
+```{r n-factors}
+set.seed(1)
+suggested <- suggest_n_factors(Y, X)
+c(dimensions = as.integer(suggested), variance_share = round(attr(suggested, "share"), 2))
+round(scree_eigenvalues(Y, X)[1:8, ], 3)
+```
+
+```{r scree, fig.height = 4}
+plot(scree_eigenvalues(Y, X))
+```
+
+Parallel analysis keeps `r as.integer(suggested)` dimensions, but the first two
+stand clear of a flat tail and the last ones only just clear their cutoffs. A
+three-factor fit gives bimodal communalities (`Rhat` 1.5 across four chains),
+which is the model saying that direction is not in the data, so two factors it
+is. The column decay is stronger than the 0.8 default because the two columns
+come out at similar sizes: at 0.8 their labels swap between chains, and at 0.5
+they are ordered and converge.
+
+## Fit
+
+```{r fit, message = FALSE}
+fit <- lm_phen_cov(
+  Y, X,
+  covariance_structure = "factor", n_factors = 2,
+  hs_global_scale = 2, hs_slab_scale = 2,
+  column_decay = 0.5,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  refresh = 0, show_messages = FALSE, seed = 1
+)
+fit$diagnostic_summary()
+```
+
+## Against the least-squares residual covariance
+
+`P` is on the log-trait scale, so it is directly comparable with the covariance
+of the least-squares residuals. A factor model is a rank-`k` approximation, so
+its error has to be read against the best a rank-`k` structure can do, not
+against zero. The errors are on the correlation scale, because an absolute error
+on variances of about 0.001 says nothing.
+
+```{r compare}
+P_hat <- draws_mean(fit, "P")
+P_ols <- stats::cov(stats::lm.fit(X, Y)$residuals)
+corr_hat <- stats::cov2cor(P_hat)
+corr_ols <- stats::cov2cor(P_ols)
+relative_error <- function(estimate, target)
+  sqrt(mean((estimate - target)^2) / mean(target^2))
+
+eigen_ols <- eigen(corr_ols, symmetric = TRUE)
+best_rank <- eigen_ols$vectors[, 1:2] %*% diag(eigen_ols$values[1:2]) %*%
+  t(eigen_ols$vectors[, 1:2])
+diag(best_rank) <- 1
+c(factor_model = relative_error(corr_hat, corr_ols),
+  best_rank_2 = relative_error(best_rank, corr_ols))
+round(rbind(factor = diag(P_hat)[1:5], ols = diag(P_ols)[1:5]), 4)
+```
+
+The horseshoe shrinks, so the fitted correlations should sit slightly closer to
+zero than the least-squares ones. A large gap the other way would mean the prior
+is inflating the common structure instead of smoothing it.
+
+```{r shrinkage}
+c(factor_model = mean(abs(corr_hat[upper.tri(corr_hat)])),
+  ols = mean(abs(corr_ols[upper.tri(corr_ols)])))
+```
+
+## Loadings, communality and uniqueness
+
+A factor's sign is unidentified: flipping one loading column leaves `P`
+unchanged, so a chain can visit both orientations, and averaging them would
+cancel the factor out of the posterior mean. `draws_mean()` aligns every draw to
+the trait with the largest mean absolute loading first, so nothing needs to be
+done here.
+
+Communality is the share of a trait's variance taken by the common factors, and
+uniqueness is its complement. Both are invariant to rotation; loadings and
+factor magnitudes are not, so read those only after `P` and communality have
+converged.
+
+```{r loadings}
+lambda <- draws_mean(fit, "loadings")
+round(lambda[1:5, ], 3)
+fit$summary("factor_magnitude")[, c("variable", "mean", "sd", "rhat", "ess_bulk")]
+fit$summary("communality")[1:5, c("variable", "mean", "sd", "rhat", "ess_bulk")]
+sum(draws_mean(fit, "communality"))   # total common variance
+```
+
+```{r heatmaps, fig.width = 9, fig.height = 8}
+plot_corr(corr_hat, "Factor P: posterior mean correlations")
+plot_corr(corr_ols, "Least-squares residual correlations")
+```
+
+```{r loading-heatmap, fig.width = 4, fig.height = 8}
+plot_corr(lambda, "Posterior mean loadings")
+```

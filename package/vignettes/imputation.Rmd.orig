@@ -1,0 +1,104 @@
+---
+title: "Incomplete trait records"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Incomplete trait records}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "figures/imputation-",
+                      fig.width = 8, fig.height = 5, dpi = 80,
+                      out.width = "100%")
+```
+
+Traits are rarely measured on everyone. Dropping the individuals with a gap
+throws away the traits that *were* measured on them, and with relatedness it is
+unnecessary: a missing value is informed by every relative's observed traits.
+The opossum data ship that way (11 of the animals with a recorded sex and age
+have none of these four traits measured), so the model is fitted with the gaps in place and `imputed_data()` fills them from
+the relatives' records.
+
+```{r packages, message = FALSE}
+library(stanimal)
+library(ggplot2)
+```
+
+## Data, with the gaps already in it
+
+Four distances spanning the skull from the nasal suture to the basicranium,
+positively correlated with each other (0.39 to 0.78). That correlation is what
+lets a gap borrow from the other traits of the same animal, on top of what its
+relatives say.
+
+```{r data}
+traits <- c("IS_NSL", "NA_BR", "ZI_ZYGO", "BA_EAM")
+dat <- opossum
+dat[traits] <- log(dat[traits])   # morphometrics are fitted on the log scale
+```
+
+`animal_design()` drops the rows with a missing predictor (age), but keeps the
+rows whose response has gaps.
+
+```{r design}
+design <- suppressWarnings(
+  animal_design(cbind(IS_NSL, NA_BR, ZI_ZYGO, BA_EAM) ~ sex + age, data = dat))
+Y <- design$Y
+A <- opossum_grm[rownames(Y), rownames(Y)]
+c(missing_entries = sum(is.na(Y)), entries = length(Y),
+  incomplete_animals = sum(!complete.cases(Y)),
+  complete_animals = sum(complete.cases(Y)))
+```
+
+## Fit with the gaps in place
+
+Nothing is dropped: the gaps become parameters of the model, with a flat prior,
+so the posterior over `G`, `E` and `beta` is the exact marginal over the observed
+data.
+
+```{r fit, message = FALSE}
+fit <- lmm_animal(Y, design$X, A, lkj_prior = 2,
+                  iter = 800, warmup = 400, chains = 2,
+                  refresh = 0, seed = 1)
+fit$summary(c("h2", "corrG"))
+```
+
+## The completed data
+
+`imputed_data()` returns individuals by traits by draws, with the gaps filled on
+the response scale. These are multiple imputations: do not collapse them to one
+filled-in matrix and treat it as data.
+
+```{r imputed}
+imp <- imputed_data(fit, ndraws = 500, seed = 2)
+imp
+dim(imp$Y)
+```
+
+What the model believes about each gap:
+
+```{r plot, fig.height = 6}
+gaps <- imp$gaps
+intervals <- t(vapply(seq_len(nrow(gaps)), function(i) {
+  v <- imp$Y[gaps$individual[i], gaps$trait[i], ]
+  c(mean = mean(v), lo = unname(quantile(v, 0.025)),
+    hi = unname(quantile(v, 0.975)))
+}, c(mean = 0, lo = 0, hi = 0)))
+plot_dat <- data.frame(
+  gap = sprintf("%s / %s", gaps$individual_label, gaps$trait_label),
+  trait = gaps$trait_label,
+  mean = intervals[, "mean"], lo = intervals[, "lo"], hi = intervals[, "hi"])
+plot_dat$gap <- factor(plot_dat$gap,
+                       levels = rev(plot_dat$gap[order(plot_dat$trait)]))
+
+ggplot(plot_dat, aes(x = mean, y = gap)) +
+  geom_pointrange(aes(xmin = lo, xmax = hi), colour = "grey30", size = 0.2) +
+  facet_wrap(~trait, scales = "free", nrow = 1) +
+  labs(x = "log distance", y = NULL,
+       title = "Imputed values for the animals with missing measurements",
+       subtitle = "posterior mean and 95% interval for each missing value") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank())
+```

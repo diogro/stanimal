@@ -1,0 +1,91 @@
+url: https://diogro.github.io/stanimal/
+destination: ../docs
+
+template:
+  bootstrap: 5
+  light-switch: true
+
+home:
+  title: "stanimal: Bayesian animal models in Stan"
+
+navbar:
+  structure:
+    left: [intro, reference, articles, news]
+    right: [search, github, lightswitch]
+
+reference:
+- title: Fitting models
+  contents:
+  - lmm_animal
+  - lm_phen_cov
+  - laplace
+  - lmm_animal_gibbs
+- title: Building the inputs
+  contents:
+  - animal_design
+  - makeA
+  - genomic_relationship
+  - size_shape
+  - back_transform
+  - pc1_variance_share
+- title: Choosing the number of factors
+  contents:
+  - suggest_n_factors
+  - scree_eigenvalues
+  - plot.scree
+- title: Reading the posterior
+  contents:
+  - fit_draws
+  - draws_mean
+  - rename_beta
+  - to_draws_list
+  - animal_parameter_draws
+- title: Post-processing a fit
+  contents:
+  - breeding_values
+  - imputed_data
+  - fit_loo
+  - posterior_predictive
+- title: Plots
+  contents:
+  - plot_prior_posterior
+  - plot_G_ellipses
+  - plot_corr
+- title: Priors and simulation
+  contents:
+  - animal_prior_draws
+  - random_covariance
+- title: Data
+  contents:
+  - ratones_morpho
+  - ratones_pedigree
+  - opossum
+- title: Package
+  contents:
+  - stanimal-package
+  - stan_cache_dir
+
+articles:
+- title: Animal models
+  navbar: Animal models
+  contents:
+  - univariate
+  - multivariate
+  - ratones
+  - factor-model
+  - structure-comparison
+- title: Working with a fit
+  navbar: Working with a fit
+  contents:
+  - imputation
+  - breeding-values
+- title: Phenotypic covariance
+  navbar: Phenotypic covariance
+  contents:
+  - phenotypic-covariance
+  - factor-phenotypic-covariance
+- title: Other engines
+  navbar: Other engines
+  contents:
+  - laplace
+  - gibbs

@@ -8,3 +8,9 @@ Rplots\.pdf$
 ^inst/stan/animalModelG$
 ^inst/stan/animalModelGFactor$
 ^inst/stan/.*\.(o|hpp|rds)$
+# Vignette sources: the shipped .Rmd files are precomputed from them
+^vignettes/.*\.Rmd\.orig$
+^vignettes/precompute\.R$
+# pkgdown site configuration (the site itself is built into ../docs)
+^_pkgdown\.yml$
+^pkgdown$

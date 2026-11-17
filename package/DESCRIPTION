@@ -3,7 +3,7 @@ Version: 0.9.0
 Date: 2026-11-14
 Title: Animal Models in Stan
 Description: Fit linear animal models in Stan for one or more traits.
-URL: https://github.com/diogro/stanimal
+URL: https://diogro.github.io/stanimal/, https://github.com/diogro/stanimal
 BugReports: https://github.com/diogro/stanimal/issues
 Additional_repositories: https://stan-dev.r-universe.dev
 Authors@R: 
@@ -27,10 +27,13 @@ Imports:
     utils
 Suggests:
     cmdstanr,
+    knitr,
     loo,
     nadiv,
+    rmarkdown,
     rstan (>= 2.18.1),
     testthat (>= 3.0.0)
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 Config/testthat/parallel: true
 Config/roxygen2/version: 8.1.1

@@ -47,11 +47,14 @@ custom models declare it.
   package installed, and commit the `.Rmd` and figures with it. The `.Rmd.orig`
   files and `precompute.R` are in `.Rbuildignore`.
 - `docs/` is the pkgdown site served by GitHub Pages (from `master`, `/docs`).
-  It is generated: configure it in `package/_pkgdown.yml`, write the landing
-  page in `package/pkgdown/index.md`, and rebuild with
-  `Rscript -e 'pkgdown::build_site("package", install = FALSE)'` after the
-  package is installed. Rebuild it when the vignettes, the Rd files or the
-  NEWS change, and commit the result.
+  It is generated: configure it in `package/_pkgdown.yml` and rebuild with
+  `Rscript package/pkgdown/build_site.R` (`--lazy` for changed pages only).
+  The home page is the repository `README.md`, copied to the generated
+  `package/pkgdown/index.md` with its links fixed, so edit the README, not
+  that file. `package/pkgdown/build_site.R` and `extra.scss` are shared with
+  the sibling packages' sites; keep the copies identical. Rebuild when the
+  README, the vignettes, the Rd files or the NEWS change, and commit the
+  result.
 - `examples/*.R` are the long simulation studies and cross-package
   comparisons, which write to `results/` and `examples/figures/` (both
   gitignored). `examples/README.md` indexes them.

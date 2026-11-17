@@ -8,7 +8,7 @@ Bayesian animal models in Stan, with a focus on estimating the **additive geneti
 
 Fits use [CmdStan](https://mc-stan.org/cmdstanr/) through `cmdstanr` (default) or `rstan`.
 
-# Install
+## Install
 
 ```r
 if (!requireNamespace("pak", quietly = TRUE))
@@ -21,7 +21,7 @@ pak::pkg_install("diogro/stanimal/package")
 
 Requires R 4.0.0 or later.
 
-# Quick start with the bundled data
+## Quick start with the bundled data
 
 The package ships two real datasets, both measured on the same 35 cranial
 landmarks:
@@ -46,7 +46,7 @@ fit$summary(c("h2", "corrG"))
 The [mouse data article](https://diogro.github.io/stanimal/articles/ratones.html) fits the mouse model end to end and plots the results,
 building the relationship matrix from the dam and sire recorded on each mouse.
 
-# Usage
+## Usage
 
 ```r
 library(stanimal)
@@ -62,7 +62,7 @@ fit <- lmm_animal(Y, X, A)
 
 `Y` can be a vector (univariate) or a matrix (multivariate). `X` is optional: `lmm_animal(Y, A = A)` fits an intercept-only model, with the intercept named `(Intercept)` in the `beta` draws. `A` must be symmetric and positive definite; if it is only positive semidefinite (duplicated individuals, for example), fit with `blend_A = TRUE`. When `A` and the rows of `Y` are both named, `A` is put in the row order of `Y`; names that disagree are an error. Without names, the rows are assumed to be in the same order and only the dimensions are checked.
 
-## Univariate models
+### Univariate models
 
 Two parametrizations are available through `parametrization`:
 
@@ -75,7 +75,7 @@ If the `"variance"` version has chains with low E-BFMI, `lmm_animal()` warns and
 fit <- lmm_animal(y, X, A, parametrization = "h2")
 ```
 
-## Multivariate model
+### Multivariate model
 
 The multivariate model estimates `G` and the residual covariance `E` directly. Each is a vector of scales times an LKJ-distributed correlation matrix, with half-normal priors on the scales (of the standardized responses). There is no prior on h2 by default; `h2 = diag(G) / diag(P)` is derived. Two configurations put the prior on h2 instead: `parametrization = "h2"`, and the ordinary factor model, which has no other choice. Both write the scales as `s_G = sqrt(h2) s_P` and `s_E = sqrt(1 - h2) s_P`, so `beta_prior` is a prior on the trait heritabilities.
 
@@ -88,7 +88,7 @@ The multivariate model estimates `G` and the residual covariance `E` directly. E
 - Fitting many traits is still computationally heavy even though the likelihood is cheap: an unstructured `G` at `K = 40` has roughly 1,700 parameters, and NUTS needs many leapfrog steps, so one fit can take an hour or more. Fewer `iter`, a larger `lkj_prior`, or `residual_structure = "diagonal"` make fits faster.
 - The side that does not scale is the number of individuals. `A` is dense, so the models receive all $N \times N$ of it and each chain eigendecomposes it before sampling: $O(N^3)$ time and $O(N^2)$ memory per chain, about two seconds at 1,000 individuals, half a minute at 2,000 and a minute at 4,000. That is a one-off cost, and afterwards an evaluation is only linear in $N$: with many traits, sampling dominates and the decomposition is a small fraction of the fit (at 4,000 individuals and `K = 3`, about a minute out of ten), while with few traits and short runs it can be most of it (at 4,000 individuals univariate, about 70% of 500 iterations). Either way the package targets many traits on hundreds to a few thousand individuals; for cohorts in the tens of thousands, where the dense relationship matrix is the bottleneck, an engine that works with the sparse inverse of `A` (such as [ASReml](https://asreml.locustware.com/)) is the better tool.
 
-### Sparse factor models for G and E
+#### Sparse factor models for G and E
 
 When the number of traits is large, an unstructured `G` and `E` need $O(K^2)$ parameters and become expensive to estimate. Two factor-structured alternatives are available.
 
@@ -145,7 +145,7 @@ sapply(c(1, 2, 4), function(m) mean(prior_communality(m)))
 
 In the shared-factor model loadings are not row-normalized; its communality is a sum of squares on the standardized response scale, not a correlation-scale proportion, so this simulation does not apply.
 
-### Choosing the number of factors
+#### Choosing the number of factors
 
 `n_factors` is the argument to think about: too few factors underfit the covariance, and too many split one direction across several columns, which is what makes the loadings rotate. Two helpers look at the data instead of guessing:
 
@@ -166,7 +166,7 @@ That is what the [factor model for P article](https://diogro.github.io/stanimal/
 
 How strong the decay needs to be depends on how many columns have to be told apart. Few factors need *more* shrinkage than many: with two columns of comparable size, `0.8` is often too mild and their labels still swap, while a broader model wants the mild default, because `0.5^(m - 1)` shrinks the prior of the fifth column to a sixteenth of the first. So lower `column_decay` when a fit with two or three factors has `factor_magnitude` `Rhat` values well above one, and leave it at the default when there are many.
 
-## Output
+### Output
 
 With the default `cmd_stan = TRUE`, `lmm_animal()` returns a `CmdStanMCMC` object, so the usual cmdstanr, posterior and bayesplot tools work directly:
 
@@ -195,7 +195,7 @@ rename_beta(fit, "beta")
 
 With `cmd_stan = FALSE` the fit is a `stanfit` object from `rstan`, with `beta` already named after the columns of `X`.
 
-### Covariance matrices as matrices
+#### Covariance matrices as matrices
 
 `fit$draws()` reports `G` one element per variable (`G[1,1]`, `G[2,1]`, ...), so getting a matrix back means matching and reshaping names by hand. `fit_draws()` does that once and returns arrays indexed by trait, with draws last and every dimension named:
 
@@ -232,7 +232,7 @@ no longer uses the fitted prior. For a factor-G fit, any explicit `lkj_prior`
 warns that it is ignored by the plot, which does not display residual correlations.
 It also warns when supplied with `prior`, or for a univariate fit.
 
-## Comparing models, and checking that one fits
+### Comparing models, and checking that one fits
 
 Fits can be compared by leave-one-out cross-validation with the [`loo`](https://mc-stan.org/loo/) package:
 
@@ -258,7 +258,7 @@ plot(pp)  # the replicate distributions
 
 The replicate is `X beta + u + e` for an animal fit, with `u ~ N(0, A ⊗ G)` and `e ~ N(0, I ⊗ E)`, and `X beta + e` with `e ~ N(0, P)` for a phenotypic one, using the draws the fit reports. `print()` compares observed means, SDs and pairwise correlations with the replicates using the same observed entries for each statistic. It gives a 95% replicate interval and `p`, the share at or above the observed value. These posterior predictive tail probabilities are not generally uniform under a correct model because the data are used twice; extremes can flag a discrepancy, while a middling value does not establish a good fit.
 
-## Breeding values
+### Breeding values
 
 An animal model estimates the covariance structure. It does not report what any individual's additive value is, because the breeding values are integrated out of the likelihood — which is what makes the model scale to many individuals and many traits. `breeding_values()` puts them back from the fitted covariance:
 
@@ -286,7 +286,7 @@ For `m` gaps the SE calculation forms and factorizes a dense `m` by `m` matrix; 
 
 `reliability` is the share of a trait's additive variance that the prediction accounts for, between 0 and 1, and is the usual quantity for deciding how far to trust a candidate. It is a conditional variance at the posterior means, not a posterior distribution of `u`: a per-draw version would sample `u` in `generated quantities` at `O(N K^3)` per draw and store `N K` numbers per draw, which is a different feature.
 
-## Formula interface
+### Formula interface
 
 `animal_design()` builds `Y` and `X` from a formula and a data frame, for when you would rather write the model the usual way than assemble the matrices by hand:
 
@@ -331,7 +331,7 @@ design <- animal_design(cbind(t1, t2) ~ age + sex, dat, genotypes = M, blend = 0
 fit <- lmm_animal(design$Y, design$X, design$A)
 ```
 
-## Incomplete trait records
+### Incomplete trait records
 
 Traits are not always measured on everyone. Pass the `NA`s straight in: a record is used as long as it has one observed trait, and the missing values are never dropped.
 
@@ -359,7 +359,7 @@ The observed entries are the data in every draw; only the cells nobody measured 
 
 The cost is that the animal model has one parameter per gap: a few hundred is nothing, tens of thousands is noticeable. Dropping the incomplete rows instead is the cheap alternative, and it discards every trait that *was* measured on those individuals; with 20% of the entries missing at random, only about half the rows survive.
 
-## Size and shape reparametrization (use this when one PC dominates)
+### Size and shape reparametrization (use this when one PC dominates)
 
 **If the traits are morphometric and a single principal component explains most of their variance, fit size and shape scores instead of the raw traits.** In that situation the covariance is a long, thin ridge: size and shape are still estimable, but the raw parametrization samples poorly (divergences, low E-BFMI, many leapfrog steps, etc.) and the prior is spread over near-degenerate directions.
 
@@ -411,7 +411,7 @@ range(ss_gaps$scores_sd)          # 0 for the individuals measured in full
 
 A row with nothing observed is an error, as are two traits never measured on the same individual, because their covariance cannot be estimated.
 
-## Pedigree relationship matrix
+### Pedigree relationship matrix
 
 `makeA()` turns a pedigree into the additive relationship matrix, using the tabular method, with parents allowed in any order and unknown parents coded `0`, `NA` or `""`:
 
@@ -423,7 +423,7 @@ fit <- lmm_animal(Y, X, A)
 
 Inbreeding is accounted for, so a pedigree with matings between relatives gives diagonal values above one. A parent that is not one of the pedigree's individuals is added as a founder, with a warning, rather than silently dropping the relationship; a pedigree where an individual is its own ancestor is an error.
 
-### Related founders and metafounders
+#### Related founders and metafounders
 
 Founders are unrelated by default. If the base population has structure — multiple breeds or populations, or a known relationship among the founders — pass `Gamma`, the relationship matrix among founders, to `makeA()`:
 
@@ -459,7 +459,7 @@ design <- animal_design(cbind(t1, t2) ~ sex, dat,
 
 Only founders with both parents unknown receive founder relationships. An unknown parent of an individual that has one known parent is still treated as an unrelated founder; add it explicitly to the pedigree and assign a group if it belongs to the related base population. A genomic relationship matrix among founders can be used as `Gamma`, but it estimates realized rather than base-population relationships, so blending or shrinkage is advisable. See `?makeA` for details and the [Legarra et al. (2015)](https://doi.org/10.1534/genetics.115.177014) reference.
 
-## Genomic relationship matrix
+### Genomic relationship matrix
 
 If you have marker genotypes instead of a pedigree, `genomic_relationship()` builds a VanRaden (2008) GRM to use as `A`:
 
@@ -471,7 +471,7 @@ fit <- lmm_animal(Y, X, A)
 
 Markers with low minor allele frequency (`maf`), too much missing data (`max_missing`) or no variation are dropped, and missing genotypes are set to their expected value. Fully missing markers are always excluded from the GRM and its denominator, even with `max_missing = 1` and supplied frequencies; a warning identifies those that would otherwise pass the filters. Known base-population allele frequencies can be passed with `p`. If there are fewer markers than individuals, or duplicated genotypes, the GRM is singular; a small `blend` mixes in the identity to make it positive definite.
 
-## Phenotypic covariance only (P)
+### Phenotypic covariance only (P)
 
 With no pedigree or genomic data, `lm_phen_cov()` estimates just the phenotypic covariance matrix `P`. It takes the same arguments and priors as `lmm_animal()` (without `A`), and returns the same kind of object, with `P`, `corrP`, `sigma_P` and `beta`. The likelihood is a single whitened triangular solve, $O(NK^2 + K^3)$, so it also scales to dozens of traits:
 
@@ -491,36 +491,36 @@ fit$summary(c("P", "loadings", "factor_magnitude"))
 
 Keep the factors on the observed trait scale. Rotating first (for instance to the size/shape scores of `size_shape()`) spreads every loading over all the traits, which removes the sparsity the prior is there to find, and turns the low-rank structure into the rotation itself: the score covariance is then almost diagonal, so the factor decomposition is left weakly identified.
 
-## Data scaling and back-transformed coefficients
+### Data scaling and back-transformed coefficients
 
 All models standardize the response and divide continuous predictors by their standard deviation (constant and 0/1 columns are not scaled) for better sampling. Coefficients are back-transformed, so `beta` is in the original units of `X` and `Y`, and the mean of the response is restored through the design: onto an intercept column, or split across the indicator columns of a factor when the intercept is dropped.
 
-## Compilation cache
+### Compilation cache
 
 Models fit with cmdstanr are compiled once and the executable is reused in later R sessions. The cache is in `tools::R_user_dir("stanimal", "cache")` by default; change it with `options(stanimal.cache_dir = "path")` or the `STANIMAL_CACHE_DIR` environment variable. Use `stan_cache_dir()` to see the location, and run `stanimal_clear_cache()` after upgrading CmdStan.
 
-## Other options
+### Other options
 
 - `cmd_stan = FALSE` uses `rstan` instead of `cmdstanr`. Both engines are optional: without `cmdstanr` a fit falls back to `rstan` with a warning, and with neither installed it stops and says how to install one.
 - `blend_A = TRUE` replaces `A` with `0.99 * A + 0.01 * I`.
 - `model_file` runs a custom Stan file in place of the default model.
 - Further arguments (`...`) are passed to the sampler, for example `refresh = 0`.
 
-## Gibbs sampler
+### Gibbs sampler
 
 `lmm_animal_gibbs()` is a quick single-chain Gibbs sampler for simulations and sanity checks. Its priors (inverse-Wishart) differ from those in `lmm_animal()`, so the results are not directly interchangeable.
 
-## Laplace approximation
+### Laplace approximation
 
 `lmm_animal_laplace()` and `lm_phen_cov_laplace()` fit the same models with a Laplace approximation (cmdstanr only). The approximation is Gaussian at the mode on the unconstrained scale; reported quantities transform draws from it, which are not posterior samples. `fit$summary` has their means, standard deviations and median absolute deviations. There are no MCMC convergence diagnostics, and draw-based functions (`fit_draws()`, `fit_loo()`, `breeding_values()`, `posterior_predictive()`, `imputed_data()`) refuse the object. Skewed or multimodal posteriors can be poorly approximated, particularly for variances and heritabilities: use this to explore and confirm with the sampler. CmdStan warnings and failures are surfaced, without automatic retries. See the [Laplace approximation article](https://diogro.github.io/stanimal/articles/laplace.html) for a comparison.
 
-# Documentation and examples
+## Documentation and examples
 
 The package website, [diogro.github.io/stanimal](https://diogro.github.io/stanimal/), has the function reference and worked articles (the package vignettes), each comparing the posterior with a simulated truth or with the data: [univariate](https://diogro.github.io/stanimal/articles/univariate.html), [multivariate](https://diogro.github.io/stanimal/articles/multivariate.html), [real mouse data](https://diogro.github.io/stanimal/articles/ratones.html), [sparse factor `G`](https://diogro.github.io/stanimal/articles/factor-model.html), [the five covariance structures](https://diogro.github.io/stanimal/articles/structure-comparison.html), [incomplete records](https://diogro.github.io/stanimal/articles/imputation.html), [breeding values](https://diogro.github.io/stanimal/articles/breeding-values.html), [phenotypic covariance](https://diogro.github.io/stanimal/articles/phenotypic-covariance.html), [factor `P`](https://diogro.github.io/stanimal/articles/factor-phenotypic-covariance.html), [Laplace approximation](https://diogro.github.io/stanimal/articles/laplace.html) and [Gibbs sampler](https://diogro.github.io/stanimal/articles/gibbs.html). Installed, they are also available with `browseVignettes("stanimal")`.
 
 The longer simulation studies are scripts in [`examples/`](examples/): `multivariate_power_simulation.R` and the cross-package comparisons `package_comparison.R` and `trait_comparison.R`; see [`examples/README.md`](examples/README.md).
 
-## A complete example
+### A complete example
 
 ```r
 set.seed(1)
@@ -543,7 +543,7 @@ fit$summary(c("G", "corrG", "h2"))
 rename_beta(fit, "beta")
 ```
 
-# Notes
+## Notes
 
 - The models assume one record per individual.
 - Under development: the API may still change.

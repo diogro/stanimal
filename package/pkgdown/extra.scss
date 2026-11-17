@@ -1,0 +1,251 @@
+// Shared look for diogro's pkgdown sites: stanimal, indri, grnland, evomod2.
+//
+// This file and pkgdown/build_site.R are identical in every repository: edit
+// one copy and copy it to the others. A package sets only its accent colour,
+// as `template: bslib: primary:` in _pkgdown.yml; everything else is here.
+//
+// Warm paper background, one accent, thin rules, quiet chrome; light and dark
+// follow the navbar's light switch (and the system setting by default).
+
+$site-accent-dark: mix(#ffffff, $primary, 50%);
+
+@mixin site-palette($bg, $fg, $muted, $line, $card, $code, $accent) {
+  --site-bg: #{$bg};
+  --site-fg: #{$fg};
+  --site-muted: #{$muted};
+  --site-line: #{$line};
+  --site-card: #{$card};
+  --site-code-bg: #{$code};
+  --site-accent: #{$accent};
+  --bs-body-bg: #{$bg};
+  --bs-body-color: #{$fg};
+  --bs-emphasis-color: #{$fg};
+  --bs-secondary-color: #{$muted};
+  --bs-border-color: #{$line};
+  --bs-tertiary-bg: #{$code};
+  --bs-link-color: #{$accent};
+  --bs-link-color-rgb: #{red($accent)}, #{green($accent)}, #{blue($accent)};
+  --bs-link-hover-color: #{$accent};
+  --bs-link-hover-color-rgb: #{red($accent)}, #{green($accent)}, #{blue($accent)};
+  --bs-code-color: #{$fg};
+}
+
+:root,
+[data-bs-theme="light"] {
+  @include site-palette(#fdfcfa, #1f2328, #5d6670, #e3e0da, #ffffff, #f3f1ec,
+                        $primary);
+}
+
+[data-bs-theme="dark"] {
+  @include site-palette(#16181b, #e6e4df, #9aa2ab, #2d3136, #1d2024, #23272c,
+                        $site-accent-dark);
+}
+
+// Type -----------------------------------------------------------------------
+
+body {
+  background: var(--site-bg);
+  color: var(--site-fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+    sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--site-fg);
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+
+main h1, .page-header h1 {
+  font-size: 2.3rem;
+  letter-spacing: -.02em;
+}
+
+main h2 {
+  font-size: 1.35rem;
+  margin-top: 2.5rem;
+  padding-bottom: .3rem;
+  border-bottom: 1px solid var(--site-line);
+}
+
+main h3 { font-size: 1.12rem; margin-top: 1.75rem; }
+main h4 { font-size: 1rem; margin-top: 1.25rem; }
+
+// The header reserves room for a logo; packages without one don't need it.
+.page-header:not(:has(img.logo)),
+.template-home .page-header:not(:has(img.logo)) { min-height: 0; }
+
+.page-header {
+  border-bottom: 0;
+  margin-bottom: 1rem;
+  .text-muted, small { color: var(--site-muted) !important; }
+}
+
+a { color: var(--site-accent); text-underline-offset: .15em; }
+a:hover { text-decoration-thickness: 2px; }
+.anchor { color: var(--site-muted); }
+
+// Chrome ---------------------------------------------------------------------
+
+.navbar {
+  background: var(--site-bg) !important;
+  border-bottom: 1px solid var(--site-line);
+  box-shadow: none;
+  .navbar-brand {
+    color: var(--site-fg);
+    font-weight: 700;
+    letter-spacing: -.02em;
+  }
+  .nav-link { color: var(--site-muted); }
+  .nav-link:hover, .nav-link:focus,
+  .nav-item.active .nav-link, .nav-link.active {
+    color: var(--site-accent);
+  }
+  .nav-text, .text-muted, .version {
+    color: var(--site-muted) !important;
+    font-size: .85rem;
+  }
+  .dropdown-menu {
+    background: var(--site-card);
+    border-color: var(--site-line);
+  }
+  .dropdown-item { color: var(--site-fg); }
+  .dropdown-item:hover, .dropdown-item:focus {
+    background: var(--site-code-bg);
+    color: var(--site-accent);
+  }
+  .dropdown-header {
+    color: var(--site-muted);
+    font-size: .75rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .form-control, .aa-Form {
+    background: var(--site-card);
+    border-color: var(--site-line);
+    color: var(--site-fg);
+  }
+}
+
+aside {
+  color: var(--site-muted);
+  font-size: .92rem;
+  h2, h3 {
+    border: 0;
+    color: var(--site-muted);
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .07em;
+    margin-top: 1.5rem;
+    text-transform: uppercase;
+  }
+  .nav-link { color: var(--site-muted); padding: .15rem 0 .15rem .75rem; }
+  .nav-link.active, .nav-link:hover { color: var(--site-accent); }
+  nav[data-toggle="toc"] .nav > li > .nav-link.active,
+  #toc .nav-link.active {
+    border-left: 2px solid var(--site-accent);
+    background: transparent;
+  }
+}
+
+footer {
+  border-top: 1px solid var(--site-line);
+  color: var(--site-muted);
+  font-size: .85rem;
+  margin-top: 3rem;
+  a { color: inherit; }
+}
+
+// Content --------------------------------------------------------------------
+
+code, pre, kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+code {
+  background: var(--site-code-bg);
+  border-radius: 4px;
+  color: inherit;
+  font-size: .88em;
+  padding: .1em .3em;
+}
+
+// Linked inline code (function names in prose and in the reference index)
+// takes the accent; links inside code blocks keep their syntax colours.
+a > code, a code { color: var(--site-accent); }
+:not(pre) > code a:any-link {
+  color: var(--site-accent);
+  text-decoration-color: var(--site-accent);
+}
+
+pre, div.sourceCode, pre.sourceCode {
+  background: var(--site-code-bg);
+  border: 0;
+  border-radius: 6px;
+  font-size: .86rem;
+  line-height: 1.45;
+}
+
+pre { padding: .9rem 1rem; }
+pre code, div.sourceCode code { background: none; padding: 0; font-size: inherit; }
+
+blockquote {
+  background: var(--site-card);
+  border: 1px solid var(--site-line);
+  border-left: 3px solid var(--site-accent);
+  border-radius: 0 8px 8px 0;
+  color: var(--site-fg);
+  margin: 1.25rem 0;
+  padding: .75rem 1rem;
+  > :last-child { margin-bottom: 0; }
+}
+
+table, .table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--site-fg);
+  --bs-table-border-color: var(--site-line);
+  border-collapse: collapse;
+  font-size: .93rem;
+  margin: 1rem 0 1.5rem;
+}
+
+th, td {
+  border-bottom: 1px solid var(--site-line);
+  padding: .45rem .6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th { font-weight: 600; }
+
+main img { max-width: 100%; height: auto; }
+
+hr { border-color: var(--site-line); opacity: 1; }
+
+// Reference and article indexes read as lists of cards.
+
+.template-reference-index, .template-article-index {
+  main h2 { margin-top: 2.25rem; }
+  dl {
+    display: grid;
+    gap: .25rem 1.25rem;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+  dt { font-weight: 500; overflow-wrap: anywhere; }
+  dd { color: var(--site-muted); margin: 0; }
+  .section-desc { color: var(--site-muted); }
+}
+
+.template-reference-topic {
+  main h2 { font-size: 1.15rem; }
+  .ref-arguments dt, dl dt code { font-weight: 600; }
+}
+
+// Search results dropdown.
+
+.aa-Panel, .aa-Item {
+  background: var(--site-card);
+  color: var(--site-fg);
+}

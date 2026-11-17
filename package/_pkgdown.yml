@@ -1,16 +1,27 @@
 url: https://diogro.github.io/stanimal/
 destination: ../docs
 
+# Shared site layout (same in stanimal, indri, grnland, evomod2): build with
+# `Rscript pkgdown/build_site.R`; the look is in pkgdown/extra.scss and only
+# the accent colour below is per package. The home page is the README.
 template:
   bootstrap: 5
   light-switch: true
+  math-rendering: mathjax
+  bslib:
+    primary: "#2e5878"
 
 home:
   title: "stanimal: Bayesian animal models in Stan"
+  links:
+  - text: Guide for agents (AGENTS.md)
+    href: https://github.com/diogro/stanimal/blob/master/AGENTS.md
+  - text: Developer notes (DEVELOPMENT.md)
+    href: https://github.com/diogro/stanimal/blob/master/DEVELOPMENT.md
 
 navbar:
   structure:
-    left: [intro, reference, articles, news]
+    left: [intro, articles, reference, news]
     right: [search, github, lightswitch]
 
 reference:
